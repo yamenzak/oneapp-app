@@ -69,13 +69,15 @@
 
   <!-- Sheet rather than a dropdown: on a phone this is the primary way to change
        context, and a sheet gives it a touch target per app instead of a menu row. -->
-  <BottomSheet v-model="showSwitcher" title="Apps">
+  <!-- v-model:open, not v-model. BottomSheet's prop is `open`, so a bare
+       v-model binds a `modelValue` it never reads and the sheet never opens. -->
+  <BottomSheet v-model:open="showSwitcher" title="Apps">
     <div class="flex flex-col gap-1 p-2 pb-6">
       <router-link
         v-for="app in apps"
         :key="app.key"
         :to="app.to"
-        class="flex items-center gap-3 rounded p-2 active:bg-surface-gray-2"
+        class="flex items-center gap-3 rounded-4 p-2 active:bg-surface-gray-2"
         @click="showSwitcher = false"
       >
         <Avatar :label="app.label" :image="app.image" size="xl" shape="square" />

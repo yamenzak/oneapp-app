@@ -15,7 +15,15 @@
  * without a visible disable comment.
  */
 
-import { useCall, call as rawCall } from 'frappe-ui'
+import { watch } from 'vue'
+import {
+  useCall,
+  useList,
+  useDoc,
+  useDoctype,
+  call as rawCall,
+  frappeRequest,
+} from 'frappe-ui'
 
 import { notifyError, notifySuccess } from './notify'
 import { onDoctypeChange } from './socket'
@@ -123,12 +131,110 @@ export function useAction(url, options = {}) {
 }
 
 /**
+ * Documents and lists, through frappe-ui's own document layer.
+ *
+ * `useList` / `useDoc` / `useDoctype` are the recommended layer for new code —
+ * they share one document store, so a row updated through a list and the same
+ * document opened on a detail page stay in step, and they carry pagination and
+ * write helpers. Rolling our own on top of `frappe.client.get_list` gave up all
+ * of that and shadowed the library's name while doing it.
+ *
+ * These wrappers exist for the same reason `useResource` does: to apply one
+ * error policy, and to refetch over the socket rather than by polling.
+ */
+export function useDocList(doctype, options = {}) {
+  const { watch: watchDoctypes = [doctype], silent = false, onError, ...rest } = options
+
+  const list = useList({
+    doctype,
+    onError: (error) => {
+      if (!silent) notifyError(error)
+      onError?.(error)
+    },
+    ...rest,
+  })
+
+  for (const watched of watchDoctypes) {
+    onDoctypeChange(watched, () => list.reload())
+  }
+
+  return list
+}
+
+/**
+ * One document. `name` may be a getter, so a detail page can follow its route
+ * parameter without a watcher of its own.
+ *
+ * useDoc reports failures through its `error` ref rather than an `onError`
+ * option, so the toast is wired to that.
+ */
+export function useDocument(doctype, name, options = {}) {
+  const { watch: watchDoctypes = [doctype], silent = false, ...rest } = options
+
+  const resource = useDoc({ doctype, name, ...rest })
+
+  if (!silent) {
+    watch(
+      () => resource.error,
+      (error) => error && notifyError(error),
+    )
+  }
+
+  for (const watched of watchDoctypes) {
+    onDoctypeChange(watched, () => resource.reload())
+  }
+
+  return resource
+}
+
+/**
+ * The write side of a doctype — insert, setValue, delete, runDocMethod.
+ *
+ * Every submit runs independently, so saving two records at once does not
+ * cancel either. `frappe.client.set_value` through `callMethod` was one shared
+ * request that did.
+ */
+export function useDocWrites(doctype, options = {}) {
+  const { successMessage, silent = false } = options
+  const writes = useDoctype(doctype)
+
+  const announce = (fn) => async (...args) => {
+    try {
+      const result = await fn(...args)
+      if (successMessage && !silent) notifySuccess(successMessage)
+      return result
+    } catch (error) {
+      if (!silent) notifyError(error)
+      throw error
+    }
+  }
+
+  return {
+    raw: writes,
+    insert: announce((values) => writes.insert.submit(values)),
+    setValue: announce((values) => writes.setValue.submit(values)),
+    delete: announce((name) => writes.delete.submit({ name })),
+  }
+}
+
+/**
  * One-off call for imperative code. Normalised and toasted like everything else.
+ *
+ * `method: 'GET'` for reads. frappe-ui's `call()` is POST-only, and a method
+ * whitelisted `methods=["GET"]` rejects a POST as a PermissionError — which
+ * reads like an auth problem and is not one. That is what made every read on
+ * the signup page fail, so the page reported signups closed on a site where
+ * they were open. `tests/test_api_calls.py` checks the verb against the
+ * whitelist now.
  */
 export async function callMethod(method, params = {}, options = {}) {
-  const { successMessage, silent = false } = options
+  const { successMessage, silent = false, method: verb = 'POST' } = options
   try {
-    const data = normalize(await rawCall(method, params))
+    const response =
+      verb === 'POST'
+        ? await rawCall(method, params)
+        : await frappeRequest({ url: method, method: verb, params })
+    const data = normalize(response)
     if (successMessage && !silent) notifySuccess(successMessage)
     return data
   } catch (error) {

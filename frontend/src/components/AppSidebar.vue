@@ -13,22 +13,24 @@
         <SidebarItem
           v-for="item in links"
           :key="item.label"
+          :icon="item.icon"
           :to="item.to"
           :active="isActive(item)"
         >
-          <template #prefix>
-            <Icon :name="item.icon" class="size-4 text-ink-gray-7" />
-          </template>
           <span class="flex-1 truncate text-sm">{{ item.label }}</span>
         </SidebarItem>
       </nav>
     </ScrollArea>
 
-    <template #footer>
+    <!-- Sidebar has one slot, the default: it hands the whole body to the app.
+         A `#footer` template renders nothing at all, which is how the quota
+         meter, the user menu and the setup card all silently disappeared.
+         `mt-auto` is what pins this to the bottom of the flex column. -->
+    <div class="mt-auto shrink-0">
       <div class="p-2">
         <QuotaMeter class="mb-2 px-1" />
       </div>
-    </template>
+    </div>
   </Sidebar>
 </template>
 
@@ -36,7 +38,10 @@
 import { TENANT_APP } from '../lib/brand'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { Icon, ScrollArea, Sidebar, SidebarHeader, SidebarItem } from '@/ui'
+import { ScrollArea, Sidebar, SidebarHeader, SidebarItem } from '@/ui'
+// An icon name that only exists in the database emits no CSS, so anything
+// outside the generated set falls back to one that does.
+import { appIcon } from '../lib/icons'
 import QuotaMeter from './QuotaMeter.vue'
 import { session } from '../lib/session'
 
@@ -54,11 +59,15 @@ const appLinks = computed(() => {
   if (!app) return []
   const declared = app.links || []
   if (!declared.length) {
-    return [{ label: app.app_label, icon: app.icon || 'lucide-square', to: { name: 'App', params: { appCode: app.app_code } } }]
+    return [{
+      label: app.app_label,
+      icon: appIcon(app.icon),
+      to: { name: 'App', params: { appCode: app.app_code } },
+    }]
   }
   return declared.map((link) => ({
     label: link.label,
-    icon: link.icon || 'lucide-square',
+    icon: appIcon(link.icon),
     to: { name: 'App', params: { appCode: app.app_code }, query: { view: link.view } },
   }))
 })
