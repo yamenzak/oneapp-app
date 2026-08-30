@@ -84,16 +84,118 @@ def sync_from_control_plane() -> dict:
 	)
 
 	invalidate()
-	sync_roles(payload.get("roles") or [], payload.get("owner_role"))
+	sync_roles(
+		payload.get("roles") or [],
+		payload.get("owner_role"),
+		payload.get("member_role"),
+	)
 	sync_permissions(payload.get("permissions") or [])
-	created = sync_owner(payload.get("owner") or {}, payload.get("owner_role"))
+	created = sync_owner(
+		payload.get("owner") or {},
+		payload.get("owner_role"),
+		payload.get("member_role"),
+	)
+	# After the owner: an Admin member is given the owner role, which must exist
+	# by then, and the reconciliation must not mistake the owner for a removal.
+	people = sync_members(
+		payload.get("members") or [],
+		payload.get("owner_role"),
+		payload.get("member_role"),
+		(payload.get("owner") or {}).get("email") or "",
+	)
 	sync_email_account()
+	sync_branding(tenant)
+	books = sync_books(payload.get("books"))
+	sync_ai(payload.get("ai") or {}, credits)
 
 	return {
 		"ok": True,
 		"apps": len(payload.get("apps") or []),
 		"owner_created": created,
+		"members_created": people["created"],
+		"members_disabled": people["disabled"],
+		"books": books,
 	}
+
+
+def sync_ai(block: dict, credits: dict) -> None:
+	"""Cache the model catalogue and the platform's feature policy, then report
+	back what this site declares.
+
+	Cached rather than fetched per call so the settings page renders and a model
+	stays chosen while the control plane is unreachable. It is never used to
+	price a call — that happens on the control plane, against the same rows.
+
+	Reporting is the other half of autodiscovery: features exist only in app
+	code, so an operator would otherwise have no way to know what a site can do.
+	"""
+	from oneapp.oneapp_core.ai import features
+
+	try:
+		frappe.db.set_single_value("OneApp AI Settings", {
+			"catalogue_json": json.dumps(block.get("models") or [], default=str),
+			"registry_json": json.dumps(block.get("features") or [], default=str),
+			"credit_balance": credits.get("balance") or 0,
+			"last_sync": now_datetime(),
+		})
+	except Exception:
+		# A site whose AI settings will not write is still a working site.
+		frappe.log_error(title="AI settings cache failed", message=frappe.get_traceback())
+		return
+
+	try:
+		features.report()
+	except Exception:
+		frappe.log_error(title="AI feature report failed", message=frappe.get_traceback())
+
+
+def sync_books(hint: dict | None) -> dict:
+	"""Set the accounting app up, if it is installed and not set up yet.
+
+	Books is generally available, so without this every new workspace opens it
+	to an ERPNext error about a missing default company — the wizard that would
+	have created one lives on a desk the customer never sees. Runs here because
+	this is the only channel that reaches a tenant's database.
+
+	Never raises. A workspace whose books could not be set up automatically is a
+	workspace that asks in OneSpace instead; one whose whole sync failed for it
+	would also stop receiving entitlements and quotas.
+	"""
+	try:
+		from oneapp.oneapp_core import books
+
+		return books.ensure_setup(hint)
+	except Exception as e:  # noqa: BLE001 — a failed setup must not fail the sync
+		frappe.log_error(title="Books setup failed", message=frappe.get_traceback())
+		return {"error": str(e)[:200]}
+
+
+def sync_branding(tenant: dict) -> None:
+	"""Name the workspace after itself, and keep signup shut.
+
+	Without this a tenant's sign-in page carries Frappe's logo and the word
+	"Frappe" — the one screen every user of the workspace sees before they are
+	anyone, on a product whose whole premise is that they never see Frappe.
+	Provisioning cannot do it: the control plane has no route into this database.
+
+	Only ever fills a blank. The customer owns these afterwards (see
+	oneapp_core/workspace.py), and a sync that reset their logo every hour would
+	be worse than one that never set it.
+	"""
+	name = (tenant.get("name") or "").strip()
+	if name:
+		for doctype, field in (("Website Settings", "app_name"),
+		                       ("System Settings", "app_name"),
+		                       ("System Settings", "otp_issuer_name")):
+			if not frappe.db.get_single_value(doctype, field):
+				frappe.db.set_single_value(doctype, field, name)
+
+	# Not a default an owner may change back. Frappe's signup makes an enabled
+	# Website User that the control plane never counted a seat for — and that
+	# this same sync disables again within the hour, since it reconciles against
+	# the member list. See workspace.joining().
+	if not frappe.db.get_single_value("Website Settings", "disable_signup"):
+		frappe.db.set_single_value("Website Settings", "disable_signup", 1)
 
 
 def sync_email_account():
@@ -215,7 +317,7 @@ def _apply_perm(name: str, perms: dict):
 		current.save(ignore_permissions=True)
 
 
-def sync_owner(owner: dict, owner_role: str | None) -> bool:
+def sync_owner(owner: dict, owner_role: str | None, member_role: str | None = None) -> bool:
 	"""Make sure the workspace's owner can actually sign in.
 
 	Created here rather than by the control plane because there is no route from
@@ -230,12 +332,16 @@ def sync_owner(owner: dict, owner_role: str | None) -> bool:
 		return False
 
 	ensure_role(owner_role)
+	# The owner holds the member role too, so "everyone in this workspace" is one
+	# question with one answer rather than "the owner, plus whoever holds this".
+	if member_role:
+		ensure_role(member_role)
 
 	if frappe.db.exists("User", email):
 		user = frappe.get_doc("User", email)
-		if not any(r.role == owner_role for r in user.roles):
-			user.append("roles", {"role": owner_role})
-			user.save(ignore_permissions=True)
+		_set_role(user, owner_role, True)
+		if member_role:
+			_set_role(user, member_role, True)
 		return False
 
 	user = frappe.get_doc(
@@ -246,14 +352,116 @@ def sync_owner(owner: dict, owner_role: str | None) -> bool:
 			# Frappe's own welcome mail carries a link to set a password. Doing
 			# it this way keeps the reset key on this site.
 			"send_welcome_email": 1,
-			"roles": [{"role": owner_role}],
+			"roles": [{"role": role} for role in (owner_role, member_role) if role],
 		}
 	)
 	user.insert(ignore_permissions=True)
 	return True
 
 
-def sync_roles(entitled_roles: list[str], owner_role: str | None = None):
+
+def sync_members(
+	members: list[dict],
+	owner_role: str | None,
+	member_role: str | None,
+	owner_email: str,
+) -> dict:
+	"""Reconcile workspace accounts against the control plane's member list.
+
+	The control plane cannot write here, so this is where an invite becomes an
+	account. It is a reconciliation rather than a queue of events: the whole list
+	arrives each time, so a member removed upstream is disabled here without
+	anything having to remember to send a removal.
+
+	`member_role` is what makes that safe. It grants nothing — the app roles do
+	that — and marks an account as one of ours. Reconciling instead on "holds one
+	of our app roles" looks equivalent and is not: a member of a workspace with
+	no apps entitled yet holds none of them, so removing them disabled nobody and
+	they kept their sign-in.
+
+	Removed members are **disabled, never deleted**. Frappe hangs document
+	ownership off the User, and the documents someone created belong to the
+	workspace — deleting the account would orphan or destroy them. A disabled
+	user cannot sign in, which is the part that matters.
+
+	An Admin member also holds the owner role, which is what lets them manage the
+	workspace; the billing contact stays whoever `owner_email` is.
+	"""
+	if not member_role:
+		# Nothing to reconcile against. Doing it anyway would mean guessing which
+		# accounts are ours, and guessing wrong disables someone's sign-in.
+		return {"created": [], "disabled": []}
+
+	ensure_role(member_role)
+
+	owner_email = (owner_email or "").strip().lower()
+	wanted = {}
+	for member in members or []:
+		email = (member.get("email") or "").strip().lower()
+		if email and email != owner_email:
+			wanted[email] = member
+
+	created, disabled = [], []
+
+	for email, member in wanted.items():
+		if frappe.db.exists("User", email):
+			user = frappe.get_doc("User", email)
+			# Re-invited after a removal: enable rather than create a second
+			# account, so their documents come back with them.
+			if not user.enabled:
+				user.enabled = 1
+				user.save(ignore_permissions=True)
+		else:
+			user = frappe.get_doc(
+				{
+					"doctype": "User",
+					"email": email,
+					"first_name": member.get("full_name") or email.split("@")[0],
+					# Frappe mails the password link from this site, so the reset
+					# key never crosses the wire — same as the owner's account.
+					"send_welcome_email": 1,
+				}
+			)
+			user.insert(ignore_permissions=True)
+			created.append(email)
+
+		wants_owner = member.get("access") == "Admin"
+		_set_role(user, member_role, True)
+		if owner_role:
+			_set_role(user, owner_role, wants_owner)
+
+	# Anyone marked as ours who is no longer on the list. The owner is excluded
+	# by email: they are not a member row, and disabling them would lock the
+	# workspace's billing contact out of it.
+	for email in frappe.get_all(
+		"User", filters={"enabled": 1}, pluck="name"
+	):
+		if email in ("Administrator", "Guest") or email == owner_email or email in wanted:
+			continue
+		roles = {r.role for r in frappe.get_doc("User", email).roles}
+		if member_role in roles:
+			frappe.db.set_value("User", email, "enabled", 0)
+			disabled.append(email)
+
+	return {"created": created, "disabled": disabled}
+
+
+def _set_role(user, role: str, should_hold: bool):
+	"""Add or remove one role, saving only when it actually changes."""
+	holds = any(r.role == role for r in user.roles)
+	if should_hold and not holds:
+		user.append("roles", {"role": role})
+		user.save(ignore_permissions=True)
+	elif holds and not should_hold:
+		user.roles = [r for r in user.roles if r.role != role]
+		user.save(ignore_permissions=True)
+
+
+def sync_roles(
+	entitled_roles: list[str],
+	owner_role: str | None = None,
+	member_role: str | None = None,
+):
 	"""Reconcile Frappe Roles against entitlements.
 
 	Enforcement is native permissions, so revoking an app is a role removal that
@@ -267,11 +475,13 @@ def sync_roles(entitled_roles: list[str], owner_role: str | None = None):
 
 	# Roles this app manages but the tenant is no longer entitled to.
 	#
-	# The owner role is excluded explicitly. It is not an entitlement — it says
-	# who the workspace belongs to — so it never appears in entitled_roles, and
-	# the day it lands in the managed set it would be stripped from the owner on
-	# the very next sync, locking them out of their own workspace.
-	managed = set(all_managed_roles()) - {owner_role}
+	# The owner and member roles are excluded explicitly. Neither is an
+	# entitlement — one says who the workspace belongs to, the other marks an
+	# account as ours — so neither appears in entitled_roles, and the day either
+	# lands in the managed set it would be stripped on the very next sync: the
+	# owner locked out of their own workspace, and every member invisible to the
+	# reconciliation that is supposed to disable them.
+	managed = set(all_managed_roles()) - {owner_role, member_role}
 	revoked = managed - set(entitled_roles)
 
 	# Not filtered to System Users. Our roles carry no desk access, so every
