@@ -5,15 +5,15 @@ test.beforeEach(async ({ page, baseURL }) => {
   await signIn(page, baseURL)
 })
 
-test('an app declared as a manifest renders its screens', async ({ page }, info) => {
+test('a space declared as a manifest renders its screens', async ({ page }, info) => {
   const errors = collectConsoleErrors(page)
-  await page.goto('/one/app/zztasks')
+  await page.goto('/one/space/zztasks')
 
   console.log('BODY:', (await page.locator('body').innerText()).slice(0, 700))
   await info.attach(`app-${info.project.name}`, {
     body: await page.screenshot({ fullPage: true }), contentType: 'image/png' })
 
-  // Rows from the tenant site, through the view.
+  // Rows from the tenant site, through the screen.
   await expect(page.getByText('Halloway').first()).toBeVisible()
   // The filter is applied: the closed one is not here.
   await expect(page.getByText('File Q3 returns')).toHaveCount(0)
@@ -24,16 +24,16 @@ test('an app declared as a manifest renders its screens', async ({ page }, info)
   expectNoRealErrors(errors)
 })
 
-test('the app brings its own navigation', async ({ page }, info) => {
+test('the space brings its own navigation', async ({ page }, info) => {
   const errors = collectConsoleErrors(page)
-  await page.goto('/one/app/zztasks')
+  await page.goto('/one/space/zztasks')
 
-  // Both declared views, without a line of SPA code naming either.
+  // Both declared screens, without a line of SPA code naming either.
   await expect(page.getByText('Open', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('Everything', { exact: true }).first()).toBeVisible()
 
   await page.getByText('Everything', { exact: true }).first().click()
-  // The unfiltered view shows the closed one too.
+  // The unfiltered screen shows the closed one too.
   await expect(page.getByText('File Q3 returns').first()).toBeVisible()
 
   await info.attach(`nav-${info.project.name}`, {
@@ -43,7 +43,7 @@ test('the app brings its own navigation', async ({ page }, info) => {
 
 test('a record opens and saves', async ({ page }, info) => {
   const errors = collectConsoleErrors(page)
-  await page.goto('/one/app/zztasks')
+  await page.goto('/one/space/zztasks')
 
   await page.getByText('Halloway').first().click()
 

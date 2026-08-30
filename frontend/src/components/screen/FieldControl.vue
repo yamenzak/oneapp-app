@@ -141,8 +141,8 @@ const props = defineProps({
   field: { type: Object, required: true },
   modelValue: { type: [String, Number, Boolean, Array, Object], default: null },
   disabled: { type: Boolean, default: false },
-  appCode: { type: String, required: true },
-  view: { type: String, required: true },
+  spaceCode: { type: String, required: true },
+  screen: { type: String, required: true },
 })
 const emit = defineEmits(['update:modelValue'])
 
@@ -165,8 +165,8 @@ const options = computed(() =>
 const search = async () => {
   if (component.value !== 'Combobox' || props.field.fieldtype === 'Autocomplete') return
   fetched.value = await workspace.linkOptions(
-    props.appCode,
-    props.view,
+    props.spaceCode,
+    props.screen,
     props.field.fieldname,
     query.value,
   )

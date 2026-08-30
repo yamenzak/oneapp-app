@@ -7,6 +7,11 @@
     with the rest of the trail rather than beside the filter controls. What sits
     behind it is the framework's own model — a named layout that belongs to one
     person or to the whole workspace — not CRM's parallel invention.
+
+    Vocabulary, because three words are close enough to swap by accident: a
+    **space** holds **screens**, a screen is looked at through a **view type**
+    (list, board, …), and a saved arrangement of one is a **view** — a `layout`
+    in the code, which is what Frappe's own framework calls it.
   -->
   <!--
     A named region, because the word in this button is also the word on a
@@ -66,9 +71,10 @@ import { computed, ref } from 'vue'
 import { Button, Dialog, Dropdown, FormControl } from '@/ui'
 
 const props = defineProps({
-  // [{ name, label, shared, mine, is_default }]
+  // [{ name, label, shared, mine, is_default, opens }]
   layouts: { type: Array, default: () => [] },
   active: { type: String, default: '' },
+  /** The screen's own name, which is what "no saved view" reads as. */
   screenLabel: { type: String, default: 'Default view' },
   canShare: { type: Boolean, default: false },
   busy: { type: Boolean, default: false },
@@ -100,10 +106,7 @@ const askName = (rename) => {
 const confirmName = () => {
   const name = draftLabel.value.trim()
   if (!name) return
-  emit(renaming.value ? 'rename' : 'save-as', {
-    label: name,
-    shared: draftShared.value,
-  })
+  emit(renaming.value ? 'rename' : 'save-as', { label: name, shared: draftShared.value })
   naming.value = false
 }
 
@@ -115,7 +118,9 @@ const options = computed(() => {
   const entry = (layout) => ({
     label: layout.label || 'Untitled view',
     selected: layout.name === props.active,
-    icon: layout.is_default ? 'lucide-pin' : undefined,
+    // `opens`, not `is_default`: a personal default and a shared one can both
+    // be set, and only one of them is what this screen actually opens with.
+    icon: layout.opens ? 'lucide-pin' : undefined,
     onClick: () => emit('open', layout.name),
   })
 
@@ -137,18 +142,10 @@ const options = computed(() => {
   if (shared.length) groups.push({ group: 'Shared', options: shared.map(entry) })
 
   const actions = [
-    {
-      label: 'Save as a new view',
-      icon: 'lucide-plus',
-      onClick: () => askName(false),
-    },
+    { label: 'Save as a new view', icon: 'lucide-plus', onClick: () => askName(false) },
   ]
   if (writable.value) {
-    actions.push({
-      label: 'Rename',
-      icon: 'lucide-pencil',
-      onClick: () => askName(true),
-    })
+    actions.push({ label: 'Rename', icon: 'lucide-pencil', onClick: () => askName(true) })
     if (props.canShare) {
       actions.push({
         label: current.value.shared ? 'Make it mine alone' : 'Share with the workspace',
@@ -172,11 +169,7 @@ const options = computed(() => {
       hideLabel: true,
       theme: 'red',
       options: [
-        {
-          label: 'Delete this view',
-          icon: 'lucide-trash-2',
-          onClick: () => emit('remove'),
-        },
+        { label: 'Delete this view', icon: 'lucide-trash-2', onClick: () => emit('remove') },
       ],
     })
   }

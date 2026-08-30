@@ -69,8 +69,8 @@
               <FieldControl
                 v-model="form[field.fieldname]"
                 :field="field"
-                :app-code="appCode"
-                :view="view"
+                :space-code="spaceCode"
+                :screen="screen"
                 :disabled="!canWrite || !field.editable"
                 class="min-w-0 flex-1"
               />
@@ -189,8 +189,8 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   record: { type: Object, default: () => ({}) },
   spec: { type: Object, required: true },
-  appCode: { type: String, required: true },
-  view: { type: String, required: true },
+  spaceCode: { type: String, required: true },
+  screen: { type: String, required: true },
 })
 const emit = defineEmits(['update:modelValue', 'saved'])
 
@@ -228,7 +228,7 @@ const image = computed(() =>
 )
 
 const title = computed(() => {
-  if (isNew.value) return `New ${props.spec?.view_label || 'record'}`
+  if (isNew.value) return `New ${props.spec?.screen_label || 'record'}`
   const field = props.spec?.title_field
   return (field && props.record?.[field]) || props.record?.name || 'Record'
 })
@@ -244,7 +244,7 @@ const loadTimeline = async () => {
   }
   loadingTimeline.value = true
   try {
-    const found = await workspace.timeline(props.appCode, props.view, props.record.name)
+    const found = await workspace.timeline(props.spaceCode, props.screen, props.record.name)
     comments.value = found?.comments || []
     commentCount.value = found?.comment_count ?? comments.value.length
     moreComments.value = !!found?.more_comments
@@ -259,7 +259,7 @@ const loadTimeline = async () => {
 const addComment = async () => {
   commenting.value = true
   try {
-    await workspace.comment(props.appCode, props.view, props.record.name, draft.value)
+    await workspace.comment(props.spaceCode, props.screen, props.record.name, draft.value)
     draft.value = ''
     await loadTimeline()
   } finally {
@@ -268,7 +268,7 @@ const addComment = async () => {
 }
 
 const like = async () => {
-  const result = await workspace.toggleLike(props.appCode, props.view, props.record.name)
+  const result = await workspace.toggleLike(props.spaceCode, props.screen, props.record.name)
   liked.value = !!result?.liked
   likes.value = result?.likes || []
 }
@@ -278,8 +278,8 @@ const save = async () => {
   error.value = ''
   try {
     await workspace.saveAppRecord(
-      props.appCode,
-      props.view,
+      props.spaceCode,
+      props.screen,
       { ...form },
       isNew.value ? null : props.record.name,
     )

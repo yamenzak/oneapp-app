@@ -6,7 +6,7 @@
         v-if="spec?.doctype"
         :layouts="spec.layouts || []"
         :active="spec.layout || ''"
-        :screen-label="spec.view_label"
+        :screen-label="spec.screen_label"
         :can-share="!!spec.can_share"
         :busy="saving"
         @open="openLayout"
@@ -35,19 +35,19 @@
     </div>
 
     <EmptyState
-      v-else-if="!app"
+      v-else-if="!space"
       icon="lucide-circle-help"
       title="App not available"
-      description="This app is not enabled for your workspace, or you do not have access to it."
+      description="This space is not enabled for your workspace, or you do not have access to it."
     />
 
     <!--
-      A screen the app wrote itself. Nothing else on the view applies — and it
+      A screen the space wrote itself. Nothing else on the screen applies — and it
       gets its own scroll, because the pane does not scroll and a component we
       did not write cannot be assumed to fit.
     -->
     <div v-else-if="custom" class="min-h-0 flex-1 overflow-y-auto">
-      <component :is="custom" :app-code="appCode" :view="spec.view" />
+      <component :is="custom" :space-code="spaceCode" :screen="spec.screen" />
     </div>
 
     <!--
@@ -55,13 +55,13 @@
       its roles and doctypes, and something else may be using them.
     -->
     <EmptyState
-      v-else-if="!spec?.views?.length"
+      v-else-if="!spec?.screens?.length"
       icon="lucide-hammer"
       title="Nothing to show yet"
-      :description="`${app.app_label} is enabled for this workspace but has no screens.`"
+      :description="`${space.space_label} is enabled for this workspace but has no screens.`"
     />
 
-    <Alert v-else-if="spec.error" theme="amber" :title="spec.view_label">
+    <Alert v-else-if="spec.error" theme="amber" :title="spec.screen_label">
       <template #description>{{ spec.error }}</template>
     </Alert>
 
@@ -79,8 +79,8 @@
           <FilterPanel
             :filters="panelFilters"
             :columns="spec.all_columns || []"
-            :app-code="appCode"
-            :view="spec.view"
+            :space-code="spaceCode"
+            :screen="spec.screen"
             @changed="onPanelFilters"
           />
           <!--
@@ -115,17 +115,17 @@
           <Button
             v-if="dirty"
             icon-left="lucide-bookmark"
-            label="Save this view"
+            label="Save this screen"
             :loading="saving"
-            @click="saveView"
+            @click="saveLayout"
           />
           <Button
             v-if="spec.saved"
             icon="lucide-rotate-ccw"
-            label="Back to the default view"
+            label="Back to the default screen"
             variant="ghost"
             :loading="resetting"
-            @click="resetView"
+            @click="resetLayout"
           />
         </div>
       </div>
@@ -152,7 +152,7 @@
       <EmptyState
         v-else-if="!rows.length"
         icon="lucide-inbox"
-        :title="favourites ? 'Nothing here yet' : `No ${spec.view_label.toLowerCase()} yet`"
+        :title="favourites ? 'Nothing here yet' : `No ${spec.screen_label.toLowerCase()} yet`"
         :description="emptyBecause"
       >
         <template #action>
@@ -172,7 +172,7 @@
       </EmptyState>
 
       <!--
-        One surface, with its own horizontal scroller. A view shows the same
+        One surface, with its own horizontal scroller. A screen shows the same
         columns whatever the screen is — a phone scrolls the table sideways
         rather than being handed a different set of columns, because the columns
         are the reader's choice and a saved view that means something different
@@ -188,177 +188,29 @@
            outside it. -->
       <div v-else class="relative flex min-h-0 flex-1 flex-col">
         <div :class="SURFACE">
-          <div class="relative flex min-h-0 flex-1 flex-col">
-            <!--
-              One scroller, both directions. That is the whole trick: with the
-              pane a fixed height, this element's horizontal scrollbar sits at
-              its own bottom edge — on screen, above the footer — instead of at
-              the bottom of a table you have to scroll down to reach. Sharing
-              one container with the rows is also what keeps the sticky header
-              aligned: a separate header would sit outside the vertical
-              scrollbar's gutter and be a scrollbar's width out of true.
-            -->
-            <div
-              ref="scroller"
-              class="min-h-0 flex-1 overflow-auto overscroll-x-contain"
-              @scroll.passive="measureEdges"
-            >
-              <List
-                v-model:selection="selection"
-                :columns="tracks"
-                :row-height="52"
-                selectable
-                class="w-max min-w-full list-row-px-3 pb-1"
-                :class="CHROME"
-                divider="full"
-              >
-                <ListHeader class="sticky top-0 z-20">
-                  <!--
-                  Sorting lives on the headers, which is where everybody reaches
-                  first and the only place a direction can sit beside the thing it
-                  applies to. frappe-ui ships the cell for it — a real button, the
-                  aria-sort, the arrow that appears on hover — so this wires state
-                  to it rather than rebuilding it.
-                -->
-                  <ListHeaderCellSort
-                    v-for="c in sortableColumns"
-                    :key="c.key"
-                    :direction="directionFor(c)"
-                    :class="c.pin && PINNED"
-                    :style="stickyStyle(c)"
-                    @click="sortBy(c.column.fieldname)"
-                  >
-                    <template #prefix>
-                      <Icon :name="c.column.icon" class="size-3.5 text-ink-gray-4" />
-                    </template>
-                    {{ c.header }}
-                  </ListHeaderCellSort>
-
-                  <!--
-                  How many, then favourites. The heart is last and
-                  the cell is end-aligned, so it lands on exactly the x every row's
-                  heart lands on — the header and the rows carry the same inset, so
-                  flush-right in both is the same pixel. Packed from the start it
-                  was not, which is what made the column of hearts look crooked.
-
-                  The count goes in `#prefix` rather than the default slot because
-                  `ListHeaderCell` wraps its default in a `truncate` span: `mr-auto`
-                  inside that does nothing, since the span is not the flex row.
-                -->
-                  <ListHeaderCell
-                    v-if="metaColumn"
-                    class="justify-end"
-                    :class="metaColumn.pin && PINNED"
-                    :style="stickyStyle(metaColumn)"
-                  >
-                    <template #prefix>
-                      <span class="whitespace-nowrap text-p-xs text-ink-gray-5">{{ counted }}</span>
-                    </template>
-                    <template #suffix>
-                      <Button
-                        icon="lucide-heart"
-                        :variant="favourites ? 'subtle' : 'ghost'"
-                        :theme="favourites ? 'red' : 'gray'"
-                        label="Only my favourites"
-                        @click="toggleFavourites"
-                      />
-                    </template>
-                  </ListHeaderCell>
-                </ListHeader>
-
-                <!--
-                One group per run of rows sharing a value. The server sorts by the
-                group column first, so a run is a group — which is why this is
-                chunking rather than bucketing, and why a group never appears twice.
-              -->
-                <template v-if="groups">
-                  <ListGroup v-for="group in groups" :key="group.label" :label="group.label" sticky>
-                    <ListRows :items="group.rows" row-key="name" v-slot="{ item: row, value }">
-                      <ListRow :value="value">
-                        <ListCell
-                          v-for="c in visible"
-                          :key="c.key"
-                          :class="c.pin && PINNED"
-                          :style="stickyStyle(c)"
-                        >
-                          <TitleCell
-                            v-if="c.cell === 'title'"
-                            :row="row"
-                            :title-field="spec.title_field"
-                            :image-field="spec.image_field"
-                            @open="open(row)"
-                          />
-                          <RowMeta
-                            v-else-if="c.cell === 'meta'"
-                            :meta="row._meta || {}"
-                            @like="like(row)"
-                          />
-                          <FieldCell
-                            v-else
-                            :column="c.column"
-                            :value="row[c.column.fieldname]"
-                            :states="spec.states"
-                          />
-                        </ListCell>
-                      </ListRow>
-                    </ListRows>
-                  </ListGroup>
-                </template>
-
-                <!--
-                  Windowed past a few hundred. Load more appends, so a list someone
-                  keeps loading reaches thousands of rows, and thousands of rows
-                  each carrying an avatar, badges and two buttons is a slow page.
-                  Below the threshold the plain path is simpler and behaves better
-                  with a keyboard.
-                -->
-                <ListRows
-                  v-else
-                  :items="rows"
-                  row-key="name"
-                  :virtual="windowed"
-                  v-slot="{ item: row, value }"
-                >
-                  <ListRow :value="value">
-                    <ListCell
-                      v-for="c in visible"
-                      :key="c.key"
-                      :class="c.pin && PINNED"
-                      :style="stickyStyle(c)"
-                    >
-                      <TitleCell
-                        v-if="c.cell === 'title'"
-                        :row="row"
-                        :title-field="spec.title_field"
-                        :image-field="spec.image_field"
-                        @open="open(row)"
-                      />
-                      <RowMeta
-                        v-else-if="c.cell === 'meta'"
-                        :meta="row._meta || {}"
-                        @like="like(row)"
-                      />
-                      <FieldCell
-                        v-else
-                        :column="c.column"
-                        :value="row[c.column.fieldname]"
-                        :states="spec.states"
-                      />
-                    </ListCell>
-                  </ListRow>
-                </ListRows>
-              </List>
-            </div>
-
-            <!--
-              A table wide enough to scroll has to say so. The scrollbar is on
-              screen now, but an overlay scrollbar fades and a full-bleed column
-              at the edge reads as the end of the table — so the edge with more
-              beyond it carries a shadow, and it goes away when there is not.
-            -->
-            <div v-if="edges.left" aria-hidden="true" :class="[EDGE, 'left-0', EDGE_LEFT]" />
-            <div v-if="edges.right" aria-hidden="true" :class="[EDGE, 'right-0', EDGE_RIGHT]" />
-          </div>
+          <!--
+            The body: how this screen is being looked at. A list today; a board
+            or a calendar is a sibling component rather than a change here,
+            because everything around it — the saved views, the filters, the
+            selection, the footer — belongs to the screen rather than to the
+            way it is drawn.
+          -->
+          <component
+            :is="body"
+            v-model:selection="selection"
+            :spec="spec"
+            :rows="rows"
+            :columns="columns"
+            :order-by="order || spec.order_by"
+            :favourites="favourites"
+            :counted="counted"
+            :group-by="groupBy"
+            @open="open"
+            @like="like"
+            @sort="sortBy"
+            @columns="showColumns = true"
+            @favourites="toggleFavourites"
+          />
 
           <ListFooter
             :count="rows.length"
@@ -427,14 +279,14 @@
     v-model="showRecord"
     :record="editing || {}"
     :spec="spec"
-    :app-code="appCode"
-    :view="spec.view"
+    :space-code="spaceCode"
+    :screen="spec.screen"
     @saved="loadRows"
   />
 </template>
 
 <script setup>
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   PageHeader,
@@ -443,34 +295,23 @@ import {
   Alert,
   Skeleton,
   LoadingIndicator,
-  List,
-  ListHeader,
-  ListHeaderCell,
-  ListHeaderCellSort,
-  ListRows,
-  ListRow,
-  ListGroup,
-  ListCell,
-  Icon,
   Dialog,
 } from '@/ui'
 import EmptyState from '../components/EmptyState.vue'
-import FieldCell from '../components/app/FieldCell.vue'
-import TitleCell from '../components/app/TitleCell.vue'
-import RowMeta from '../components/app/RowMeta.vue'
-import RecordDialog from '../components/app/RecordDialog.vue'
-import FilterPanel from '../components/app/FilterPanel.vue'
-import QuickFilters from '../components/app/QuickFilters.vue'
-import ColumnPicker from '../components/app/ColumnPicker.vue'
-import ListFooter from '../components/app/ListFooter.vue'
-import SelectionBar from '../components/app/SelectionBar.vue'
-import ViewSwitcher from '../components/app/ViewSwitcher.vue'
+import RecordDialog from '../components/screen/RecordDialog.vue'
+import FilterPanel from '../components/screen/FilterPanel.vue'
+import QuickFilters from '../components/screen/QuickFilters.vue'
+import ColumnPicker from '../components/screen/ColumnPicker.vue'
+import ListFooter from '../components/screen/ListFooter.vue'
+import SelectionBar from '../components/screen/SelectionBar.vue'
+import ViewSwitcher from '../components/screen/ViewSwitcher.vue'
 import { session } from '../lib/session'
 import { workspace } from '../lib/workspace'
 import { notifyError, notifySuccess } from '../lib/notify'
-import { appComponent } from '../apps'
+import { screenComponent } from '../screens'
+import { bodyFor } from '../lib/viewTypes'
 
-const props = defineProps({ appCode: { type: String, required: true } })
+const props = defineProps({ spaceCode: { type: String, required: true } })
 const route = useRoute()
 const router = useRouter()
 
@@ -489,9 +330,6 @@ const rowsError = ref('')
 // it has: "48 of 0" while the answer is in flight is worse than "48".
 const total = ref(null)
 const pageLength = ref(100)
-const scroller = ref(null)
-// Whether there is more table beyond each edge. Both false on a list that fits.
-const edges = ref({ left: false, right: false })
 const saving = ref(false)
 const resetting = ref(false)
 const dirty = ref(false)
@@ -511,77 +349,31 @@ const chosenColumns = ref([])
 const favourites = ref(false)
 const groupBy = ref('')
 
-const app = computed(() => (session.apps || []).find((a) => a.app_code === props.appCode))
+const space = computed(() =>
+  (session.spaces || []).find((one) => one.space_code === props.spaceCode),
+)
+
+// Which body draws this screen. Resolved from the type the server settled on,
+// so an unknown or unbuilt one has already fallen back to the list before it
+// reaches here.
+const body = computed(() => bodyFor(spec.value?.view_type))
+
+// Whether the body is showing the activity column, which is where the heart
+// lives when it is: above the hearts on the rows, which is the only place the
+// control and the thing it filters line up. When it is not — the reader
+// dropped that column, or the body has no columns at all — the heart comes to
+// the toolbar instead. Never both, never neither.
+const META_FIELD = '__activity'
+const metaColumn = computed(() =>
+  (columns.value || []).some((column) => column.fieldname === META_FIELD),
+)
 
 const custom = computed(() => {
   const name = spec.value?.component
-  return name ? appComponent(name) : null
+  return name ? screenComponent(name) : null
 })
 
-// The title column stands in for the title field wherever it would have been,
-// and leads the list when the field is not chosen at all: a row needs a name
-// before it needs anything else. The meta column closes every list.
-// One model for every column. The title field renders with its avatar and id,
-// activity renders its own cell, everything else is a value — but all three are
-// entries in the same list, so all three can be moved, resized, pinned and
-// dropped in the picker. That the title used to be a column the picker could
-// not touch was a wart: it listed the field and removing it changed nothing.
-const columnSpec = computed(() => {
-  const titleField = spec.value?.title_field
-  const chosen = columns.value || []
 
-  // Where a pinned column starts, in pixels. A left pin sits past everything
-  // pinned left before it; a right pin past everything pinned right after it.
-  // Fixed widths are what make this computable at all.
-  let fromLeft = 0
-  const offsets = new Map()
-  for (const column of chosen) {
-    if (column.pin !== 'left') continue
-    offsets.set(column.fieldname, fromLeft)
-    fromLeft += column.width
-  }
-  let fromRight = 0
-  for (const column of [...chosen].reverse()) {
-    if (column.pin !== 'right') continue
-    offsets.set(column.fieldname, fromRight)
-    fromRight += column.width
-  }
-
-  // No screen-size branching, deliberately. A view is a saved answer to "what
-  // do I look at", and a phone that silently drops half of it is answering a
-  // different question — so the phone gets the same columns and scrolls. Frappe
-  // CRM does the same, and it is only possible because the columns are the
-  // reader's to choose.
-  return chosen.map((column) => ({
-    key: column.fieldname,
-    header: column.label,
-    track: `${column.width}px`,
-    cell:
-      column.fieldname === META_FIELD
-        ? 'meta'
-        : column.fieldname === titleField
-          ? 'title'
-          : column.cell,
-    sortable: column.fieldname !== META_FIELD,
-    pin: column.pin,
-    offset: offsets.get(column.fieldname) || 0,
-    column,
-  }))
-})
-
-// Every declared column, and its track. There is nothing between the spec and
-// the grid any more: `useListColumns` exists to narrow a hand-authored list for
-// a phone, and this list is neither hand-authored nor narrowed.
-const visible = columnSpec
-const tracks = computed(() => visible.value.map((c) => c.track))
-
-// The server's name for the column that is not a field.
-const META_FIELD = '__activity'
-
-// A pinned column stops scrolling. Opaque, or the columns sliding under it read
-// through it — and the offset is an inline style rather than a class because it
-// is a computed pixel value, not a token.
-const PINNED = 'sticky z-10 bg-surface-base'
 
 // The list's own chrome, kept out of the template so the token audit reads it:
 // a class list in an attribute this long is unreadable, and one hidden in a
@@ -589,7 +381,7 @@ const PINNED = 'sticky z-10 bg-surface-base'
 // column for a week.
 //
 // `rounded-6` is the panel radius — the same one every card on this surface
-// uses. See `docs/APPS.md` for the scale.
+// uses. See `docs/SPACES.md` for the scale.
 const SURFACE =
   'flex min-h-0 flex-1 flex-col overflow-hidden rounded-6 border border-outline-gray-2 bg-surface-base'
 
@@ -597,61 +389,12 @@ const SURFACE =
 // off: that rule is a grid child inset to the content box, so under a
 // full-width fill it stopped short at both ends. The band carries its own
 // full-width rule instead.
-// The edge affordance: a wash over the column at whichever side has more beyond
-// it. Not a border — a border says "the table ends here", which is the opposite
-// of what this means.
-//
-// It has to be legible, which the first version was not: this environment's
-// scrollbars are overlay ones, so the horizontal bar is invisible until you are
-// already scrolling and this is the *only* thing saying there is more. Above
-// the sticky header's z-index too, or it stops at the first row.
-const EDGE = 'pointer-events-none absolute inset-y-0 z-30 w-10'
-const EDGE_LEFT = 'bg-gradient-to-r from-surface-gray-4 to-transparent opacity-70'
-const EDGE_RIGHT = 'bg-gradient-to-l from-surface-gray-4 to-transparent opacity-70'
 
-// How many rows before windowing them is worth the complexity it adds. A
-// computed rather than an inline comparison: a `>` inside a template attribute
-// ends the tag as far as any regex-shaped parser is concerned, which is how the
-// frappe-ui prop guard once read `visible.length` as a prop name.
-const VIRTUAL_FROM = 200
 
-const CHROME = [
-  '[&_[data-slot=list-header]]:h-9',
-  '[&_[data-slot=list-header]]:bg-surface-gray-1',
-  '[&_[data-slot=list-header]]:border-b',
-  '[&_[data-slot=list-header]]:border-outline-gray-2',
-  '[&_[data-slot=list-header-border]]:hidden',
-  // A group heading sticks *under* the column header rather than over it —
-  // ListGroup pins at `top-0`, which is where the header already is.
-  '[&_[data-slot=list-group-header]]:top-9',
-].join(' ')
 
-const stickyStyle = (c) => (c.pin ? { [c.pin]: `${c.offset}px` } : undefined)
 
-const sortableColumns = computed(() => visible.value.filter((c) => c.cell !== 'meta'))
-const metaColumn = computed(() => visible.value.find((c) => c.cell === 'meta') || null)
 
-// A computed rather than an inline expression: a `>` inside a template
-// attribute ends the tag as far as any regex-shaped parser is concerned, which
-// is how the frappe-ui prop guard read `visible.length` as a prop name.
-const windowed = computed(() => rows.value.length > VIRTUAL_FROM)
 
-// Null when nothing is grouped, so the template can tell "no grouping" from
-// "one group".
-const groups = computed(() => {
-  const field = groupBy.value
-  if (!field) return null
-
-  const made = []
-  for (const row of rows.value) {
-    const value = row[field]
-    const label = value === null || value === undefined || value === '' ? '—' : String(value)
-    const last = made[made.length - 1]
-    if (last && last.label === label) last.rows.push(row)
-    else made.push({ label, rows: [row] })
-  }
-  return made
-})
 
 const counted = computed(() =>
   hasMore.value ? `${rows.value.length}+` : String(rows.value.length),
@@ -667,29 +410,27 @@ const emptyBecause = computed(() => {
     : 'Nothing here so far.'
 })
 
-// The trail stops at the app, because the switcher beside it is the next
+// The trail stops at the space, because the switcher beside it is the next
 // level: it opens on the screen's own name and every saved view of it, so a
 // crumb saying the same word again is one word twice.
 const crumbs = computed(() => {
-  const trail = [{ label: 'Apps', route: { name: 'Launcher' } }]
-  if (app.value) trail.push({ label: app.value.app_label })
-  if (!spec.value?.doctype && spec.value?.view_label && spec.value.views?.length > 1) {
-    trail.push({ label: spec.value.view_label })
+  const trail = [{ label: 'Spaces', route: { name: 'Launcher' } }]
+  if (space.value) trail.push({ label: space.value.app_label })
+  if (!spec.value?.doctype && spec.value?.screen_label && spec.value.screens?.length > 1) {
+    trail.push({ label: spec.value.screen_label })
   }
   return trail
 })
 
 // --- sorting, from the headers ----------------------------------------------
+//
+// The order belongs to the screen rather than to the body: it is saved with the
+// view, it goes into every request, and a board sorts its cards by the same
+// answer a list sorts its rows by. The body only says which column was clicked.
 
-const sortField = computed(() => (order.value || spec.value?.order_by || '').split(' ')[0])
-const ascending = computed(
-  () => (order.value || spec.value?.order_by || '').split(' ')[1] === 'asc',
-)
-
-const directionFor = (c) => {
-  if (c.column.fieldname !== sortField.value) return undefined
-  return ascending.value ? 'asc' : 'desc'
-}
+const sorted = computed(() => (order.value || spec.value?.order_by || '').split(' '))
+const sortField = computed(() => sorted.value[0])
+const ascending = computed(() => sorted.value[1] === 'asc')
 
 // Clicking the column already sorted flips it; clicking another starts on
 // descending, which is what "show me the newest" means for most columns.
@@ -710,30 +451,19 @@ const payload = () => ({
   page_length: pageLength.value,
 })
 
-// --- the scroller -----------------------------------------------------------
 
-// Read rather than tracked: a scroll position is the DOM's own state, and
-// mirroring it into a ref that then has to be kept in step is how the two end
-// up disagreeing.
-const measureEdges = () => {
-  const el = scroller.value
-  if (!el) return
-  const room = el.scrollWidth - el.clientWidth
-  edges.value = {
-    left: el.scrollLeft > 1,
-    // A pixel of slack: a fractional layout width leaves half a pixel of
-    // scrollWidth that is not more table.
-    right: room > 1 && el.scrollLeft < room - 1,
-  }
-}
-
-// --- views ------------------------------------------------------------------
+// --- screens ------------------------------------------------------------------
 //
-// A view is a named layout — filters, sort and columns saved together — which
+// A screen is a named layout — filters, sort and columns saved together — which
 // is the shape Frappe's own `List Filter` doctype settles on. Which one is open
-// lives in the URL, so a view is a link somebody can send.
+// lives in the URL, so a screen is a link somebody can send.
 
 const layout = computed(() => route.query.layout || '')
+
+// Which way this screen is being looked at, from the URL. Empty means the
+// screen's own first type, which is what the server falls back to — so a link
+// without one is a link to the default rather than to nothing.
+const viewType = computed(() => route.query.type || '')
 
 const openLayout = (name) => {
   router.push({ query: { ...route.query, layout: name || undefined } })
@@ -754,7 +484,7 @@ const withView = async (work) => {
 // be in it.
 const saveAs = ({ label, shared }) =>
   withView(async () => {
-    const result = await workspace.saveView(props.appCode, spec.value.view, {
+    const result = await workspace.saveLayout(props.spaceCode, spec.value.screen, {
       ...payload(),
       label,
       shared,
@@ -768,7 +498,7 @@ const saveAs = ({ label, shared }) =>
 // rename that silently discards an unsaved change.
 const renameLayout = ({ label, shared }) =>
   withView(() =>
-    workspace.saveView(props.appCode, spec.value.view, {
+    workspace.saveLayout(props.spaceCode, spec.value.screen, {
       ...payload(),
       layout: spec.value.layout,
       label,
@@ -778,7 +508,7 @@ const renameLayout = ({ label, shared }) =>
 
 const shareLayout = (shared) =>
   withView(() =>
-    workspace.saveView(props.appCode, spec.value.view, {
+    workspace.saveLayout(props.spaceCode, spec.value.screen, {
       ...payload(),
       layout: spec.value.layout,
       shared,
@@ -786,17 +516,17 @@ const shareLayout = (shared) =>
   )
 
 const defaultLayout = () =>
-  withView(() => workspace.defaultView(props.appCode, spec.value.view, spec.value.layout))
+  withView(() => workspace.defaultLayout(props.spaceCode, spec.value.screen, spec.value.layout))
 
 const deleteLayout = async () => {
   const gone = spec.value.layout
   saving.value = true
   try {
-    await workspace.deleteView(props.appCode, spec.value.view, gone)
+    await workspace.deleteLayout(props.spaceCode, spec.value.screen, gone)
   } finally {
     saving.value = false
   }
-  // Back to the screen's own declaration rather than to another view: which
+  // Back to the screen's own declaration rather than to another screen: which
   // one would we pick?
   if (layout.value === gone) openLayout('')
   else await load()
@@ -850,7 +580,7 @@ const open = (row) => {
 const create = () => open({ __new: true })
 
 const like = async (row) => {
-  const result = await workspace.toggleLike(props.appCode, spec.value.view, row.name)
+  const result = await workspace.toggleLike(props.spaceCode, spec.value.screen, row.name)
   // Patched in place rather than reloaded: a like is not a reason to lose the
   // reader's scroll position.
   row._meta = {
@@ -866,7 +596,7 @@ const like = async (row) => {
 const removeSelected = async () => {
   deleting.value = true
   try {
-    const result = await workspace.removeAppRecords(props.appCode, spec.value.view, [
+    const result = await workspace.removeRecords(props.spaceCode, spec.value.screen, [
       ...selection.value,
     ])
     confirmDelete.value = false
@@ -885,12 +615,13 @@ const removeSelected = async () => {
 }
 
 const fetchPage = (start) =>
-  workspace.appRows(
-    props.appCode,
-    spec.value.view,
+  workspace.screenRows(
+    props.spaceCode,
+    spec.value.screen,
     payload(),
     spec.value.layout || '',
     { start, limit: pageLength.value },
+    spec.value.view_type,
   )
 
 const loadRows = async () => {
@@ -923,7 +654,6 @@ const loadRows = async () => {
     rowsError.value = error?.message || String(error)
   } finally {
     rowsLoading.value = false
-    nextTick(measureEdges)
   }
 }
 
@@ -934,9 +664,9 @@ const countRows = async () => {
   const asked = ++counting
   total.value = null
   try {
-    const answer = await workspace.appRowCount(
-      props.appCode,
-      spec.value.view,
+    const answer = await workspace.screenRowCount(
+      props.spaceCode,
+      spec.value.screen,
       payload(),
       spec.value.layout || '',
     )
@@ -962,11 +692,10 @@ const loadMore = async () => {
     hasMore.value = !!page?.has_more
   } finally {
     loadingMore.value = false
-    nextTick(measureEdges)
   }
 }
 
-// A page size is part of the view, so changing it is a change to save like any
+// A page size is part of the screen, so changing it is a change to save like any
 // other — and it starts the list again rather than truncating what is loaded.
 const setPageLength = (size) => {
   if (!size || size === pageLength.value) return
@@ -974,10 +703,10 @@ const setPageLength = (size) => {
   changed()
 }
 
-const saveView = async () => {
+const saveLayout = async () => {
   saving.value = true
   try {
-    await workspace.saveView(props.appCode, spec.value.view, payload())
+    await workspace.saveLayout(props.spaceCode, spec.value.screen, payload())
     dirty.value = false
     await load()
   } finally {
@@ -985,10 +714,10 @@ const saveView = async () => {
   }
 }
 
-const resetView = async () => {
+const resetLayout = async () => {
   resetting.value = true
   try {
-    await workspace.resetView(props.appCode, spec.value.view)
+    await workspace.resetLayout(props.spaceCode, spec.value.screen)
     dirty.value = false
     await load()
   } finally {
@@ -997,13 +726,14 @@ const resetView = async () => {
 }
 
 const load = async (openWith) => {
-  if (!app.value) return
+  if (!space.value) return
   loading.value = true
   try {
-    spec.value = await workspace.appView(
-      props.appCode,
-      route.query.view || '',
+    spec.value = await workspace.screenSpec(
+      props.spaceCode,
+      route.query.screen || '',
       openWith || layout.value,
+      viewType.value || undefined,
     )
     // Seeded from what the screen resolved to, which already includes this
     // person's saved view.
@@ -1025,40 +755,17 @@ const load = async (openWith) => {
   }
 }
 
-// The scroll width changes without a scroll: rows arriving, a column resized or
-// added, the window narrowed. None of those fire `scroll`, and an edge shadow
-// left behind on a table that now fits is a lie about there being more.
-//
-// A ResizeObserver rather than a watcher and a nextTick. That is what the first
-// attempt was, and it measured a table that was not laid out yet — the shadow
-// only appeared once something else caused a scroll, so a list that opened too
-// wide said nothing at all. An observer fires when the box is real.
-const observer = new ResizeObserver(measureEdges)
 
+// Re-resolved on every screen change: the columns, the filters and what this user
+// may do are all per screen, not per space.
 watch(
-  scroller,
-  (el) => {
-    observer.disconnect()
-    if (!el) return
-    // Both boxes: the viewport and the content. Only one of them changes when
-    // the window narrows, and only the other when a column is widened.
-    observer.observe(el)
-    if (el.firstElementChild) observer.observe(el.firstElementChild)
-    measureEdges()
-  },
-  { flush: 'post' },
-)
-
-// The content's own width changes when rows arrive without the container
-// resizing at all — an `auto` track sizing to a longer value.
-watch([visible, rows], () => nextTick(measureEdges), { flush: 'post' })
-
-onUnmounted(() => observer.disconnect())
-
-// Re-resolved on every view change: the columns, the filters and what this user
-// may do are all per view, not per app.
-watch(
-  [() => props.appCode, () => route.query.view, () => route.query.layout, () => session.loaded],
+  [
+    () => props.spaceCode,
+    () => route.query.screen,
+    () => route.query.type,
+    () => route.query.layout,
+    () => session.loaded,
+  ],
   () => load(),
   { immediate: true },
 )

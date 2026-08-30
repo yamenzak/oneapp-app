@@ -46,7 +46,7 @@
 
           <!--
             Where it sticks, and how wide. Both are the reader's call — we pin
-            nothing by default, because which column you want to keep in view
+            nothing by default, because which column you want to keep in screen
             depends on what you are doing with the list, not on what the column
             is.
           -->

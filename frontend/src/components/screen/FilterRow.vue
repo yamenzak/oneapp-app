@@ -121,8 +121,8 @@ const props = defineProps({
   // [fieldname, operator, value] — Frappe's own filter shape, and the server's.
   filter: { type: Array, required: true },
   columns: { type: Array, required: true },
-  appCode: { type: String, required: true },
-  view: { type: String, required: true },
+  spaceCode: { type: String, required: true },
+  screen: { type: String, required: true },
 })
 const emit = defineEmits(['update:filter', 'remove'])
 
@@ -223,8 +223,8 @@ const linked = ref([])
 const search = async () => {
   if (shape.value !== 'link') return
   linked.value = await workspace.linkOptions(
-    props.appCode,
-    props.view,
+    props.spaceCode,
+    props.screen,
     props.filter[0],
     query.value,
   )

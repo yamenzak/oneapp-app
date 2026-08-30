@@ -22,7 +22,7 @@
   "cb2",
   "credit_balance",
   "sec_cache",
-  "apps_json",
+  "spaces_json",
   "roles_json"
  ],
  "fields": [
@@ -125,9 +125,9 @@
    "label": "Cached manifest"
   },
   {
-   "fieldname": "apps_json",
+   "fieldname": "spaces_json",
    "fieldtype": "Code",
-   "label": "Apps Json",
+   "label": "Spaces JSON",
    "options": "JSON",
    "read_only": 1
   },
@@ -145,7 +145,7 @@
  "modified": "2026-08-29 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "OneApp Core",
- "name": "OneApp Site State",
+ "name": "OneSpace Site State",
  "owner": "Administrator",
  "permissions": [
   {

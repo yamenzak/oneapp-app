@@ -37,8 +37,8 @@
             :key="index"
             :filter="filter"
             :columns="columns"
-            :app-code="appCode"
-            :view="view"
+            :space-code="spaceCode"
+            :screen="screen"
             @update:filter="replace(index, $event)"
             @remove="remove(index)"
           />
@@ -69,8 +69,8 @@ const props = defineProps({
   // Applied filters, as the screen resolved them.
   filters: { type: Array, default: () => [] },
   columns: { type: Array, required: true },
-  appCode: { type: String, required: true },
-  view: { type: String, required: true },
+  spaceCode: { type: String, required: true },
+  screen: { type: String, required: true },
 })
 const emit = defineEmits(['changed'])
 
