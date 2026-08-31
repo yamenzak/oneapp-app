@@ -17,9 +17,9 @@ import requests
 
 TIMEOUT = 15
 
-SIGNATURE_HEADER = "X-OneApp-Signature"
-TIMESTAMP_HEADER = "X-OneApp-Timestamp"
-TENANT_HEADER = "X-OneApp-Tenant"
+SIGNATURE_HEADER = "X-OneSpace-Signature"
+TIMESTAMP_HEADER = "X-OneSpace-Timestamp"
+TENANT_HEADER = "X-OneSpace-Tenant"
 
 
 class ControlPlaneError(Exception):
@@ -111,6 +111,16 @@ def report_usage(storage_used_bytes: int, user_count: int,
 			"database_used_bytes": database_used_bytes,
 		},
 	)
+
+
+def report_backup(result: dict) -> dict:
+	"""Say how the last backup went — including that it did not go.
+
+	A workspace that has quietly stopped backing up looks exactly like one that
+	never needed to, from here. The control plane is the only side that can tell
+	the difference, so it is told either way.
+	"""
+	return call("report_backup", result)
 
 
 def reserve_credits(credits: float, purpose: str) -> dict:

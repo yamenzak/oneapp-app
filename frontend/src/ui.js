@@ -164,3 +164,48 @@ export {
   ListCell,
   ListGroup,
 } from 'frappe-ui/list'
+
+/**
+ * The rich-text editor. Its own entry point in frappe-ui because it ships the
+ * ProseMirror stylesheet with it, so importing from here pulls both.
+ *
+ * One component covers two fieldtypes: `format` is 'html' | 'json' |
+ * 'markdown', and Frappe's Text Editor and Markdown Editor differ only in
+ * which of those they store. HTML Editor is *not* one of them — that is
+ * Frappe's source editor, markup a person edits as markup, so it goes to
+ * CodeEditor below.
+ *
+ * `Editor` is renderless — it owns the lifecycle and renders nothing — so the
+ * building blocks come with it. `EditorContent` is the element ProseMirror
+ * mounts on and the thing a person types into; without it the field is an
+ * empty box.
+ */
+export {
+  Editor,
+  EditorContent,
+  EditorFixedMenu,
+  EditorBubbleMenu,
+  RichTextKit,
+  // The toolbar that matches the kit. frappe-ui ships three presets —
+  // `minimalToolbar`, `commentToolbar`, `articleToolbar` — and a menu whose
+  // buttons are not in the loaded extension list is a row of controls that do
+  // nothing, so the pair is chosen together rather than separately.
+  articleToolbar,
+} from 'frappe-ui/editor'
+
+/**
+ * The code editor, and the one unstable thing in this barrel.
+ *
+ * `frappe-ui/experimental` carries no backward-compatibility promise, and this
+ * is a deliberate bet: the alternative for Code, JSON and HTML Editor is a
+ * plain textarea, which is a customer editing braces in a box with no bracket
+ * matching. The bet is bounded — one entry point, three exports, wrapped by
+ * FieldControl, so a breaking change touches one file — and it is checked:
+ * `tests/frappe_ui_api.py` reads `experimental/` alongside `src/`, so these
+ * props are verified against the source like every other component's.
+ *
+ * `loadLanguage` is a function rather than a component: CodeMirror's language
+ * packs are dynamic imports, so a page with no code field pays for none of
+ * them.
+ */
+export { CodeEditor, CodePreview, loadLanguage } from 'frappe-ui/experimental'

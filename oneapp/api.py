@@ -38,7 +38,7 @@ def session():
 			"status": state.get("status"),
 			"plan": state.get("plan_code"),
 		},
-		"apps": visible_apps(),
+		"spaces": visible_spaces(),
 		# Measured here rather than read from cached state, which holds the
 		# allowance and not the consumption. Reading usage from there returned
 		# zero every time, so the meter looked empty on a full site.
@@ -49,25 +49,41 @@ def session():
 			"max_users": state.get("max_users") or 0,
 		},
 		"credits": {"balance": state.get("credit_balance") or 0},
+		# How this site renders a number when the field does not say. Frappe
+		# keeps both on System Settings and the desk reads them there; without
+		# them a Float column renders with whatever `toLocaleString` defaults
+		# to, which is not the same answer twice across two browsers.
+		"formats": number_formats(),
+	}
+
+
+def number_formats() -> dict:
+	settings = frappe.get_cached_doc("System Settings")
+	return {
+		"float_precision": int(settings.float_precision or 3),
+		# Frappe leaves this unset to mean "follow the float precision", which
+		# is a different thing from zero decimal places.
+		"currency_precision": int(settings.currency_precision or 0)
+		or int(settings.float_precision or 3),
 	}
 
 
 @frappe.whitelist()
-def visible_apps():
-	"""Apps this user can actually open.
+def visible_spaces():
+	"""Spaces this user can actually open.
 
 	Two filters, and both matter. The tenant's entitlements decide what the
-	*site* has; the user's roles decide what *they* may open. An entitled app the
-	user lacks the role for is correctly absent.
-	"""
-	state = sync.state()
-	roles = set(frappe.get_roles())
+	*site* has; the user's roles decide what *they* may open. An entitled space
+	the user lacks the role for is correctly absent.
 
-	return [
-		app
-		for app in state.get("apps", [])
-		if not app.get("role_name") or app["role_name"] in roles
-	]
+	Shares its answer with `_space`, which resolves a space code for every
+	whitelisted read. They used to disagree — the rail asked about roles and
+	the resolver did not — so a space absent from somebody's rail still
+	answered when its code was asked for by name.
+	"""
+	from oneapp.oneapp_core.spaceview import visible
+
+	return visible(sync.state().get("spaces", []))
 
 
 @frappe.whitelist()

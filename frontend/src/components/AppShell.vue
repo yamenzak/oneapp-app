@@ -30,6 +30,7 @@
           :icon="item.icon"
           :to="item.to"
           :active="item.active"
+          @click="go(item)"
         >
           <!-- The default slot replaces the icon, not the label, so a badged
                item still reads the same as its neighbours. -->
@@ -65,19 +66,19 @@
   </MobileShell>
 
   <DesktopShell v-else :scroll="scroll">
-    <template v-if="apps.length" #rail>
+    <template v-if="entries.length" #rail>
       <Rail class="border-r border-outline-gray-1">
         <RailItem
-          v-for="app in apps"
-          :key="app.key"
-          :label="app.label"
-          :description="app.description"
-          :active="app.key === activeApp"
-          :to="app.to"
+          v-for="entry in entries"
+          :key="entry.key"
+          :label="entry.label"
+          :description="entry.description"
+          :active="entry.key === activeEntry"
+          :to="entry.to"
           variant="tile"
-          @click="$emit('select-app', app.key)"
+          @click="$emit('select-entry', entry.key)"
         >
-          <Avatar :label="app.label" :image="app.image" size="lg" shape="square" class="size-7" />
+          <Avatar :label="entry.label" :image="entry.image" size="lg" shape="square" class="size-7" />
         </RailItem>
 
         <div class="mt-auto flex flex-col items-center gap-2.5 pt-3">
@@ -98,65 +99,73 @@
   <!-- v-model:open, not v-model. BottomSheet's prop is `open`, so a bare
        v-model binds a `modelValue` it never reads and the sheet never opens. -->
   <BottomSheet v-model:open="showMenu" title="Menu">
-    <div class="flex flex-col gap-5 p-3 pb-8">
-      <div class="flex items-center gap-3 px-1">
-        <Avatar
-          :label="user.name || user.email || 'Account'"
-          :image="user.avatar"
-          size="2xl"
-        />
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-base-medium text-ink-gray-8">
-            {{ user.name || user.email || 'Account' }}
-          </p>
-          <p v-if="user.subtitle || user.email" class="truncate text-p-sm text-ink-gray-5">
-            {{ user.subtitle || user.email }}
-          </p>
-        </div>
-      </div>
+    <div class="flex flex-col gap-4 p-3 pb-8">
+      <!--
+        The rail, on a phone. A desktop switches space in one click; a phone
+        has no rail, so this is the only way — and a list of every space, most
+        of which you are not in, is a list to read rather than a control. One
+        row saying where you are, and a menu behind it.
+      -->
+      <Dropdown v-if="entries.length || entriesTo" class="w-full" :options="entryOptions">
+        <template #default="{ open }">
+          <Button
+            variant="subtle"
+            class="!h-12 w-full !justify-start !px-2"
+            :icon-right="open ? 'lucide-chevron-up' : 'lucide-chevron-down'"
+          >
+            <template #prefix>
+              <Avatar
+                :label="activeEntry_?.label || entriesLabel"
+                :image="activeEntry_?.image"
+                size="lg"
+                shape="square"
+              />
+            </template>
+            <span class="min-w-0 flex-1 truncate text-base text-ink-gray-8">
+              {{ activeEntry_?.label || entriesLabel }}
+            </span>
+          </Button>
+        </template>
+      </Dropdown>
 
-      <section v-if="apps.length > 1">
-        <p class="px-1 pb-1 text-p-sm text-ink-gray-5">{{ appsLabel }}</p>
+      <!--
+        Everywhere this space goes. All of it, not only what the bottom bar had
+        no room for: the sheet is the phone's navigation, and a list that
+        silently omits the four you can already see is a list you cannot trust
+        to be complete.
+      -->
+      <section v-if="navItems.length" class="flex flex-col">
         <router-link
-          v-for="app in apps"
-          :key="app.key"
-          :to="app.to"
-          class="flex items-center gap-3 rounded-4 p-2 active:bg-surface-gray-2"
-          @click="showMenu = false"
-        >
-          <Avatar :label="app.label" :image="app.image" size="xl" shape="square" />
-          <span class="min-w-0 flex-1 truncate text-base text-ink-gray-8">{{ app.label }}</span>
-          <Icon
-            v-if="app.key === activeApp"
-            name="lucide-check"
-            class="size-4 shrink-0 text-ink-gray-6"
-          />
-        </router-link>
-      </section>
-
-      <section v-if="overflowNav.length">
-        <p class="px-1 pb-1 text-p-sm text-ink-gray-5">More pages</p>
-        <router-link
-          v-for="item in overflowNav"
+          v-for="item in navItems"
           :key="item.label"
           :to="item.to"
-          class="flex items-center gap-3 rounded-4 p-2 active:bg-surface-gray-2"
+          class="block"
           @click="showMenu = false"
         >
-          <Icon :name="item.icon" class="size-4 shrink-0 text-ink-gray-7" />
-          <span class="min-w-0 flex-1 truncate text-base text-ink-gray-8">{{ item.label }}</span>
-          <Badge
-            v-if="item.badge"
-            :theme="item.badge.theme"
-            :label="item.badge.label"
-            variant="subtle"
-          />
+          <ItemListRow
+            size="lg"
+            :active="!!item.active"
+            class="min-h-12 active:bg-surface-gray-2"
+          >
+            <template #prefix>
+              <Icon :name="item.icon" class="size-4 shrink-0 text-ink-gray-7" />
+            </template>
+            <span class="min-w-0 flex-1 truncate">{{ item.label }}</span>
+            <template #suffix>
+              <Badge
+                v-if="item.badge"
+                :theme="item.badge.theme"
+                :label="item.badge.label"
+                variant="subtle"
+              />
+            </template>
+          </ItemListRow>
         </router-link>
       </section>
 
-      <section v-if="menuItems.length" class="flex flex-col gap-1">
+      <section v-if="otherMenuItems.length" class="flex flex-col gap-1">
         <Button
-          v-for="item in menuItems"
+          v-for="item in otherMenuItems"
           :key="item.label"
           variant="ghost"
           class="!h-11 w-full !justify-start !px-2"
@@ -166,27 +175,61 @@
         />
       </section>
 
-      <div>
-        <p class="px-1 pb-1.5 text-p-sm text-ink-gray-5">Appearance</p>
-        <!-- Three buttons, not a switch: a two-state control cannot express
-             "follow the system", and one tap still picks any of the three. -->
-        <TabButtons v-model="scheme" :options="tabOptions" fluid />
+      <Divider />
+
+      <!--
+        The drawer's own two rows: what you can set, and who you are. Each is
+        one thing on the left and its control on the right, because a row that
+        reads left to right and acts on the right is the shape a phone's
+        settings list already has.
+      -->
+      <div class="flex items-center justify-between gap-3 pl-2">
+        <Button
+          v-if="settingsItem"
+          variant="ghost"
+          class="!px-0 hover:!bg-transparent"
+          :icon-left="settingsItem.icon"
+          :label="settingsItem.label"
+          @click="run(settingsItem)"
+        />
+        <span v-else class="text-base text-ink-gray-7">Appearance</span>
+        <!-- Icons alone: the word beside them already says what they are for,
+             and three labelled tabs is most of a phone's width. -->
+        <TabButtons v-model="scheme" :options="iconOptions" />
       </div>
 
-      <Button
-        class="w-full"
-        variant="subtle"
-        theme="red"
-        icon-left="lucide-log-out"
-        label="Log out"
-        @click="logout"
-      />
+      <div class="flex items-center justify-between gap-3 pl-2">
+        <div class="flex min-w-0 items-center gap-2.5">
+          <Avatar
+            :label="user.name || user.email || 'Account'"
+            :image="user.avatar"
+            size="lg"
+          />
+          <div class="min-w-0">
+            <p class="truncate text-base text-ink-gray-8">
+              {{ user.name || user.email || 'Account' }}
+            </p>
+            <p v-if="user.subtitle || user.email" class="truncate text-p-sm text-ink-gray-5">
+              {{ user.subtitle || user.email }}
+            </p>
+          </div>
+        </div>
+        <Button
+          icon="lucide-log-out"
+          variant="ghost"
+          theme="red"
+          label="Log out"
+          tooltip="Log out"
+          @click="logout"
+        />
+      </div>
     </div>
   </BottomSheet>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   Avatar,
   Badge,
@@ -194,9 +237,12 @@ import {
   Button,
   DesktopShell,
   Icon,
+  ItemListRow,
   MobileNav,
   MobileNavItem,
   MobileShell,
+  Divider,
+  Dropdown,
   Rail,
   RailItem,
   TabButtons,
@@ -210,10 +256,20 @@ const props = defineProps({
    * Empty renders no rail at all — a single-app surface should not show a
    * one-item switcher.
    */
-  apps: { type: Array, default: () => [] },
-  activeApp: { type: String, default: '' },
-  /** Heading the mobile sheet gives the rail's entries. */
-  appsLabel: { type: String, default: 'Apps' },
+  entries: { type: Array, default: () => [] },
+  activeEntry: { type: String, default: '' },
+  /**
+   * Heading the mobile sheet gives the rail's entries. Named for the entries
+   * rather than for one product's word for them: both call sites were already
+   * passing `entries-label`, which silently was not a prop, so both sheets
+   * read "Apps" long after neither surface called anything that.
+   */
+  entriesLabel: { type: String, default: 'Spaces' },
+  /**
+   * Where "All spaces" goes — the page that lists every entry. Optional: a
+   * surface with no such page simply does not get the row.
+   */
+  entriesTo: { type: [Object, String], default: null },
   /**
    * Every destination this surface has, in sidebar order:
    * { label, icon, to, active?, badge?, primary? }.
@@ -234,11 +290,30 @@ const props = defineProps({
   scroll: { type: Boolean, default: true },
 })
 
-defineEmits(['select-app'])
+defineEmits(['select-entry'])
 
 defineSlots()
 
 const isMobile = useIsMobile()
+/**
+ * Navigate from the click rather than leaving it to the item's own link.
+ *
+ * MobileNavItem decides link-versus-button by comparing route *names*, and
+ * every screen of an app is the same route name with a different `?screen=`. So
+ * an app's tabs all looked current, all rendered as scroll-to-top buttons, and
+ * none of them navigated — on a phone an app with more than one screen had
+ * exactly one reachable screen. The item keeps `to` so it still renders an
+ * anchor where it can; this is what makes the tap do something.
+ *
+ * Pushing the route we are already on is a duplicate navigation, which
+ * vue-router rejects rather than throws on, so the rejection is swallowed.
+ */
+const router = useRouter()
+
+const go = (item) => {
+  router.push(item.to).catch(() => {})
+}
+
 const showMenu = ref(false)
 
 // Four, because the avatar always takes the fifth. `primary: false` opts an
@@ -249,11 +324,56 @@ const primaryNav = computed(() =>
   props.navItems.filter((item) => item.primary !== false).slice(0, PRIMARY_SLOTS),
 )
 
-const overflowNav = computed(() =>
-  props.navItems.filter((item) => !primaryNav.value.includes(item)),
+// The rail entry the sheet's switcher shows, and the menu behind it. Every
+// entry is in the menu, the current one ticked: hiding it would leave the row
+// saying where you are with no way to see that as one of a set.
+const activeEntry_ = computed(
+  () => props.entries.find((entry) => entry.key === props.activeEntry) || null,
 )
 
-const { scheme, tabOptions } = useAppearance()
+const entryOptions = computed(() => {
+  const groups = []
+  if (props.entries.length) {
+    groups.push({
+      group: props.entriesLabel,
+      hideLabel: true,
+      options: props.entries.map((entry) => ({
+        label: entry.label,
+        icon: entry.key === props.activeEntry ? 'lucide-check' : undefined,
+        onClick: () => {
+          showMenu.value = false
+          router.push(entry.to)
+        },
+      })),
+    })
+  }
+  if (props.entriesTo) {
+    groups.push({
+      group: 'all',
+      hideLabel: true,
+      options: [
+        {
+          label: `All ${props.entriesLabel.toLowerCase()}`,
+          icon: 'lucide-layout-grid',
+          onClick: () => {
+            showMenu.value = false
+            router.push(props.entriesTo)
+          },
+        },
+      ],
+    })
+  }
+  return groups
+})
+
+// The first menu item shares the drawer's settings row with the appearance
+// control — on both surfaces today that is "Workspace settings", and a word
+// beside three icons is what the row is for. Anything after it keeps a row of
+// its own rather than being dropped.
+const settingsItem = computed(() => props.menuItems[0] || null)
+const otherMenuItems = computed(() => props.menuItems.slice(1))
+
+const { scheme, iconOptions } = useAppearance()
 
 function run(item) {
   showMenu.value = false

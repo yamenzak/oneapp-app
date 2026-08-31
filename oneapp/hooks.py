@@ -5,7 +5,17 @@ app_description = "Unified application surface for Four Degree Labs tenants."
 app_email = "hello@fourdegreelabs.com"
 app_license = "mit"
 
-required_apps = ["erpnext"]
+# Deliberately not `required_apps = ["erpnext"]`.
+#
+# Nothing in this app imports erpnext at module level: every import in
+# oneapp_core/books.py is deferred inside a function and gated on
+# `erpnext_installed()`, and `books.status()` answers `available: False` when it
+# is absent — which the workspace's Books panel renders as "No accounting app".
+#
+# So the hard requirement claimed a dependency the code does not have, and the
+# only thing it actually stopped was running OneSpace anywhere erpnext is not
+# installed — including every development bench, which is why this SPA went so
+# long without being opened in a browser. Tenant benches still carry erpnext.
 
 # ---------------------------------------------------------------------------
 # SPA
@@ -28,7 +38,7 @@ home_page = "one"
 # back to Frappe's normal behaviour when R2 is not configured, so a site without
 # keys still works instead of failing every upload.
 override_doctype_class = {
-	"File": "oneapp.oneapp_core.storage.file.OneAppFile",
+	"File": "oneapp.oneapp_core.storage.file.OneSpaceFile",
 }
 
 # ---------------------------------------------------------------------------
@@ -57,6 +67,18 @@ doc_events = {
 # ---------------------------------------------------------------------------
 # Scheduled tasks
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# AI features
+# ---------------------------------------------------------------------------
+# Modules holding @ai_feature declarations. Listed rather than discovered by
+# walking the package: a feature that only registers when something happens to
+# import its module is a feature missing from the settings page on a cold worker.
+#
+# Apps built on OneSpace add their own here. Nothing ships one yet — the mechanism
+# exists so the first app that needs AI declares it and gets the settings row,
+# the credit hold and the operator registry entry for free.
+ai_features = []
+
 scheduler_events = {
 	"cron": {
 		# Entitlements and balance. Frequent because revoking an app should take
@@ -65,6 +87,11 @@ scheduler_events = {
 	},
 	"hourly": [
 		"oneapp.oneapp_core.sync.report_usage_to_control_plane",
+		# Backups, into R2, on the frequency the plan bought. Hourly rather than
+		# daily because the frequency is a plan term and cannot be a cron line:
+		# this wakes every hour and decides whether this hour is one of the
+		# slots. See `oneapp_core/backup.py`.
+		"oneapp.oneapp_core.backup.scheduled_backup",
 		# Re-measures the database and caches the verdict the insert hook reads,
 		# so a workspace that frees space is unblocked without waiting out the
 		# cache, and one that fills up is caught within the hour.

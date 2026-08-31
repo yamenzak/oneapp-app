@@ -2,21 +2,30 @@
   <FrappeUIProvider>
     <AppShell
       v-if="session.loaded && session.isLoggedIn"
-      :apps="railApps"
-      :active-app="activeAppCode"
+      :scroll="!$route.meta.pane"
+      :entries="railSpaces"
+      :active-entry="activeSpaceCode"
+      :entries-to="{ name: 'Launcher' }"
       :nav-items="nav"
       :menu-items="menuItems"
       :user="identity"
     >
       <template #sidebar>
-        <AppSidebar />
+        <SpaceSidebar />
       </template>
 
       <template #rail-footer>
         <RailAccount />
       </template>
 
-      <router-view :key="$route.fullPath" />
+      <!--
+        Keyed on the path, not the full path. A screen, a view type, a saved
+        view and an open record are all query parameters, and the page watches
+        every one of them — keying on the query as well tore the page down and
+        rebuilt it to open a dialog, which reloaded the list underneath it.
+        The path still changes between spaces, which is what the key is for.
+      -->
+      <router-view :key="$route.path" />
     </AppShell>
 
     <!-- Outside the shell so it survives a layout swap, and a dialog rather
@@ -46,7 +55,7 @@ import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { FrappeUIProvider, Button, LoadingIndicator, usePageMeta } from '@/ui'
 import AppShell from './components/AppShell.vue'
-import AppSidebar from './components/AppSidebar.vue'
+import SpaceSidebar from './components/SpaceSidebar.vue'
 import RailAccount from './components/RailAccount.vue'
 import SettingsShell from './components/settings/SettingsShell.vue'
 import { useNav } from './lib/nav'
@@ -56,22 +65,25 @@ import { fullName, email, userImage } from './lib/user'
 
 const route = useRoute()
 
-// The rail is the workspace's apps. This is the one place they are enumerated
-// for navigation; the sidebar then belongs to whichever is active.
-const railApps = computed(() =>
-  session.apps.map((app) => ({
-    key: app.app_code,
-    label: app.app_label,
-    description: app.description,
-    to: { name: 'App', params: { appCode: app.app_code } },
+// The rail is the workspace's spaces. This is the one place they are
+// enumerated for navigation; the sidebar then belongs to whichever is active.
+const railSpaces = computed(() =>
+  session.spaces.map((space) => ({
+    key: space.space_code,
+    label: space.space_label,
+    // The manifest's own logo where there is one, so a space reads as itself
+    // on the rail rather than as a letter.
+    image: space.logo || null,
+    description: space.description,
+    to: { name: 'Screen', params: { spaceCode: space.space_code } },
   })),
 )
 
-const activeAppCode = computed(() => route.params.appCode || '')
+const activeSpaceCode = computed(() => route.params.spaceCode || '')
 
 // One list, rendered twice: the sidebar on a desktop, the bottom bar and its
 // More sheet on a phone. Declared in lib/nav.js so the two cannot drift — and
-// an app that declares more sections than the bar has slots keeps the rest
+// a space that declares more screens than the bar has slots keeps the rest
 // reachable in the sheet rather than losing them.
 const { nav } = useNav()
 

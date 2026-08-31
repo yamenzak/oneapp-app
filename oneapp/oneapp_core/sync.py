@@ -1,4 +1,4 @@
-"""Keep this site's view of its tenant fresh.
+"""Keep this site's screen of its tenant fresh.
 
 The control plane is authoritative; this site caches. The cache is a Single
 doctype rather than only Redis, deliberately: if the control plane is
@@ -11,10 +11,23 @@ import json
 import frappe
 from frappe.utils import now_datetime
 
-from oneapp.oneapp_core import control_client
+from oneapp.oneapp_core import control_client, site
 
-CACHE_KEY = "oneapp_site_state"
+CACHE_KEY = "onespace_site_state"
 CACHE_TTL = 300
+
+
+def _spaces(payload: dict) -> list:
+	"""The spaces in a sync payload, under either name.
+
+	The control plane sent `apps` and sends `spaces`. Both ends are ours but
+	they deploy separately, and a tenant that reads only the new key would
+	answer a sync by forgetting every space it has.
+	"""
+	found = payload.get("spaces")
+	if found is None:
+		found = payload.get("apps")
+	return found or []
 
 
 def state() -> dict:
@@ -23,7 +36,7 @@ def state() -> dict:
 	if cached:
 		return cached
 
-	doc = frappe.get_single("OneApp Site State")
+	doc = frappe.get_single("OneSpace Site State")
 	data = {
 		"tenant": doc.tenant,
 		"status": doc.status,
@@ -32,13 +45,47 @@ def state() -> dict:
 		"database_quota_bytes": doc.database_quota_bytes or 0,
 		"max_users": doc.max_users or 0,
 		"background_workers": doc.background_workers or 0,
+		"backups_per_day": doc.backups_per_day or 0,
+		"quota": json.loads(doc.quota_json or "{}"),
 		"credit_balance": doc.credit_balance or 0,
-		"apps": json.loads(doc.apps_json or "[]"),
+		"spaces": json.loads(doc.spaces_json or "[]") + local_spaces(),
 		"roles": json.loads(doc.roles_json or "[]"),
 		"last_sync": str(doc.last_sync) if doc.last_sync else None,
 	}
 	frappe.cache().set_value(CACHE_KEY, data, expires_in_sec=CACHE_TTL)
 	return data
+
+
+def local_spaces() -> list:
+	"""Spaces this site provides itself, rather than being told about.
+
+	A tenant learns which spaces it has from the control plane, over HMAC, and
+	caches the answer in the Single above. The control plane has no control
+	plane to ask — it *is* one — so it needs a second way to say the same thing,
+	and an app installed there registers a provider:
+
+	    onespace_space_providers = ["oneapp_control.…:local_spaces"]
+
+	Each returns the same list of space dicts the sync payload carries, so
+	everything downstream — `_space`, `_granted_doctypes`, `visible_spaces`, the
+	rail, the resolver — is untouched and cannot tell the two apart. Which is
+	the point: a space is a space, and where the description came from is not a
+	property of it.
+
+	`oneapp` ships no provider. A site with none and no sync has no spaces,
+	which is what it had before this existed.
+
+	A provider that raises is skipped rather than fatal. This runs behind every
+	page load of the shell, and one app's bad manifest should not be a site that
+	will not open.
+	"""
+	found = []
+	for path in frappe.get_hooks("onespace_space_providers") or []:
+		try:
+			found += frappe.get_attr(path)() or []
+		except Exception:
+			frappe.log_error(title="OneSpace space provider failed", message=path)
+	return found
 
 
 def invalidate():
@@ -47,7 +94,13 @@ def invalidate():
 
 def sync_from_control_plane() -> dict:
 	"""Pull entitlements, quotas and balance. Scheduled, and callable on demand."""
-	doc = frappe.get_single("OneApp Site State")
+	if site.is_control():
+		# The control plane has no control plane to ask. Answered here rather
+		# than left to fail as "not provisioned", which is a different thing and
+		# would leave a misleading error on the singleton every fifteen minutes.
+		return {"ok": True, "reason": "not_a_tenant"}
+
+	doc = frappe.get_single("OneSpace Site State")
 
 	if not control_client.is_provisioned():
 		doc.db_set("last_sync_error", "Site is not provisioned (missing site_config keys).")
@@ -58,7 +111,7 @@ def sync_from_control_plane() -> dict:
 	except control_client.ControlPlaneError as e:
 		# Keep serving the last known good state rather than degrading the site.
 		doc.db_set("last_sync_error", str(e)[:500])
-		frappe.log_error(title="OneApp control-plane sync failed", message=str(e))
+		frappe.log_error(title="OneSpace control-plane sync failed", message=str(e))
 		return {"ok": False, "reason": "unreachable", "error": str(e)}
 
 	tenant = payload.get("tenant") or {}
@@ -75,8 +128,13 @@ def sync_from_control_plane() -> dict:
 			"database_quota_bytes": plan.get("database_quota_bytes") or 0,
 			"max_users": plan.get("max_users") or 0,
 			"background_workers": plan.get("background_workers") or 0,
+			"backups_per_day": plan.get("backups_per_day") or 0,
+			# Whether to enforce quotas at all, and until when if not. Stored
+			# rather than only cached: an unreachable control plane must not
+			# silently re-block a workspace that was given a window.
+			"quota_json": json.dumps(payload.get("quota") or {}),
 			"credit_balance": credits.get("balance") or 0,
-			"apps_json": json.dumps(payload.get("apps") or []),
+			"spaces_json": json.dumps(_spaces(payload)),
 			"roles_json": json.dumps(payload.get("roles") or []),
 			"last_sync": now_datetime(),
 			"last_sync_error": None,
@@ -104,17 +162,89 @@ def sync_from_control_plane() -> dict:
 		(payload.get("owner") or {}).get("email") or "",
 	)
 	sync_email_account()
+	sync_backup_request(payload.get("backup") or {})
 	sync_branding(tenant)
 	books = sync_books(payload.get("books"))
+	sync_ai(payload.get("ai") or {}, credits)
 
 	return {
 		"ok": True,
-		"apps": len(payload.get("apps") or []),
+		"spaces": len(_spaces(payload)),
 		"owner_created": created,
 		"members_created": people["created"],
 		"members_disabled": people["disabled"],
 		"books": books,
 	}
+
+
+def sync_backup_request(block: dict) -> None:
+	"""Take a final full backup, if the control plane has asked for one.
+
+	This is how a workspace about to be archived gets a copy it can be restored
+	from. Enqueued rather than run inline: a full backup of a large workspace is
+	minutes of dumping and tarring, and the sync job also creates users, writes
+	permissions and reconciles the email account — holding all of that behind a
+	tarball would turn one slow backup into a site that looks stuck.
+
+	No guard against asking twice. The control plane clears the flag the moment
+	the copy is promoted, so the worst a duplicate costs is one extra backup,
+	and refusing one would mean a failed upload could never be retried.
+	"""
+	if not block.get("requested"):
+		return
+
+	from oneapp.oneapp_core import backup
+
+	try:
+		frappe.enqueue(
+			backup.run_backup,
+			queue="long",
+			timeout=3600,
+			with_files=True,
+			job_id=f"oneapp-cold-backup-{frappe.local.site}",
+			deduplicate=True,
+		)
+	except Exception:
+		# An older Frappe without `deduplicate`, or no worker to enqueue onto.
+		# Taking it inline is slower than we would like and better than not
+		# taking it at all — this is the copy that decides whether a workspace
+		# can be brought back.
+		frappe.log_error(
+			title="Cold backup could not be enqueued; taking it inline",
+			message=frappe.get_traceback(),
+		)
+		backup.run_backup(with_files=True)
+
+
+def sync_ai(block: dict, credits: dict) -> None:
+	"""Cache the model catalogue and the platform's feature policy, then report
+	back what this site declares.
+
+	Cached rather than fetched per call so the settings page renders and a model
+	stays chosen while the control plane is unreachable. It is never used to
+	price a call — that happens on the control plane, against the same rows.
+
+	Reporting is the other half of autodiscovery: features exist only in app
+	code, so an operator would otherwise have no way to know what a site can do.
+	"""
+	from oneapp.oneapp_core.ai import features
+
+	try:
+		frappe.db.set_single_value("OneSpace AI Settings", {
+			"catalogue_json": json.dumps(block.get("models") or [], default=str),
+			"registry_json": json.dumps(block.get("features") or [], default=str),
+			"credit_balance": credits.get("balance") or 0,
+			"last_sync": now_datetime(),
+		})
+	except Exception:
+		# A site whose AI settings will not write is still a working site.
+		frappe.log_error(title="AI settings cache failed", message=frappe.get_traceback())
+		return
+
+	try:
+		features.report()
+	except Exception:
+		frappe.log_error(title="AI feature report failed", message=frappe.get_traceback())
 
 
 def sync_books(hint: dict | None) -> dict:
@@ -180,7 +310,7 @@ def sync_email_account():
 	except Exception:
 		# Mail setup must never break an entitlement sync.
 		frappe.log_error(
-			title="OneApp email account sync failed", message=frappe.get_traceback()
+			title="OneSpace email account sync failed", message=frappe.get_traceback()
 		)
 
 
@@ -488,16 +618,18 @@ def all_managed_roles() -> list[str]:
 	Only roles we know about are ever revoked — a role an operator created by
 	hand is left alone.
 	"""
-	doc = frappe.get_single("OneApp Site State")
+	doc = frappe.get_single("OneSpace Site State")
 	try:
-		apps = json.loads(doc.apps_json or "[]")
+		spaces = json.loads(doc.spaces_json or "[]")
 	except (json.JSONDecodeError, TypeError):
 		return []
-	return [a["role_name"] for a in apps if a.get("role_name")]
+	return [s["role_name"] for s in spaces if s.get("role_name")]
 
 
 def report_usage_to_control_plane() -> dict:
 	"""Push storage and seat counts upward."""
+	if site.is_control():
+		return {"ok": True, "reason": "not_a_tenant"}
 	if not control_client.is_provisioned():
 		return {"ok": False, "reason": "not_provisioned"}
 
@@ -527,10 +659,10 @@ def report_usage_to_control_plane() -> dict:
 	try:
 		result = control_client.report_usage(int(storage), int(users), int(database))
 	except control_client.ControlPlaneError as e:
-		frappe.log_error(title="OneApp usage report failed", message=str(e))
+		frappe.log_error(title="OneSpace usage report failed", message=str(e))
 		return {"ok": False, "error": str(e)}
 
-	doc = frappe.get_single("OneApp Site State")
+	doc = frappe.get_single("OneSpace Site State")
 	doc.db_set("storage_used_bytes", storage)
 	doc.db_set("database_used_bytes", database)
 	invalidate()
