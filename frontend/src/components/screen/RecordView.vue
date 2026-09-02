@@ -29,16 +29,8 @@
         the document before it lets them into it, so this is not a way to watch
         something you cannot open.
       -->
-      <div v-if="others.length" class="ms-auto flex shrink-0 items-center -space-x-1.5">
-        <!-- The gap between overlapping faces is drawn as a ring of the
-             surface behind them. A `ring-*` colour is not one of the theme's
-             tokens — they are background, text and outline — so it is a
-             padded background rather than a ring. -->
-        <Tooltip v-for="who in others" :key="who" :text="`${who} is looking at this too`">
-          <span data-slot="viewer" class="inline-flex rounded-full bg-surface-base p-0.5">
-            <Avatar :label="who" size="sm" />
-          </span>
-        </Tooltip>
+      <div v-if="others.length" class="ms-auto flex shrink-0 items-center">
+        <AvatarStack :people="watching" slot-name="viewer" />
       </div>
 
       <div class="flex shrink-0 items-center gap-1" :class="!others.length && 'ms-auto'">
@@ -53,6 +45,18 @@
           :names="[record.name]"
           @ran="emit('reload')"
         />
+        <!--
+          Who this is for. Beside the actions rather than in the form, because
+          assignment is not a field: it is not on the doctype, there is no
+          column for it, and it is a thing you do to a record.
+        -->
+        <AssignControl
+          :space-code="spaceCode"
+          :screen="screen"
+          :name="record.name"
+          :people="assigned"
+          @assigned="assigned = $event"
+        />
         <!-- One icon, two themes: lucide ships no filled heart, so the colour
              is what says whether this is yours. -->
         <Button
@@ -61,6 +65,46 @@
           :variant="liked ? 'subtle' : 'ghost'"
           :theme="liked ? 'red' : 'gray'"
           @click="like"
+        />
+        <!--
+          Tell me when this changes. Beside the heart because it is the same
+          kind of thing — a standing statement about one record, made by one
+          person, that no field carries — and the pair reads as "mine" and
+          "watch this" rather than as two unrelated controls.
+
+          Drawn only where the doctype tracks its changes: a follow that can
+          never report anything is a switch that lies, and the server decides
+          that rather than this file guessing from a fieldtype.
+        -->
+        <!--
+          Print. Beside the bell rather than in a menu: printing a record is
+          something people do often enough that hiding it behind three dots is
+          hiding it. Only where the doctype allows it — Frappe's own `print`
+          permission, which is a permission like any other.
+        -->
+        <Button
+          v-if="spec.can_print"
+          data-slot="print"
+          icon="lucide-printer"
+          variant="ghost"
+          label="Print this record"
+          tooltip="Print"
+          @click="showPrint = true"
+        />
+        <Button
+          v-if="canFollow"
+          data-slot="follow"
+          icon="lucide-bell"
+          :variant="following ? 'subtle' : 'ghost'"
+          :theme="following ? 'blue' : 'gray'"
+          :label="following ? 'Stop following this record' : 'Follow this record'"
+          :tooltip="
+            following
+              ? 'Following — you are told when this changes'
+              : 'Follow, to be told when this changes'
+          "
+          :loading="followBusy"
+          @click="follow"
         />
         <!--
           Save lives up here rather than in a footer, and the reason is the
@@ -92,6 +136,13 @@
       reader may be halfway through typing, and replacing what is on screen
       with what is on the server is the one thing worse than being out of date.
     -->
+    <PrintDialog
+      v-model="showPrint"
+      :space-code="spaceCode"
+      :screen="screen"
+      :name="record.name"
+    />
+
     <Alert
       v-if="staleSince"
       class="mx-4 mt-3"
@@ -110,45 +161,47 @@
     <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
       <Tabs v-model="tab">
         <TabList>
-          <TabTrigger value="fields">Details</TabTrigger>
+          <!--
+            A glyph on every one of them, from the same derivation the
+            doctype's own tabs use — these four are labels like any other, and
+            a strip where the doctype's tabs carry icons and ours do not would
+            read as two different strips.
+          -->
+          <TabTrigger value="fields" label="Details" :icon-left="tabIcon('Details')" />
           <!--
             The count as a badge rather than inside the word: "Comments (3)"
-            reads as a label, a badge reads as a number.
-
-            One interpolation for the text, because Vue condenses the newline
-            before it into a leading space and a tab whose label starts with a
-            space is a label nothing can match on.
+            reads as a label, a badge reads as a number. `#suffix` is the slot
+            TabTrigger ships for exactly this — the first version put the badge
+            in the default slot, which replaces the label region, so the label
+            and the icon had to be rebuilt by hand around it.
           -->
-          <TabTrigger value="comments">
-            <span class="flex items-center gap-1.5"
-              >{{ 'Comments'
-              }}<Badge
+          <!--
+            One tab, not two. "Who changed this" and "what did they say about
+            it" were separate places, and answering "what happened on Tuesday"
+            meant reading both and merging them by eye. The comment count still
+            rides here, because a comment is the entry somebody is waiting on.
+          -->
+          <TabTrigger value="activity" label="Activity" :icon-left="tabIcon('Activity')">
+            <template #suffix>
+              <Badge
                 v-if="commentCount"
                 :label="String(commentCount)"
                 theme="gray"
                 variant="subtle"
               />
-            </span>
+            </template>
           </TabTrigger>
-          <TabTrigger v-if="trackChanges" value="history">History</TabTrigger>
-          <TabTrigger value="files">Files</TabTrigger>
+          <TabTrigger value="files" label="Files" :icon-left="tabIcon('Files')" />
+          <!--
+            What the record *is*, as opposed to what it says: its id, its
+            picture and its provenance. Last, because it is the tab you go to
+            on purpose rather than the one you land on.
+          -->
+          <TabTrigger value="meta" label="Meta" :icon-left="tabIcon('Meta')" />
         </TabList>
 
         <TabPanel value="fields">
           <div class="flex flex-col gap-4 pt-4">
-            <!-- The record's own picture, where the doctype declares one.
-                 Replaced in place, because an Attach Image field otherwise
-                 renders as a file box halfway down the form. -->
-            <RecordImage
-              v-if="spec.image_field"
-              :value="form[spec.image_field] || ''"
-              :label="identity.label"
-              :field="spec.image_field"
-              :doctype="spec.doctype"
-              :name="record.name"
-              :can-write="canWrite"
-              @update:value="form[spec.image_field] = $event"
-            />
             <RecordForm
               v-model:values="form"
               :spec="spec"
@@ -157,25 +210,22 @@
               :disabled="!canWrite"
             />
             <ErrorMessage v-if="error" :message="error" />
-            <RecordMeta :record="record" />
           </div>
         </TabPanel>
 
-        <TabPanel value="comments">
-          <RecordComments
+        <TabPanel value="activity">
+          <RecordActivity
             :space-code="spaceCode"
             :screen="screen"
             :name="record.name"
+            :record="record"
             :comments="comments"
+            :changes="changes"
             :count="commentCount"
             :more="moreComments"
             :loading="loadingTimeline"
             @added="loadTimeline"
           />
-        </TabPanel>
-
-        <TabPanel value="history">
-          <RecordHistory :changes="changes" :loading="loadingTimeline" />
         </TabPanel>
 
         <TabPanel value="files">
@@ -184,6 +234,31 @@
             :screen="screen"
             :name="record.name"
             :can-write="canWrite"
+            @count="fileCount = $event"
+          />
+        </TabPanel>
+
+        <TabPanel value="meta">
+          <RecordMeta
+            :record="record"
+            :space-code="spaceCode"
+            :screen="screen"
+            :doctype="spec.doctype || ''"
+            :label="identity.label"
+            :image-field="spec.image_field || ''"
+            :image="form[spec.image_field] || ''"
+            :assigned="assigned"
+            :tags="tags"
+            :shares="shares"
+            :files="fileCount"
+            :can-write="canWrite"
+            :can-rename="!!spec.can_rename && canWrite"
+            @update:image="form[spec.image_field] = $event"
+            @renamed="renamed"
+            @assigned="assigned = $event"
+            @tagged="tags = $event"
+            @shared="shares = $event"
+            @files="tab = 'files'"
           />
         </TabPanel>
       </Tabs>
@@ -206,16 +281,17 @@ import {
   Tooltip,
   dayjsLocal,
 } from '@/ui'
+import AssignControl from './AssignControl.vue'
+import AvatarStack from './AvatarStack.vue'
 import RecordChip from './RecordChip.vue'
 import ScreenActions from './ScreenActions.vue'
 import RecordForm from './RecordForm.vue'
-import RecordComments from './RecordComments.vue'
-import RecordHistory from './RecordHistory.vue'
+import RecordActivity from './RecordActivity.vue'
 import RecordFiles from './RecordFiles.vue'
-import RecordImage from './RecordImage.vue'
+import PrintDialog from './PrintDialog.vue'
 import RecordMeta from './RecordMeta.vue'
 import { workspace } from '../../lib/workspace'
-import { valueTheme } from '../../lib/fields'
+import { tabIcon, valueTheme } from '../../lib/fields'
 import { onDocChange, onDocViewers } from '../../lib/socket'
 import { session } from '../../lib/session'
 
@@ -227,9 +303,19 @@ const props = defineProps({
   /** Whether the pane is the page. The pane knows; this does not ask. */
   phone: { type: Boolean, default: false },
 })
-const emit = defineEmits(['saved', 'close', 'reload'])
+const emit = defineEmits(['saved', 'close', 'reload', 'renamed'])
 
 const tab = ref('fields')
+
+// Read the panel's own two lists the first time somebody opens it, and not
+// again while they are on the same record — every write from inside it answers
+// with the state that followed.
+watch(tab, (now) => {
+  if (now === 'meta' && !collabLoaded.value) {
+    collabLoaded.value = true
+    loadCollab()
+  }
+})
 const form = reactive({})
 const error = ref('')
 const saving = ref(false)
@@ -243,9 +329,33 @@ const moreComments = ref(false)
 const changes = ref([])
 const likes = ref([])
 const liked = ref(false)
+const tags = ref([])
+const shares = ref({})
+// Null while nothing has counted them. The Files tab reports what it found, so
+// this stays empty until somebody opens it rather than costing a second request
+// on every record that is never asked about.
+const fileCount = ref(null)
+const collabLoaded = ref(false)
+const showPrint = ref(false)
+const following = ref(false)
+const canFollow = ref(false)
+const followBusy = ref(false)
 // Everybody in the room but this reader — the desk does the same, because a
 // face saying "you are here" is a face saying nothing.
 const others = ref([])
+// The same shape every identity in this product is drawn from, so the faces in
+// the room and the faces on the assignment are one component. The room carries
+// ids and no more — Frappe's open-doc room is a list of users, not a query —
+// so the id is the label too.
+const watching = computed(() =>
+  others.value.map((who) => ({ value: who, label: who, image: null })),
+)
+
+// Who the record is assigned to, as the server resolved it. A ref rather than
+// a computed over the record, because the control writes it back: the answer
+// after an assignment is what the document ended up holding, and re-reading
+// the whole record to learn one list is a round trip for nothing.
+const assigned = ref([])
 // When somebody else last saved it, or empty. Set from the document's own
 // room rather than by polling.
 const staleSince = ref('')
@@ -288,15 +398,51 @@ const loadTimeline = async () => {
     changes.value = found?.changes || []
     likes.value = found?.likes || []
     liked.value = !!found?.liked
+    following.value = !!found?.following
+    canFollow.value = !!found?.can_follow
   } finally {
     loadingTimeline.value = false
   }
+}
+
+/**
+ * Tags and shares, on opening the Meta tab rather than on opening the record.
+ *
+ * Two requests that most records never need: a person reads a record to read
+ * it, and paying for who-else-can-see-this on every open is paying for the
+ * exception. The panel is the only thing that draws either.
+ */
+const loadCollab = async () => {
+  if (!props.record?.name) return
+  const [found, given] = await Promise.all([
+    workspace.tags(props.spaceCode, props.screen, props.record.name),
+    workspace.shares(props.spaceCode, props.screen, props.record.name),
+  ])
+  tags.value = found?.tags || []
+  shares.value = given || {}
 }
 
 const like = async () => {
   const result = await workspace.toggleLike(props.spaceCode, props.screen, props.record.name)
   liked.value = !!result?.liked
   likes.value = result?.likes || []
+}
+
+// What the server says afterwards, not what was asked for. A follow that was
+// refused — the record moved out of reach between opening it and pressing this
+// — would otherwise leave a bell lit over a subscription that does not exist.
+const follow = async () => {
+  followBusy.value = true
+  try {
+    const result = await workspace.toggleFollow(
+      props.spaceCode,
+      props.screen,
+      props.record.name,
+    )
+    following.value = !!result?.following
+  } finally {
+    followBusy.value = false
+  }
 }
 
 const save = async () => {
@@ -358,14 +504,34 @@ onBeforeUnmount(() => {
   if (leaveRoom) leaveRoom()
 })
 
+// Set by the Meta tab just before a rename lands. The watch below resets the
+// tab because a *different* record is a different form — but a rename is the
+// same record with a new id, and being thrown back to Details for pressing
+// Rename is the kind of small rudeness that makes people not press it twice.
+const renamedInPlace = ref(false)
+
+const renamed = (name) => {
+  renamedInPlace.value = true
+  emit('renamed', name)
+}
+
 watch(
   () => props.record,
   () => {
     enterRoom()
-    tab.value = 'fields'
+    if (!renamedInPlace.value) tab.value = 'fields'
+    renamedInPlace.value = false
+    // A different record's tags and shares are a different record's. Cleared
+    // rather than left standing, or the panel shows the last one's for as long
+    // as the request takes.
+    tags.value = []
+    shares.value = {}
+    fileCount.value = null
+    collabLoaded.value = false
     error.value = ''
     Object.keys(form).forEach((key) => delete form[key])
     for (const field of fields.value) form[field.fieldname] = props.record?.[field.fieldname]
+    assigned.value = props.record?._assigned || []
     loadTimeline()
   },
   { immediate: true },

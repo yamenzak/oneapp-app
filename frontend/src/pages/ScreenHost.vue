@@ -297,14 +297,25 @@
             :order-by="order || spec.order_by"
             :favourites="favourites"
             :counted="counted"
-            :group-by="groupBy"
+            :group-by="groupedBy"
+            :board="fetchedBoard || spec.board || {}"
+            :cards="fetchedCards || spec.cards || {}"
+            :space-code="spaceCode"
+            :layout="spec.layout || ''"
+            :overrides="dashboardAsked"
             @open="open"
             @like="like"
             @sort="sortBy"
             @favourites="toggleFavourites"
+            @change="writeField"
+            @new="newWith"
           />
 
+          <!-- A dashboard measures every row that matches rather than drawing
+               a page of them, so page sizes, "43 of 43" and Load more are
+               three controls about something it is not doing. -->
           <ListFooter
+            v-if="spec.view_type !== 'dashboard'"
             :count="rows.length"
             :total="total"
             :page-length="pageLength"
@@ -313,7 +324,8 @@
             :loading="loadingMore"
             @more="loadMore"
             @page-length="setPageLength"
-            @columns="showColumns = true"
+            :view-type="spec.view_type"
+            @columns="openSettings"
           />
         </div>
 
@@ -366,6 +378,7 @@
           @saved="recordSaved"
           @reload="reloadRecord"
           @close="closeRecord"
+          @renamed="recordRenamed"
         />
       </template>
     </RecordPane>
@@ -391,6 +404,16 @@
     </template>
   </Dialog>
 
+  <CardSettings
+    v-if="spec?.doctype"
+    v-model="showCards"
+    :spec="spec"
+    :view-type="spec.view_type"
+    :board="fetchedBoard || spec.board || {}"
+    :cards="fetchedCards || spec.cards || {}"
+    @changed="cardsChanged"
+  />
+
   <ColumnPicker
     v-if="spec?.doctype"
     v-model="showColumns"
@@ -407,6 +430,7 @@
     :spec="spec"
     :space-code="spaceCode"
     :screen="spec.screen"
+    :preset="preset"
     @created="created"
   />
 </template>
@@ -433,6 +457,7 @@ import RecordPane from '../components/screen/RecordPane.vue'
 import RecordView from '../components/screen/RecordView.vue'
 import FilterPanel from '../components/screen/FilterPanel.vue'
 import QuickFilters from '../components/screen/QuickFilters.vue'
+import CardSettings from '../components/screen/CardSettings.vue'
 import ColumnPicker from '../components/screen/ColumnPicker.vue'
 import ListFooter from '../components/screen/ListFooter.vue'
 import SelectionBar from '../components/screen/SelectionBar.vue'
@@ -442,7 +467,7 @@ import { session } from '../lib/session'
 import { workspace } from '../lib/workspace'
 import { notifyError, notifySuccess } from '../lib/notify'
 import { screenComponent } from '../screens'
-import { DEFAULT_VIEW_TYPE, VIEW_TYPES, bodyFor } from '../lib/viewTypes'
+import { CARD_VIEW_TYPES, DEFAULT_VIEW_TYPE, VIEW_TYPES, bodyFor } from '../lib/viewTypes'
 import { onDoctypeChange } from '../lib/socket'
 import { valueTheme } from '../lib/fields'
 
@@ -457,7 +482,36 @@ const quickExpanded = ref(false)
 const spec = ref(null)
 const loading = ref(false)
 const showCreate = ref(false)
+// What the create dialog opens with already filled in. Empty for the toolbar's
+// New; a status for a board column's.
+const preset = ref({})
 const showColumns = ref(false)
+const showCards = ref(false)
+
+// One gear, two dialogs. Which one is the body's question, not the footer's:
+// a card view has no column widths and a list has no cards.
+const openSettings = () => {
+  if (CARD_VIEW_TYPES.includes(spec.value?.view_type)) showCards.value = true
+  else showColumns.value = true
+}
+
+// What the reader has said about a card view and not yet saved. Empty until
+// they touch it, so the screen's own answer stands — the same shape the
+// filters and the sort use, and it rides in the same payload.
+//
+// Keyed by view type, the shape the manifest and a saved view both store: a
+// board's card and a grid's card are separate answers, and switching between
+// the two views should not carry one over the other.
+const viewSettings = ref({})
+
+const cardsChanged = (changes) => {
+  const type = spec.value?.view_type || DEFAULT_VIEW_TYPE
+  viewSettings.value = {
+    ...viewSettings.value,
+    [type]: { ...(viewSettings.value[type] || {}), ...changes },
+  }
+  changed()
+}
 // The record that is open, fetched. Null is "no record", which is also what
 // closing one means — there is no second flag, because two of them is how a
 // pane ends up open over nothing.
@@ -493,6 +547,16 @@ const order = ref('')
 const chosenColumns = ref([])
 const favourites = ref(false)
 const groupBy = ref('')
+// The same question, answered by the last page that arrived rather than by the
+// control. See `loadRows`.
+const groupedBy = ref('')
+// The board the last page came back for. Null until one has, which is when the
+// screen's own answer stands.
+const fetchedBoard = ref(null)
+// And what a card says, for the same reason: a chosen card field changes what
+// is fetched, so drawing the new card before its rows arrive is a card of
+// empty fields for as long as the request takes.
+const fetchedCards = ref(null)
 
 const space = computed(() =>
   (session.spaces || []).find((one) => one.space_code === props.spaceCode),
@@ -648,13 +712,39 @@ const sortBy = (fieldname) => {
 // --- what the list is being asked -------------------------------------------
 
 const payload = () => ({
+  // Which way of looking this view is of. Without it every save landed on the
+  // screen's *first* type, so a view saved from the board was filed as a list
+  // view and never appeared in the board's own switcher again.
+  view_type: spec.value?.view_type || DEFAULT_VIEW_TYPE,
   filters: [...quickFilters.value, ...panelFilters.value],
   order_by: order.value,
   columns: chosenColumns.value,
   favourites: favourites.value,
   group_by: groupBy.value,
   page_length: pageLength.value,
+  // Nested by view type, the same shape the manifest uses and the same shape a
+  // saved view stores. Sent whole so that clearing a choice clears it: a
+  // truthiness check would leave the last board field standing after a reset.
+  view_settings: viewSettings.value,
 })
+
+
+/**
+ * What a dashboard is narrowed by, as a value that changes when the filters do.
+ *
+ * The same `payload()` the rows go through, so the charts and the list are
+ * answering one question — but only the parts that decide *which records*.
+ * Columns, widths and what a card carries are about drawing, and a chart that
+ * re-fetched when somebody widened a column would be re-fetching for nothing.
+ *
+ * A computed rather than a call, because the body watches it: a function
+ * returning a fresh object every render is a watcher that never settles.
+ */
+const dashboardAsked = computed(() => ({
+  filters: [...quickFilters.value, ...panelFilters.value],
+  order_by: order.value,
+  favourites: favourites.value,
+}))
 
 
 // --- screens ------------------------------------------------------------------
@@ -849,7 +939,48 @@ const open = (row) => {
 }
 
 const create = () => {
+  preset.value = {}
   showCreate.value = true
+}
+
+// New, from somewhere that already knows part of the answer. A board's column
+// header is the one today: pressing New inside "In Progress" means a record
+// that is in progress, and making the person pick the status they just pressed
+// is the kind of small stupidity that makes a board not worth using.
+const newWith = (values) => {
+  preset.value = values || {}
+  showCreate.value = true
+}
+
+// One field, written from a body, without opening the record.
+//
+// A board's whole reason to exist: dragging a card between columns is a save
+// of the field the columns are. Optimistic on the row so the card stays where
+// it was dropped while the request is in flight, then the list is re-read —
+// the save may have changed more than was sent (a workflow, a fetch_from, a
+// `modified` that reorders the page), and a board showing our guess instead of
+// the server's answer is a board that lies quietly.
+const writeField = async ({ row, field, value }) => {
+  if (!row || !field) return
+  const was = row[field]
+  row[field] = value
+  try {
+    await workspace.saveRecord(props.spaceCode, spec.value.screen, { [field]: value }, row.name)
+  } catch (e) {
+    row[field] = was
+    notifyError(e.message || String(e))
+    return
+  }
+  await loadRows()
+}
+
+// The record's id changed, so the URL is now pointing at something that no
+// longer exists. Replaced rather than pushed: the old id is not a place to go
+// back to, and leaving it in the history is leaving a 404 in it.
+const recordRenamed = async (name) => {
+  if (!name) return
+  await router.replace({ query: { ...route.query, record: name } })
+  await loadRows()
 }
 
 // A record that was just made is a record you want to be in — so the dialog
@@ -971,6 +1102,16 @@ const loadRows = async () => {
     // header list that does not follow leaves a column standing over empty
     // cells.
     columns.value = page?.columns || spec.value.columns || []
+    // What the rows actually came back grouped by, which is not always what
+    // the picker says: pressing Done sets the local answer immediately, and
+    // the list would group the rows it still has — in the old order — into
+    // headings that repeat, for as long as the request takes. The server sorts
+    // by the group column, so the heading appears when the rows sorted for it
+    // do.
+    groupedBy.value = page?.group_by || ''
+    // Same reason as the grouping above: the board the rows were fetched for.
+    fetchedBoard.value = page?.board || null
+    fetchedCards.value = page?.cards || null
     hasMore.value = !!page?.has_more
     countRows()
   } catch (error) {
@@ -1083,7 +1224,9 @@ const discardChanges = async () => {
   resetting.value = true
   try {
     if (!savesIntoView.value && spec.value?.saved) {
-      await workspace.resetLayout(props.spaceCode, spec.value.screen)
+      await workspace.resetLayout(
+        props.spaceCode, spec.value.screen, spec.value.view_type,
+      )
     }
     dirty.value = false
     await load()
@@ -1092,7 +1235,30 @@ const discardChanges = async () => {
   }
 }
 
-const load = async (openWith) => {
+/**
+ * What the reader has asked of the *rows*, as it stands.
+ *
+ * The distinction this turns on is one the reader already makes: a filter, a
+ * sort and "only my favourites" are questions about **which records**, and
+ * columns, widths, pinning, grouping and what a card carries are questions
+ * about **how they are drawn**. Switching from a list to a board changes the
+ * second and not the first — "only the open ones, by priority" is the same
+ * question drawn as columns — so that is what crosses over.
+ *
+ * Only when the switch happens under somebody. Opening a link cold is not
+ * carrying anything, so it gets that view type's own default, which is what a
+ * link should mean.
+ */
+const askedOfRows = () => ({
+  quick: quickFilters.value.map((one) => [...one]),
+  panel: panelFilters.value.map((one) => [...one]),
+  order: order.value,
+  favourites: favourites.value,
+})
+
+const sameRows = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+
+const load = async (openWith, carry = null) => {
   if (!space.value) return
   loading.value = true
   specError.value = ''
@@ -1106,6 +1272,11 @@ const load = async (openWith) => {
     // Seeded from what the screen resolved to, which already includes this
     // person's saved view.
     quickFilters.value = []
+    // Whatever was said about a card and not saved. Cleared with the rest of
+    // the unsaved state: it was said about the view that was open, and opening
+    // another one — a saved view, or a different type — is not a reason to
+    // keep overriding what that one resolved to.
+    viewSettings.value = {}
     panelFilters.value = (spec.value?.saved?.filters || []).map((filter) => [...filter])
     order.value = spec.value?.order_by || ''
     chosenColumns.value = (spec.value?.columns || []).map((c) => ({
@@ -1117,6 +1288,24 @@ const load = async (openWith) => {
     groupBy.value = spec.value?.saved?.group_by || ''
     pageLength.value = spec.value?.page_length || 100
     dirty.value = false
+    drawnAs.value = {
+      screen: spec.value?.screen || '',
+      type: spec.value?.view_type || '',
+    }
+
+    // What the reader was asking of the rows before the view type changed
+    // under them, applied over what this type resolved to — and marked unsaved
+    // where the two differ, so the switcher says "this view, with changes"
+    // rather than showing a filtered board under a view's name that means
+    // something else.
+    if (carry) {
+      const resolved = askedOfRows()
+      quickFilters.value = carry.quick
+      panelFilters.value = carry.panel
+      order.value = carry.order || order.value
+      favourites.value = carry.favourites
+      dirty.value = !sameRows(carry, resolved)
+    }
     follow(spec.value?.doctype || '')
     await loadRows()
   } catch (err) {
@@ -1135,6 +1324,12 @@ const load = async (openWith) => {
 
 // Re-resolved on every screen change: the columns, the filters and what this user
 // may do are all per screen, not per space.
+// What the last render was actually of — the screen, and the way of looking the
+// server settled on, which is not always the one the URL asked for. Only a
+// change of view type carries anything: another screen is another set of
+// records and has nothing to carry.
+const drawnAs = ref({ screen: '', type: '' })
+
 watch(
   [
     () => props.spaceCode,
@@ -1143,7 +1338,16 @@ watch(
     () => route.query.layout,
     () => session.loaded,
   ],
-  () => load(),
+  () => {
+    // Not when a named view is being opened: a view carries its own answers,
+    // and the point of opening one is to see them.
+    const switching =
+      !!spec.value &&
+      !!drawnAs.value.type &&
+      drawnAs.value.screen === (route.query.screen || spec.value.screen) &&
+      !route.query.layout
+    load(undefined, switching ? askedOfRows() : null)
+  },
   { immediate: true },
 )
 

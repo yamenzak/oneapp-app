@@ -58,7 +58,19 @@
         class="grid gap-x-4 gap-y-4"
         :class="GRID[Math.min(section.columns.length, 3)]"
       >
-        <div v-for="(column, at) in section.columns" :key="at" class="flex flex-col gap-4">
+        <!--
+          `min-w-0` because a grid item's minimum width is `auto`, which is its
+          content's minimum — so one wide thing inside a form column makes the
+          whole column that wide and the form runs off the side of the pane.
+          The child table is the thing: a five-column grid is 1200px, and
+          without this it pushed the section, the tab and the pane's own
+          scroller out with it instead of scrolling inside its own box.
+        -->
+        <div
+          v-for="(column, at) in section.columns"
+          :key="at"
+          class="flex min-w-0 flex-col gap-4"
+        >
           <!--
             The field's own icon, in a gutter beside the control rather than
             inside its label. Only some of frappe-ui's controls have a `label`
@@ -78,17 +90,21 @@
             :key="field.fieldname"
             class="flex gap-2"
           >
-            <Icon
-              :name="field.icon"
-              class="mt-5 size-3.5 shrink-0 text-ink-gray-4"
-              :aria-hidden="true"
-            />
+            <!--
+              No icon gutter here any more. The field's type icon goes inside
+              its label — see FieldLabel — because a gutter is a column: it
+              aligned the icon to the *control* rather than to the label, and
+              it indented every label and every input in the form past the
+              section heading, leaving a ragged empty channel down the side.
+            -->
             <FieldControl
-              v-model="values[field.fieldname]"
+              :model-value="values[field.fieldname]"
+              @update:model-value="wrote(field, $event)"
               :field="shaped(field)"
               :space-code="spaceCode"
               :screen="screen"
               :is-new="isNew"
+              :states="states"
               :doctype="doctype"
               :docname="values.name || ''"
               :doc="values"
@@ -145,6 +161,7 @@ import { ref } from 'vue'
 import { Button, Icon, Tooltip } from '@/ui'
 import FieldControl from './FieldControl.vue'
 import { fieldRules, sectionCollapsed } from '../../lib/rules'
+import { workspace } from '../../lib/workspace'
 
 // Indexed by how many columns the section has, because Tailwind needs the
 // class name in the source to emit it — `grid-cols-${n}` is a string that
@@ -160,12 +177,51 @@ const props = defineProps({
   isNew: { type: Boolean, default: false },
   /** What the record is, for the fields that attach files to it. */
   doctype: { type: String, default: '' },
+  /** The doctype's Document States, so a Select's options carry their glyph. */
+  states: { type: Array, default: () => [] },
 })
 
 // The draft, written into per field. A model rather than a prop: the object is
 // the caller's and every control edits one key of it, so passing it down as a
 // prop and writing to it is the mutation eslint is right to refuse.
 const values = defineModel('values', { type: Object, required: true })
+
+/**
+ * A field was written, and a Link may fill in others.
+ *
+ * `fetch_from` on a docfield is `<link fieldname>.<field on the target>`, and
+ * Frappe applies it on save whatever wrote the record. So this changes no
+ * outcome — only when you see it. Without it a form shows an empty Company box,
+ * somebody types into it, and the save quietly replaces what they typed with
+ * the value it was always going to use. The field's note said "From Customer"
+ * and nothing filled it in.
+ *
+ * Best effort, deliberately. A failed lookup leaves the field as it was and the
+ * save still fills it, which is exactly the behaviour that existed before this
+ * function did — so there is nothing here worth interrupting somebody for.
+ */
+const wrote = async (field, next) => {
+  values.value[field.fieldname] = next
+
+  if (!['Link', 'Dynamic Link'].includes(field.fieldtype)) return
+  if (!next) return
+
+  let filled = {}
+  try {
+    filled = await workspace.fetched(props.spaceCode, props.screen, field.fieldname, next)
+  } catch {
+    return
+  }
+
+  for (const [name, spec] of Object.entries(filled || {})) {
+    // Frappe's own rule, and the difference between a convenience and a form
+    // that argues with you: `fetch_if_empty` fills a blank and leaves anything
+    // else alone. Without it, choosing a customer would overwrite the company
+    // name somebody had just corrected by hand.
+    if (spec.only_if_empty && values.value[name]) continue
+    values.value[name] = spec.value
+  }
+}
 
 // `set_only_once` is the doctype saying a field is settled at creation. Only
 // the record knows whether that has happened, so the flag travels on the field

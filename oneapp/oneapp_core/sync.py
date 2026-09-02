@@ -56,6 +56,24 @@ def state() -> dict:
 	return data
 
 
+def granted_doctypes() -> set[str]:
+	"""Every doctype this workspace's own screens show.
+
+	The one answer to "what may this workspace reach", read off the manifest
+	the rail is built from — so a space enabled today brings its doctypes with
+	it and one revoked takes them away. Naming and printing both ask it, and
+	both mean the same thing by it: a settings page that offered every doctype
+	on the site would be offering the platform's own bookkeeping to break.
+	"""
+	found = set()
+	for space in state().get("spaces") or []:
+		for screen in space.get("screens") or []:
+			name = (screen.get("document_type") or "").strip()
+			if name:
+				found.add(name)
+	return found
+
+
 def local_spaces() -> list:
 	"""Spaces this site provides itself, rather than being told about.
 
@@ -107,7 +125,7 @@ def sync_from_control_plane() -> dict:
 		return {"ok": False, "reason": "not_provisioned"}
 
 	try:
-		payload = control_client.sync()
+		payload = control_client.sync(doc.last_notice or None)
 	except control_client.ControlPlaneError as e:
 		# Keep serving the last known good state rather than degrading the site.
 		doc.db_set("last_sync_error", str(e)[:500])
@@ -166,15 +184,207 @@ def sync_from_control_plane() -> dict:
 	sync_branding(tenant)
 	books = sync_books(payload.get("books"))
 	sync_ai(payload.get("ai") or {}, credits)
+	notices = sync_notices(payload.get("notices") or [], payload.get("owner_role"))
+	fixtures = sync_screen_fixtures(_spaces(payload))
 
 	return {
 		"ok": True,
+		"fixtures": fixtures,
 		"spaces": len(_spaces(payload)),
 		"owner_created": created,
 		"members_created": people["created"],
 		"members_disabled": people["disabled"],
 		"books": books,
+		"notices": notices,
 	}
+
+
+# --------------------------------------------------------------------------- #
+# What a space brings with it besides its screens
+#
+# A screen may declare the series its doctype is named by and the print formats
+# it ships. Both are *fixtures*: applied the first time they are seen and never
+# again. That is the whole design, and it is the opposite of everything else in
+# this module — roles, permissions and members are reconciled every sync,
+# because the control plane owns them.
+#
+# These it does not. A series prefix and a print format are things a workspace
+# edits, under Settings, once the app has given it somewhere to start. Applying
+# them on every sync would silently undo an afternoon's work every fifteen
+# minutes, and a customer whose invoice format keeps reverting has no way at all
+# of finding out why.
+# --------------------------------------------------------------------------- #
+
+
+def sync_screen_fixtures(spaces: list) -> dict:
+	"""Apply the naming series and print formats the manifest's screens declare.
+
+	Nothing here is fatal. A space that names a doctype this site does not have
+	is a space whose app is not installed yet, which is ordinary; a format whose
+	layout will not parse is one bad row rather than a failed sync.
+	"""
+	series = formats = 0
+	for space in spaces or []:
+		for screen in space.get("screens") or []:
+			doctype = (screen.get("document_type") or "").strip()
+			if not doctype or not frappe.db.exists("DocType", doctype):
+				continue
+			series += _seed_series(doctype, screen.get("naming_series"))
+			formats += _seed_formats(doctype, screen.get("print_formats"),
+			                         space.get("module"))
+	if series or formats:
+		frappe.db.commit()
+	return {"series": series, "formats": formats}
+
+
+def _seed_series(doctype: str, declared) -> int:
+	"""The prefixes a doctype is named by, if nobody has set any yet.
+
+	"Yet" is read off the field's own options rather than off a marker of ours:
+	a `naming_series` field arrives from its app with whatever that app put
+	there, and a workspace that has since chosen its own has a Property Setter
+	saying so. Either way there is something to compare against, and neither is
+	ours to overwrite.
+	"""
+	wanted = [one.strip() for one in str(declared or "").split("\n") if one.strip()]
+	if not wanted:
+		return 0
+
+	meta = frappe.get_meta(doctype)
+	if not meta.get_field("naming_series"):
+		return 0
+	if frappe.db.exists("Property Setter", {
+		"doc_type": doctype, "field_name": "naming_series", "property": "options",
+	}):
+		return 0
+
+	try:
+		settings = frappe.get_doc("Document Naming Settings")
+		settings.transaction_type = doctype
+		settings.naming_series_options = "\n".join(wanted)
+		settings.update_series()
+	except Exception as raised:
+		frappe.clear_last_message()
+		frappe.log_error(title=f"OneSpace: naming series for {doctype}",
+		                 message=str(raised))
+		return 0
+	return 1
+
+
+def _seed_formats(doctype: str, declared, module: str | None) -> int:
+	"""The print formats a space ships, each created once if it is missing."""
+	from oneapp.oneapp_core import printing
+
+	rows = frappe.parse_json(declared) if isinstance(declared, str) else declared
+	if not isinstance(rows, list):
+		return 0
+
+	made = 0
+	for row in rows[:printing.FORMATS]:
+		if not isinstance(row, dict):
+			continue
+		name = str(row.get("name") or "").strip()[:140]
+		if not name or frappe.db.exists("Print Format", name):
+			continue
+		try:
+			printing.save_format(doctype, name, row.get("layout") or {},
+			                     row.get("setup") or {})
+			if module and frappe.db.exists("Module Def", module):
+				frappe.db.set_value("Print Format", name, "module", module,
+				                    update_modified=False)
+			if row.get("default"):
+				printing.set_default(doctype, name)
+		except Exception as raised:
+			frappe.clear_last_message()
+			frappe.log_error(title=f"OneSpace: print format {name}",
+			                 message=str(raised))
+			continue
+		made += 1
+	return made
+
+
+def sync_notices(notices: list, owner_role: str | None) -> int:
+	"""Turn workspace notices into notifications, and advance the watermark.
+
+	A payment that failed, a quota reached, a workspace restored. These happen
+	on the control plane and are read by people here, and this pull is the only
+	channel between the two — so they arrive with the rest of the state and are
+	written into the framework's own Notification Log, which is where every
+	other notification in this product already lives. One feed, not two.
+
+	The cost of using the channel we have rather than building one: a notice can
+	be up to fifteen minutes late in the app. Every notice that matters is also
+	an email, sent from the control plane the moment it happens, so the late
+	half is the convenience and not the warning.
+
+	**To the owner**, not to everybody. These are about the workspace as an
+	account — its plan, its bill, its storage — and they carry an action only an
+	owner can take. A member told the card was declined has been given somebody
+	else's problem.
+	"""
+	if not notices:
+		return 0
+
+	from frappe.desk.doctype.notification_log.notification_log import (
+		enqueue_create_notification,
+	)
+
+	from oneapp.oneapp_core.notifications import WORKSPACE_TYPE
+
+	owners = _owners(owner_role)
+	written = 0
+	for notice in notices:
+		key = (notice.get("key") or "").strip()
+		if not key:
+			continue
+		if owners:
+			# Frappe's own producer entry point, so a workspace notice is
+			# emailed, deduplicated and swept by exactly the same rules an
+			# assignment is. `dedupe_on` guards the one case the watermark
+			# cannot: a sync that wrote the rows and then failed before saving
+			# where it got to.
+			enqueue_create_notification(
+				owners,
+				{
+					"type": WORKSPACE_TYPE,
+					"title": notice.get("title") or "",
+					"description": notice.get("body") or "",
+					"from_user": None,
+					"link": "/one/account",
+				},
+				dedupe_on=["type", "title", "description"],
+			)
+			written += 1
+		# Advanced whether or not anybody was written to. A workspace with no
+		# owner account yet — the first sync of a new site — must not replay
+		# every notice on the second one.
+		frappe.db.set_value("OneSpace Site State", None, "last_notice", key,
+		                    update_modified=False)
+
+	return written
+
+
+def _owners(owner_role: str | None) -> list[str]:
+	"""Whoever holds the owner role on this site.
+
+	By role rather than by the `owner_email` in the payload, because a workspace
+	can be handed over and the role is what this site actually enforces with —
+	and because two people can hold it.
+	"""
+	if not owner_role:
+		return []
+	holders = frappe.get_all("Has Role", filters={"role": owner_role}, pluck="parent")
+	if not holders:
+		return []
+	# Emails, not names — `enqueue_create_notification` takes "user emails" and
+	# means it: it resolves recipients with `User.email in (...)`. For an
+	# ordinary account the two are the same string, which is why this reads like
+	# a distinction without a difference until the owner is the Administrator,
+	# whose name is `Administrator` and whose email is not. Then the notice is
+	# enqueued, the job succeeds, and nothing is written.
+	return frappe.get_all(
+		"User", filters={"name": ["in", holders], "enabled": 1}, pluck="email"
+	)
 
 
 def sync_backup_request(block: dict) -> None:
@@ -317,13 +527,22 @@ def sync_email_account():
 # What each access level means in DocPerm terms. Three levels rather than a
 # checkbox per permission: the manifest is meant to be readable by whoever
 # decides what an app exposes, and a matrix of eight flags per row is not.
+#
+# `share` rides with Write and above, and not with Read. Frappe gates handing a
+# record to somebody on `has_permission(doctype, "share")`, so without it here
+# every share on every workspace is refused — and it belongs at Write because
+# giving a colleague a record you may edit is part of working with it, while
+# Read is the level that may not give away what it was given.
 ACCESS_LEVELS = {
 	"Read": {"read": 1},
-	"Write": {"read": 1, "write": 1, "create": 1, "print": 1, "email": 1, "export": 1},
+	"Write": {
+		"read": 1, "write": 1, "create": 1,
+		"print": 1, "email": 1, "export": 1, "share": 1,
+	},
 	"Manage": {
 		"read": 1, "write": 1, "create": 1, "delete": 1,
 		"submit": 1, "cancel": 1, "amend": 1,
-		"print": 1, "email": 1, "export": 1, "report": 1,
+		"print": 1, "email": 1, "export": 1, "report": 1, "share": 1,
 	},
 }
 
@@ -458,6 +677,44 @@ def sync_owner(owner: dict, owner_role: str | None, member_role: str | None = No
 
 
 
+def _granted_roles() -> set:
+	"""Every role this app manages on this site.
+
+	Read off the Roles we created rather than off the manifest, so a role that
+	has just been dropped from every space is still recognised as ours and can
+	be taken away from whoever holds it. `desk_access` is 0 on all of them —
+	`ensure_role` is the only thing here that makes one — which is exactly what
+	makes this a safe set to reconcile against.
+	"""
+	return {
+		row["name"]
+		for row in frappe.get_all("Role", filters={"desk_access": 0}, fields=["name"])
+		if row["name"].startswith("OneSpace ")
+	}
+
+
+def _reconcile_app_roles(user, wanted: list, granted: set):
+	"""Give this person exactly the roles the control plane says, and no others.
+
+	Reconciled rather than added, because the interesting case is removal: a
+	member moved off "Sales" keeps selling until something takes the role away,
+	and nothing else on this site is going to.
+
+	Narrowed to `granted` on both sides. Without that, a payload naming
+	"System Manager" would be a workspace owner granting themselves the desk and
+	the signing secret with it — the control plane would never send that, but a
+	permission path that is only safe because of what the sender chooses to send
+	is not a permission path.
+
+	The caller holds the workspace-wide roles out of `granted`: those follow
+	`access`, and reconciling them here would strip the membership marker this
+	function's own caller had just set.
+	"""
+	keep = {role for role in wanted if role in granted}
+	for role in sorted(granted):
+		_set_role(user, role, role in keep)
+
+
 def sync_members(
 	members: list[dict],
 	owner_role: str | None,
@@ -491,6 +748,13 @@ def sync_members(
 		return {"created": [], "disabled": []}
 
 	ensure_role(member_role)
+
+	# Every role the manifest just wrote DocPerms for. Reconciling a person's
+	# roles needs both halves — what they should hold, and what they might be
+	# holding that they should not — and this is the second half. Bounded to
+	# roles the manifest names, so nothing here can add or take away a role
+	# belonging to Frappe, ERPNext or the site's own administrator.
+	granted = _granted_roles()
 
 	owner_email = (owner_email or "").strip().lower()
 	wanted = {}
@@ -527,6 +791,15 @@ def sync_members(
 		_set_role(user, member_role, True)
 		if owner_role:
 			_set_role(user, owner_role, wants_owner)
+
+		# The two workspace-wide roles are decided by `access` just above, not by
+		# the role list, so they are held out of the reconciliation — otherwise
+		# it would take back the membership marker it was just given and disable
+		# the account on the next pass.
+		_reconcile_app_roles(
+			user, member.get("roles") or [],
+			granted - {member_role, owner_role} - {None},
+		)
 
 	# Anyone marked as ours who is no longer on the list. The owner is excluded
 	# by email: they are not a member row, and disabling them would lock the

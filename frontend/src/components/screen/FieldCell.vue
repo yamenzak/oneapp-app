@@ -8,12 +8,26 @@
     from Frappe's word lists otherwise — so a status is not one colour in
     OneSpace and another in the desk.
   -->
+  <!--
+    A badge carries a colour and a glyph, both from the same place: the
+    doctype's own `states` where it declares them, Frappe's word lists
+    otherwise. So a status is not one colour in OneSpace and another in the
+    desk, and it is not iconless in one list and iconed in the next.
+
+    `prefix` rather than the label, because the glyph is the value said again
+    rather than something extra to read — it should sit inside the badge, not
+    beside it.
+  -->
   <Badge
     v-if="column.cell === 'badge' && value"
     :theme="valueTheme(value, states)"
     :label="String(value)"
     variant="subtle"
-  />
+  >
+    <template #prefix>
+      <Icon :name="valueIcon(value, states)" class="size-3" :aria-hidden="true" />
+    </template>
+  </Badge>
 
   <span v-else-if="column.cell === 'check'" class="text-ink-gray-7">
     <Icon
@@ -61,6 +75,28 @@
     {{ value }}
   </span>
 
+  <!--
+    Tags. Badges rather than text, because a tag is a thing you scan a column
+    for rather than read — and grey, all of them, because a tag is the
+    workspace's own word and colouring it would be inventing a meaning the
+    person who typed it did not give it.
+
+    The overflow is counted rather than wrapped: a row is one line high, and a
+    record with nine tags would otherwise push every other row's baseline down.
+  -->
+  <div v-else-if="column.cell === 'tags'" class="flex min-w-0 items-center gap-1">
+    <Badge
+      v-for="tag in shownTags"
+      :key="tag"
+      :label="tag"
+      theme="gray"
+      variant="subtle"
+    />
+    <Tooltip v-if="moreTags.length" :text="moreTags.join(', ')">
+      <span class="shrink-0 text-p-xs text-ink-gray-5">+{{ moreTags.length }}</span>
+    </Tooltip>
+  </div>
+
   <!-- Right-aligned, because a column of numbers that does not line up is a
        column nobody can scan. -->
   <span
@@ -82,13 +118,13 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Badge, Icon, Avatar, Rating } from '@/ui'
+import { Badge, Icon, Avatar, Rating, Tooltip } from '@/ui'
 import RecordChip from './RecordChip.vue'
 import RecordPreview from './RecordPreview.vue'
-import { valueTheme } from '../../lib/fields'
-import { formatNumber, plainText } from '../../lib/format'
+import { valueIcon, valueTheme } from '../../lib/fields'
+import { cellText, tagList } from '../../lib/cells'
+import { plainText } from '../../lib/format'
 import { session } from '../../lib/session'
-import { dayjsLocal } from '@/ui'
 
 const props = defineProps({
   column: { type: Object, required: true },
@@ -127,52 +163,25 @@ const target = computed(() => {
 // docfield.
 const formats = computed(() => session.data?.formats || {})
 
+// How many tags fit on one line of a list cell before the rest become a count.
+// Three is what a 200px column holds at the sizes this list uses; past that the
+// row either wraps — which pushes every other row's baseline down — or clips
+// mid-word, and a count is more honest than either.
+const TAGS_SHOWN = 3
+
+const tags = computed(() =>
+  props.column.cell === 'tags' ? tagList(props.value) : [],
+)
+const shownTags = computed(() => tags.value.slice(0, TAGS_SHOWN))
+const moreTags = computed(() => tags.value.slice(TAGS_SHOWN))
+
 const NUMERIC = ['number', 'currency', 'percent', 'duration']
 const numeric = computed(() => NUMERIC.includes(props.column.cell))
 
-const formatted = computed(() => {
-  const raw = props.value
-  if (raw === null || raw === undefined || raw === '') return '—'
-
-  switch (props.column.cell) {
-    case 'date':
-      return dayjsLocal(raw).format('D MMM YYYY')
-    case 'datetime':
-      return dayjsLocal(raw).format('D MMM YYYY, HH:mm')
-    case 'percent':
-      return `${formatNumber(raw, props.column, formats.value)}%`
-    case 'number':
-    case 'currency':
-      return formatNumber(raw, props.column, formats.value)
-    case 'duration':
-      return humanDuration(Number(raw) || 0, props.column)
-    case 'html':
-      // The list is not the place to render markup: a cell is one line, and
-      // stripping is honest where interpreting would be a security decision.
-      return plainText(raw) || '—'
-    default:
-      return String(raw)
-  }
-})
-
-// Frappe's own two flags decide which parts of a duration are worth reading:
-// `hide_days` folds days into hours, `hide_seconds` drops the tail. A field
-// that sets neither reads the way it always did.
-function humanDuration(seconds, column) {
-  if (!seconds) return '—'
-  const days = column.hide_days ? 0 : Math.floor(seconds / 86400)
-  const hours = Math.floor((seconds - days * 86400) / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const rest = seconds % 60
-  return (
-    [
-      days && `${days}d`,
-      hours && `${hours}h`,
-      minutes && `${minutes}m`,
-      !column.hide_seconds && rest && `${rest}s`,
-    ]
-      .filter(Boolean)
-      .join(' ') || (column.hide_seconds ? '0m' : `${seconds}s`)
-  )
-}
+// What the value says, from the one place that answers that — a gallery card
+// draws the same values as pills over a photograph and must not have a second
+// opinion about what a Duration looks like. See `lib/cells.js`.
+const formatted = computed(() =>
+  cellText(props.column, props.value, formats.value, link.value),
+)
 </script>

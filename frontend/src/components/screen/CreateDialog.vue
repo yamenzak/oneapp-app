@@ -11,8 +11,14 @@
   <!-- The doctype's own word for one of these, not the screen's: a screen is
        called "Tasks" and "New Tasks" is not a sentence. It is the same label
        the link picker's quick-create uses. -->
-  <Dialog v-model="open" :title="`New ${spec?.doctype_label || 'record'}`" size="3xl">
-    <form class="flex flex-col gap-4" @submit.prevent="save">
+  <FormDialog
+    v-model="open"
+    :title="`New ${spec?.doctype_label || 'record'}`"
+    size="3xl"
+    :dismissible="!dirty"
+    :close-label="dirty ? 'Discard and close' : 'Close'"
+  >
+    <form class="flex flex-col gap-4" @submit.prevent="save()">
       <!-- The doctype's own tabs and sections. See RecordForm. -->
       <RecordForm
         v-model:values="form"
@@ -23,16 +29,41 @@
       />
       <ErrorMessage v-if="error" :message="error" />
     </form>
+
     <template #actions>
-      <Button variant="solid" label="Create" :loading="saving" @click="save" />
+      <!--
+        Two ways to finish, because one of them is a different intent. Seeding
+        a catalogue — four plans, three regions, a handful of add-ons — is a
+        loop, and a dialog that closes and navigates into the record after each
+        one turns that into open, fill, save, go back, press New.
+
+        Frappe's own quick entry has had this for years, and it is the same
+        button: create, keep the dialog, empty the form.
+      -->
+      <Button
+        v-if="spec?.can_create"
+        label="Create another"
+        :loading="saving === 'another'"
+        :disabled="saving !== ''"
+        @click="save({ another: true })"
+      />
+      <Button
+        variant="solid"
+        label="Create"
+        :loading="saving === 'close'"
+        :disabled="saving !== ''"
+        @click="save()"
+      />
     </template>
-  </Dialog>
+  </FormDialog>
 </template>
 
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
-import { Button, Dialog, ErrorMessage } from '@/ui'
+import { Button, ErrorMessage } from '@/ui'
+import FormDialog from './FormDialog.vue'
 import RecordForm from './RecordForm.vue'
+import { notifySuccess } from '../../lib/notify'
 import { workspace } from '../../lib/workspace'
 
 const props = defineProps({
@@ -40,6 +71,15 @@ const props = defineProps({
   spec: { type: Object, required: true },
   spaceCode: { type: String, required: true },
   screen: { type: String, required: true },
+  /**
+   * Fields the form opens with already filled in, keyed by fieldname.
+   *
+   * The board's New sits inside a column and means "a new one, here" — the
+   * status it lands in is the column it was pressed in, not whatever the
+   * doctype defaults to. Seeded rather than forced: it is an ordinary value in
+   * an ordinary control and the person can change it before saving.
+   */
+  preset: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['update:modelValue', 'created'])
 
@@ -50,7 +90,9 @@ const open = computed({
 
 const form = reactive({})
 const error = ref('')
-const saving = ref(false)
+// Which button is in flight, or ''. Not a boolean: two buttons finish
+// differently and only the one that was pressed should show a spinner.
+const saving = ref('')
 
 // What was actually filled in, and nothing else.
 //
@@ -74,11 +116,33 @@ const filled = () => {
   return values
 }
 
-const save = async () => {
-  saving.value = true
+// Whether there is anything here worth not losing.
+//
+// This is what stops the dialog vanishing on a stray Escape or a click that
+// landed outside it. Empty, it closes as freely as it ever did — a dialog you
+// opened by mistake should not argue with you.
+const dirty = computed(() => Object.keys(filled()).length > 0)
+
+const blank = () => {
+  error.value = ''
+  Object.keys(form).forEach((key) => delete form[key])
+  Object.assign(form, props.preset || {})
+}
+
+const save = async ({ another = false } = {}) => {
+  if (saving.value) return
+  saving.value = another ? 'another' : 'close'
   error.value = ''
   try {
     const made = await workspace.saveRecord(props.spaceCode, props.screen, filled(), null)
+    if (another) {
+      // Stay, and say so: the dialog looks identical after a successful create
+      // and an ignored click, so without the toast there is no way to tell
+      // which one just happened.
+      notifySuccess(`${props.spec?.doctype_label || 'Record'} ${made?.name || ''} created`)
+      blank()
+      return
+    }
     open.value = false
     // Opened straight away: the point of making one is to be in it, and a
     // dialog that closes onto a list leaves the person hunting for the row
@@ -87,15 +151,14 @@ const save = async () => {
   } catch (e) {
     error.value = e.message || String(e)
   } finally {
-    saving.value = false
+    saving.value = ''
   }
 }
 
-// A blank form every time it opens. A dialog that remembers the last attempt
-// is a dialog that quietly creates a second copy of it.
+// A blank form every time it opens — blank being the preset, where there is
+// one. A dialog that remembers the last attempt is a dialog that quietly
+// creates a second copy of it.
 watch(open, (showing) => {
-  if (!showing) return
-  error.value = ''
-  Object.keys(form).forEach((key) => delete form[key])
+  if (showing) blank()
 })
 </script>

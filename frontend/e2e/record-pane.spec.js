@@ -108,7 +108,9 @@ test('a record is made in a dialog and opens into the pane', async ({ page }) =>
 
   const made = `ZZ From the dialog ${Date.now() % 10000}`
   await dialog.getByLabel('Description').fill(made)
-  await dialog.getByRole('button', { name: 'Create' }).click()
+  // `exact`, because the dialog now offers "Create" *and* "Create another" —
+  // a substring match finds both and Playwright's strict mode refuses.
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
 
   // And it opens into the record, because the point of making one is to be in
   // it — a dialog that closes onto a list leaves you hunting for the row.
@@ -133,9 +135,14 @@ test('a record says who made it and what is filed against it', async ({ page }, 
   const pane = page.locator('[data-slot="record-pane"]')
 
   // Who made this and when it last changed: the question every desk sidebar
-  // answers, and the one thing on a record that no field carries.
+  // answers, and the one thing on a record that no field carries. On the Meta
+  // tab, with the id and the picture, because none of the three is a field on
+  // the doctype and a form that ends in its own provenance puts the least
+  // interesting thing where the eye stops.
+  await pane.getByRole('tab', { name: 'Meta' }).click()
   await expect(pane.getByText('Created by')).toBeVisible()
   await expect(pane.getByText('Administrator').first()).toBeVisible()
+  await expect(pane.locator('[data-slot="record-id"]')).toBeVisible()
 
   // Files are Frappe's own File rows, so a file uploaded through an Attach
   // field and a file dropped on the record are one list rather than two.

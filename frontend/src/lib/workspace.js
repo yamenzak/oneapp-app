@@ -129,6 +129,23 @@ export const workspace = {
       { silent: true, method: 'GET' },
     ),
 
+  // What choosing that record fills in elsewhere on the form.
+  //
+  // Frappe's `fetch_from` already applies on save, wherever the write came
+  // from, so this changes no outcome — only when you see it. Without it the
+  // Company box sits empty, somebody types into it, and the save quietly
+  // replaces what they typed with the value it was always going to use.
+  //
+  // `silent`, because a form that fills itself in is a convenience: if the
+  // lookup fails the field stays as it was and the save still fills it, which
+  // is the behaviour that existed before this call did.
+  fetched: (spaceCode, screen, fieldname, value) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.fetched',
+      { space_code: spaceCode, screen, fieldname, value },
+      { silent: true, method: 'GET' },
+    ),
+
   // What creating one of those records would ask for: Frappe's own quick entry,
   // which is the fields a doctype marks `allow_in_quick_entry` plus anything
   // mandatory. Answers `can_create: false` rather than raising when the target
@@ -186,12 +203,286 @@ export const workspace = {
       { successMessage: 'Added' },
     ),
 
+  // Who a record is assigned to, and who it could be.
+  //
+  // Frappe's own model: `_assign` is a list of user ids on the document and a
+  // ToDo sits beside each one, so assigning is how a record reaches somebody's
+  // own list rather than only somebody's avatar. Both halves are the server's
+  // — this sends a set of people and reads back what the document ended up
+  // holding.
+  assignees: (spaceCode, screen, query) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.assignees',
+      { space_code: spaceCode, screen, query },
+      { silent: true, method: 'GET' },
+    ),
+
+  assign: (spaceCode, screen, name, users) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.assign',
+      { space_code: spaceCode, screen, name, users },
+      { silent: true },
+    ),
+
   toggleLike: (spaceCode, screen, name) =>
     callMethod(
       'oneapp.oneapp_core.spaceview.toggle_like',
       { space_code: spaceCode, screen, name },
       { silent: true },
     ),
+
+  // The numbers behind a screen's dashboard. Its own call rather than part of
+  // the spec: a spec is read on every navigation and this is one aggregate
+  // query per widget.
+  dashboard: (spaceCode, screen, { layout = '', overrides = null } = {}) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.dashboard_data',
+      {
+        space_code: spaceCode,
+        screen,
+        layout: layout || undefined,
+        overrides: overrides ? JSON.stringify(overrides) : undefined,
+      },
+      { silent: true, method: 'GET' },
+    ),
+
+  // --- naming -----------------------------------------------------------
+  //
+  // Frappe's `Document Naming Settings`, gated to the doctypes this
+  // workspace's spaces granted. See `oneapp_core/naming.py`.
+
+  naming: () =>
+    callMethod('oneapp.oneapp_core.workspace.naming', {}, { silent: true, method: 'GET' }),
+
+  setNaming: (doctype, series) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.set_naming',
+      { doctype, series: JSON.stringify(series) },
+      { successMessage: 'Series saved' },
+    ),
+
+  setNamingCounter: (doctype, prefix, value) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.set_naming_counter',
+      { doctype, prefix, value },
+      { successMessage: 'Counter moved' },
+    ),
+
+  namingPreview: (doctype, prefix) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.naming_preview',
+      { doctype, prefix },
+      { silent: true, method: 'GET' },
+    ),
+
+  // --- printing ---------------------------------------------------------
+  //
+  // Frappe renders the format and Frappe makes the PDF; these are the screen's
+  // own gate over both. See `oneapp_core/printing.py`.
+
+  printOptions: (spaceCode, screen, name) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.print_options',
+      { space_code: spaceCode, screen, name },
+      { silent: true, method: 'GET' },
+    ),
+
+  printPreview: (spaceCode, screen, name, { format = '', letterhead = '', language = '' } = {}) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.print_preview',
+      { space_code: spaceCode, screen, name, format, letterhead, language },
+      { silent: true, method: 'GET' },
+    ),
+
+  /**
+   * A URL rather than a call.
+   *
+   * The PDF comes back as a download response with a filename on it, so the
+   * browser should be handed the address and left to do what it does with one
+   * — fetching the bytes and rebuilding a file loses the name and the
+   * progress bar both.
+   */
+  printPdfUrl: (spaceCode, screen, name, { format = '', letterhead = '', language = '' } = {}) => {
+    const asked = new URLSearchParams({
+      space_code: spaceCode,
+      screen,
+      name,
+      format,
+      letterhead,
+      language,
+    })
+    return `/api/method/oneapp.oneapp_core.spaceview.print_pdf?${asked}`
+  },
+
+  // --- print formats and letter heads -------------------------------------
+  //
+  // What is drawn on the page, as against the paper it comes out on — the
+  // paper is a settings group and lives in `SettingsFields`. A drawn format is
+  // a Frappe beta Print Format: our builder writes `format_data` and Frappe's
+  // own generator renders it, so the same format prints identically wherever
+  // it is opened. See `oneapp_core/printing.py`.
+
+  printFormats: (doctype = '') =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.print_formats',
+      { doctype },
+      { silent: true, method: 'GET' },
+    ),
+
+  printPalette: (doctype) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.print_palette',
+      { doctype },
+      { silent: true, method: 'GET' },
+    ),
+
+  printFormat: (name) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.print_format',
+      { name },
+      { silent: true, method: 'GET' },
+    ),
+
+  savePrintFormat: (doctype, label, layout, setup, name = '') =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.save_print_format',
+      {
+        doctype,
+        label,
+        layout: JSON.stringify(layout),
+        setup: JSON.stringify(setup || {}),
+        name,
+      },
+      { successMessage: 'Format saved' },
+    ),
+
+  deletePrintFormat: (name) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.delete_print_format',
+      { name },
+      { successMessage: 'Format deleted' },
+    ),
+
+  setDefaultPrintFormat: (doctype, name) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.set_default_print_format',
+      { doctype, name },
+      { successMessage: 'Default set' },
+    ),
+
+  printFormatPreview: (doctype, layout, setup, { name = '', letterhead = '' } = {}) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.print_format_preview',
+      {
+        doctype,
+        layout: JSON.stringify(layout),
+        setup: JSON.stringify(setup || {}),
+        name,
+        letterhead,
+      },
+      { silent: true },
+    ),
+
+  letterHeads: () =>
+    callMethod('oneapp.oneapp_core.workspace.letter_heads', {}, { silent: true, method: 'GET' }),
+
+  letterHead: (name) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.letter_head',
+      { name },
+      { silent: true, method: 'GET' },
+    ),
+
+  saveLetterHead: (label, values, name = '') =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.save_letter_head',
+      { label, values: JSON.stringify(values || {}), name },
+      { successMessage: 'Letter head saved' },
+    ),
+
+  deleteLetterHead: (name) =>
+    callMethod(
+      'oneapp.oneapp_core.workspace.delete_letter_head',
+      { name },
+      { successMessage: 'Letter head deleted' },
+    ),
+
+  // --- tags and sharing ---------------------------------------------------
+  //
+  // Frappe's `_user_tags` and `DocShare`, screen-gated. See
+  // `oneapp_core/collab.py` for what each one is and why neither is ours.
+
+  tags: (spaceCode, screen, name) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.tags',
+      { space_code: spaceCode, screen, name },
+      { silent: true, method: 'GET' },
+    ),
+
+  tagOptions: (spaceCode, screen, name, query = '') =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.tag_options',
+      { space_code: spaceCode, screen, name, query },
+      { silent: true, method: 'GET' },
+    ),
+
+  // Silent: the badge appearing is the confirmation, and a toast for every
+  // tag is a toast for something nobody was unsure about.
+  setTag: (spaceCode, screen, name, tag, on) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.set_tag',
+      { space_code: spaceCode, screen, name, tag, on: on ? 1 : 0 },
+      { silent: true },
+    ),
+
+  shares: (spaceCode, screen, name) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.shares',
+      { space_code: spaceCode, screen, name },
+      { silent: true, method: 'GET' },
+    ),
+
+  shareable: (spaceCode, screen, query = '') =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.shareable',
+      { space_code: spaceCode, screen, query },
+      { silent: true, method: 'GET' },
+    ),
+
+  // Not silent, either way. Handing somebody access to a record — or taking it
+  // back — is the kind of change you want told you happened.
+  setShare: (spaceCode, screen, name, { user = null, everyone = 0, level = 'read' }) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.set_share',
+      { space_code: spaceCode, screen, name, user, everyone, level },
+      { successMessage: 'Shared' },
+    ),
+
+  unshare: (spaceCode, screen, name, { user = null, everyone = 0 }) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.unshare',
+      { space_code: spaceCode, screen, name, user, everyone },
+      { successMessage: 'Stopped sharing' },
+    ),
+
+  // Give a record a different id. Not silent: a rename is the one edit that
+  // changes what everything else points at, and it deserves saying so.
+  rename: (spaceCode, screen, name, newName) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.rename',
+      { space_code: spaceCode, screen, name, new_name: newName },
+      { successMessage: 'Renamed' },
+    ),
+
+  // Follow this record, or stop. Not silent: unlike a like, nothing on the
+  // screen changes to prove it worked — the whole result is a notification
+  // that has not happened yet — so the toast is the confirmation.
+  toggleFollow: (spaceCode, screen, name) =>
+    callMethod('oneapp.oneapp_core.spaceview.toggle_follow', {
+      space_code: spaceCode,
+      screen,
+      name,
+    }),
 
   // What is filed against a record. Frappe's own File rows, so a file uploaded
   // through an Attach field and a file dropped on the record are one list.
@@ -256,10 +547,13 @@ export const workspace = {
       { successMessage: 'This opens the screen now' },
     ),
 
-  resetLayout: (spaceCode, screen) =>
+  // The view type goes with it: a screen has one unnamed default per way of
+  // looking at it, and "undo my tinkering" on the board is not a decision about
+  // the list.
+  resetLayout: (spaceCode, screen, viewType) =>
     callMethod(
       'oneapp.oneapp_core.spaceview.reset_layout',
-      { space_code: spaceCode, screen },
+      { space_code: spaceCode, screen, view_type: viewType || undefined },
       { successMessage: 'Back to the default screen' },
     ),
 

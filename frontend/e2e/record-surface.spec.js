@@ -491,7 +491,7 @@ test('a record can be created from the picker and is adopted as the value', asyn
   // mandatory and nothing else, and the search text is already in it.
   const quick = page.locator('[role="dialog"]')
   await expect(quick.getByLabel('Role Name')).toHaveValue(made)
-  await quick.getByRole('button', { name: 'Create' }).click()
+  await quick.getByRole('button', { name: 'Create', exact: true }).click()
 
   // Created and picked in one move — the point of creating one here was to
   // choose it.
@@ -567,25 +567,31 @@ test('the record shows every field, not the columns someone chose', async ({ pag
   expectNoRealErrors(errors)
 })
 
-test('comments and history are there without an app asking for them', async ({ page }, info) => {
+test('one timeline holds what was said and what changed', async ({ page }, info) => {
   const errors = collectConsoleErrors(page)
   await openRecord(page)
 
   const dialog = page.locator('[data-slot="record-pane"]')
-  await dialog.getByRole('tab', { name: /^Comments/ }).click()
+  await dialog.getByRole('tab', { name: /^Activity/ }).click()
   await expect(dialog.getByPlaceholder('Add a comment')).toBeVisible()
-  // Either comments or the empty state; both are the tab working against real
-  // data. That the round trip works is the next test's job.
-  await expect(dialog.getByText(/No comments|[A-Za-z]/).first()).toBeVisible()
 
-  await info.attach(`comments-${info.project.name}`, {
+  // Every record has one entry whatever else happened to it: it was created.
+  // That is also what makes the timeline start somewhere rather than at
+  // whatever somebody happened to do next.
+  await expect(dialog.locator('[data-activity="created"]')).toBeVisible()
+
+  await info.attach(`activity-${info.project.name}`, {
     body: await page.screenshot(),
     contentType: 'image/png',
   })
 
-  await dialog.getByRole('tab', { name: 'History' }).click()
-  // Either recorded changes or the empty state; both are the tab working.
+  // The two halves are one column, narrowed rather than navigated to.
+  await dialog.getByRole('radio', { name: 'Changes', exact: true }).click()
   await expect(dialog.getByText(/No changes recorded|→/).first()).toBeVisible()
+  await expect(dialog.locator('[data-activity="created"]')).toHaveCount(0)
+
+  await dialog.getByRole('radio', { name: 'Comments', exact: true }).click()
+  await expect(dialog.getByText(/No comments|[A-Za-z]/).first()).toBeVisible()
   expectNoRealErrors(errors)
 })
 
@@ -594,16 +600,24 @@ test('a comment can be added and shows up in the count', async ({ page }) => {
   await openRecord(page)
 
   const dialog = page.locator('[data-slot="record-pane"]')
-  const tab = dialog.getByRole('tab', { name: /^Comments/ })
+  const tab = dialog.getByRole('tab', { name: /^Activity/ })
   const count = async () => Number((await tab.innerText()).replace(/\D/g, '') || 0)
-  const before = await count()
 
+  // Read *after* the timeline has arrived, not before. The badge is filled in
+  // by the same request that fills the tab, so a count taken on the way past
+  // is a count taken from a tab that has not loaded — zero — and then this
+  // waits forever for a total of one on a record with a dozen comments.
   await tab.click()
+  await expect(dialog.locator('[data-activity]').first()).toBeVisible()
+  const before = await count()
   const note = `From the browser pass ${Date.now()}`
   await dialog.getByPlaceholder('Add a comment').fill(note)
   await dialog.getByRole('button', { name: 'Comment' }).click()
 
   await expect(dialog.getByText(note)).toBeVisible()
+  // And it lands in the timeline as a comment, beside the changes rather than
+  // in a tab of its own.
+  await expect(dialog.locator('[data-activity="comment"]').first()).toBeVisible()
   // The count is a badge beside the word, so the tab's text changes with it —
   // up to a hundred, where it stops. Frappe keeps the last hundred comments on
   // the document and the count is theirs, in the desk as here, so a record that
@@ -675,7 +689,10 @@ test('rows can be selected and deleted together', async ({ page, baseURL }, info
 
   // Made through the API rather than the UI: this test is about deleting, and
   // borrowing a fixture row would leave the ones after it with less to look at.
-  const doomed = `Delete me ${Date.now()}`
+  // `ZZ ` on purpose: that is the prefix the fixture's own sweep looks for, so
+  // a run that fails between creating this and deleting it leaves nothing the
+  // next seed cannot clear.
+  const doomed = `ZZ Delete me ${Date.now()}`
   // Frappe rejects a POST without its CSRF token, and `page.request` carries
   // the session cookie but not the token — so ask the page for it.
   await page.goto('/one/space/zzmock')

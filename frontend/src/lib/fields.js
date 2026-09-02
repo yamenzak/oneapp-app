@@ -266,6 +266,24 @@ export const DATA_OPTIONS = {
   "URL": "url"
 }
 
+/**
+ * Cells whose value is a number, and so sits against the right edge.
+ *
+ * By cell rather than by fieldtype: the cell is what already decides how a
+ * value is drawn, so a Currency and an Int are one question here, and a
+ * fieldtype added to the map lands in a bucket without a second list to
+ * remember.
+ */
+export const NUMERIC_CELLS = [
+  "number",
+  "currency",
+  "percent"
+]
+
+export function isNumericCell(cell) {
+  return NUMERIC_CELLS.includes(cell)
+}
+
 /** DocType State's palette, in Badge themes. */
 export const STATE_COLORS = {
   "Blue": "blue",
@@ -334,6 +352,520 @@ const WORD_COLORS = [
     ]
   ]
 ]
+
+/**
+ * The glyphs a status may carry, written as literals so Tailwind emits them.
+ *
+ * A second closed set beside SPACE_ICONS, closed for the same reason and
+ * answering a different question: those say what an app *is*, these say where a
+ * record *stands*.
+ */
+export const STATE_ICONS = [
+  "lucide-circle-check",
+  "lucide-circle-dashed",
+  "lucide-circle-dot",
+  "lucide-loader",
+  "lucide-clock",
+  "lucide-triangle-alert",
+  "lucide-circle-x",
+  "lucide-circle-pause",
+  "lucide-archive",
+  "lucide-trash-2",
+  "lucide-arrow-down-left",
+  "lucide-arrow-up-right",
+  "lucide-tag"
+]
+
+/** Which glyph a state's own words earn, in order — first match wins. */
+const STATE_ICON_WORDS = [
+  [
+    "lucide-circle-x",
+    [
+      "failed",
+      "broken",
+      "cancelled",
+      "canceled",
+      "refused",
+      "rejected",
+      "lost",
+      "abandoned"
+    ]
+  ],
+  [
+    "lucide-trash-2",
+    [
+      "purged",
+      "deleted",
+      "destroyed"
+    ]
+  ],
+  [
+    "lucide-archive",
+    [
+      "archived",
+      "retired",
+      "withdrawn",
+      "expired",
+      "closed",
+      "deprecated",
+      "released",
+      "ignored"
+    ]
+  ],
+  [
+    "lucide-circle-pause",
+    [
+      "suspended",
+      "paused",
+      "held",
+      "on hold",
+      "draining",
+      "maintenance",
+      "past due",
+      "overdue",
+      "blocked"
+    ]
+  ],
+  [
+    "lucide-triangle-alert",
+    [
+      "warned",
+      "review",
+      "over",
+      "full",
+      "attention",
+      "incomplete",
+      "unpaid"
+    ]
+  ],
+  [
+    "lucide-loader",
+    [
+      "provisioning",
+      "running",
+      "creating",
+      "bootstrapping",
+      "restoring",
+      "syncing",
+      "processing",
+      "pending"
+    ]
+  ],
+  [
+    "lucide-clock",
+    [
+      "requested",
+      "awaiting",
+      "queued",
+      "scheduled",
+      "trialing",
+      "trial",
+      "received",
+      "preview"
+    ]
+  ],
+  [
+    "lucide-circle-check",
+    [
+      "active",
+      "succeeded",
+      "success",
+      "completed",
+      "complete",
+      "done",
+      "paid",
+      "ready",
+      "available",
+      "processed",
+      "committed",
+      "claimed",
+      "resumed",
+      "cleared",
+      "taken",
+      "restored",
+      "granted"
+    ]
+  ],
+  [
+    "lucide-circle-dot",
+    [
+      "open",
+      "draft",
+      "new"
+    ]
+  ],
+  [
+    "lucide-arrow-down-left",
+    [
+      "grant",
+      "purchase",
+      "refund",
+      "credit"
+    ]
+  ],
+  [
+    "lucide-arrow-up-right",
+    [
+      "spend",
+      "charge",
+      "debit"
+    ]
+  ]
+]
+
+/**
+ * The icon for one value of a status Select.
+ *
+ * Derived from the words rather than declared, because the alternative is
+ * typing an icon name beside all fifty-odd options and the words already say
+ * it — `Failed` and `Broken` mean the same thing to a reader and should not
+ * need two decisions. A doctype that disagrees declares its own, and that
+ * override arrives on the state itself.
+ *
+ * Never nothing: a Select shown as a badge is a category even where it is not a
+ * status, and a row where half the badges carry an icon reads as broken rather
+ * than as varied. Those get the neutral tag.
+ */
+export function valueIcon(value, states = []) {
+  if (!value) return ''
+
+  const declared = states.find((s) => s.title === value)
+  if (declared?.icon) return declared.icon
+
+  const text = String(value).toLowerCase()
+  for (const [icon, words] of STATE_ICON_WORDS) {
+    if (words.some((word) => text.includes(word))) return icon
+  }
+  return 'lucide-tag'
+}
+
+/**
+ * The glyphs a tab may carry, written as literals so Tailwind emits them.
+ *
+ * A third closed set, for the same build-time reason as the other two. Frappe
+ * has no icon property on a Tab Break — a doctype's tabs are a label and
+ * nothing else — so this is how a form laid out by somebody who never heard of
+ * OneSpace still gets a strip of tabs that reads as one.
+ */
+export const TAB_ICONS = [
+  "lucide-list",
+  "lucide-link",
+  "lucide-info",
+  "lucide-sticky-note",
+  "lucide-message-circle",
+  "lucide-history",
+  "lucide-activity",
+  "lucide-paperclip",
+  "lucide-settings",
+  "lucide-shield",
+  "lucide-users",
+  "lucide-map-pin",
+  "lucide-calculator",
+  "lucide-banknote",
+  "lucide-calendar",
+  "lucide-package",
+  "lucide-file-text",
+  "lucide-mail",
+  "lucide-bell",
+  "lucide-plug",
+  "lucide-ruler",
+  "lucide-panel-top"
+]
+
+/** Which glyph a tab's own words earn, in order — first match wins. */
+const TAB_ICON_WORDS = [
+  [
+    "lucide-link",
+    [
+      "connection",
+      "link",
+      "related",
+      "reference"
+    ]
+  ],
+  [
+    "lucide-history",
+    [
+      "history",
+      "changes",
+      "audit",
+      "log",
+      "version",
+      "revision"
+    ]
+  ],
+  [
+    "lucide-activity",
+    [
+      "activity",
+      "timeline",
+      "event"
+    ]
+  ],
+  [
+    "lucide-message-circle",
+    [
+      "comment",
+      "discussion",
+      "feedback",
+      "reply"
+    ]
+  ],
+  [
+    "lucide-paperclip",
+    [
+      "file",
+      "attachment",
+      "document",
+      "upload"
+    ]
+  ],
+  [
+    "lucide-shield",
+    [
+      "permission",
+      "role",
+      "access",
+      "security",
+      "sharing"
+    ]
+  ],
+  [
+    "lucide-bell",
+    [
+      "notification",
+      "alert",
+      "reminder",
+      "subscriber"
+    ]
+  ],
+  [
+    "lucide-mail",
+    [
+      "email",
+      "mail",
+      "inbox",
+      "message"
+    ]
+  ],
+  [
+    "lucide-plug",
+    [
+      "integration",
+      "api",
+      "webhook",
+      "connector",
+      "sync"
+    ]
+  ],
+  [
+    "lucide-banknote",
+    [
+      "payment",
+      "pricing",
+      "price",
+      "billing",
+      "currency",
+      "invoice",
+      "credit",
+      "cost",
+      "rate",
+      "amount",
+      "commission",
+      "discount"
+    ]
+  ],
+  [
+    "lucide-calculator",
+    [
+      "accounting",
+      "account",
+      "tax",
+      "total",
+      "charge",
+      "ledger"
+    ]
+  ],
+  [
+    "lucide-package",
+    [
+      "item",
+      "product",
+      "stock",
+      "inventory",
+      "material",
+      "warehouse",
+      "delivery",
+      "shipping"
+    ]
+  ],
+  [
+    "lucide-map-pin",
+    [
+      "address",
+      "location",
+      "region",
+      "territory"
+    ]
+  ],
+  [
+    "lucide-users",
+    [
+      "contact",
+      "people",
+      "member",
+      "team",
+      "user",
+      "party",
+      "participant",
+      "attendee",
+      "guest",
+      "customer",
+      "supplier",
+      "employee",
+      "assign"
+    ]
+  ],
+  [
+    "lucide-calendar",
+    [
+      "date",
+      "schedule",
+      "timing",
+      "period"
+    ]
+  ],
+  [
+    "lucide-ruler",
+    [
+      "dimension",
+      "measurement",
+      "size",
+      "weight"
+    ]
+  ],
+  [
+    "lucide-sticky-note",
+    [
+      "note",
+      "remark",
+      "description",
+      "summary"
+    ]
+  ],
+  [
+    "lucide-settings",
+    [
+      "setting",
+      "preference",
+      "configuration",
+      "option",
+      "advanced",
+      "rule"
+    ]
+  ],
+  [
+    "lucide-info",
+    [
+      "information",
+      "about",
+      "misc",
+      "other",
+      "meta"
+    ]
+  ],
+  [
+    "lucide-file-text",
+    [
+      "print",
+      "template",
+      "content",
+      "text",
+      "letter",
+      "legal",
+      "term",
+      "condition"
+    ]
+  ],
+  [
+    "lucide-list",
+    [
+      "detail",
+      "general",
+      "overview",
+      "main",
+      "basic",
+      "primary"
+    ]
+  ]
+]
+
+const DEFAULT_TAB_ICON = 'lucide-panel-top'
+
+/**
+ * The icon for one tab, by its label.
+ *
+ * `declared` is a manifest's override, keyed by the tab's label — the escape
+ * hatch for a tab whose words say nothing useful. Checked against the closed
+ * set rather than trusted: a name outside it emits no CSS and draws a blank,
+ * which is worse than the derived glyph it replaced.
+ *
+ * Never nothing. A strip where three tabs carry an icon and the fourth does
+ * not reads as a tab that failed to load.
+ */
+export function tabIcon(label, declared = null) {
+  const override = declared?.[label]
+  if (override && TAB_ICONS.includes(override)) return override
+
+  const text = String(label || '').trim().toLowerCase()
+  for (const [icon, words] of TAB_ICON_WORDS) {
+    if (words.some((word) => text.includes(word))) return icon
+  }
+  return DEFAULT_TAB_ICON
+}
+
+/**
+ * The glyphs a timeline entry may carry, written as literals so Tailwind emits
+ * them.
+ *
+ * The fourth closed set. One timeline over a record means a comment and a
+ * field change sit in the same column, and a column of identical avatars makes
+ * two different events look like one.
+ */
+export const ACTIVITY_ICONS = {
+  "change": "lucide-pencil",
+  "comment": "lucide-message-circle",
+  "created": "lucide-circle-plus"
+}
+
+const DEFAULT_ACTIVITY_ICON = 'lucide-dot'
+
+/** The glyph for one kind of timeline entry. */
+export function activityIcon(kind) {
+  return ACTIVITY_ICONS[kind] || DEFAULT_ACTIVITY_ICON
+}
+
+/**
+ * The glyphs a notification may carry.
+ *
+ * Known rather than closed, unlike the four above: `Notification Type` is a
+ * doctype, so a site may add one, and a type nobody has drawn gets the bell.
+ */
+export const NOTIFICATION_ICONS = {
+  "Alert": "lucide-triangle-alert",
+  "Assignment": "lucide-user-check",
+  "Energy Point": "lucide-zap",
+  "Following": "lucide-bell",
+  "Mention": "lucide-at-sign",
+  "Share": "lucide-share-2"
+}
+
+const DEFAULT_NOTIFICATION_ICON = 'lucide-bell'
+
+/** The glyph for one kind of notification. */
+export function notificationIcon(kind) {
+  return NOTIFICATION_ICONS[kind] || DEFAULT_NOTIFICATION_ICON
+}
 
 // Named rather than counted. Stripping this with a hand-written offset is how
 // every FormControl type lost its first letter — "date" became "ate", which is

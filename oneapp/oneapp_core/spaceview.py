@@ -25,7 +25,7 @@ import json
 import frappe
 from frappe import _
 
-from oneapp.oneapp_core import fieldtypes
+from oneapp.oneapp_core import collab, dashboard, fieldtypes, printing
 
 # Fetched on every screen and shown on none. `name` is how a record is opened
 # and saved, and on most doctypes it is a hash — "8eleplcmv6" as the first thing
@@ -341,7 +341,7 @@ def _child(df) -> dict | None:
 	}
 
 
-def _fetch_fields(columns: list[dict]) -> list[str]:
+def _fetch_fields(columns: list[dict], *always: str) -> list[str]:
 	"""The columns that are actually fields on the document.
 
 	`__activity` is a column and not a field; asking the database for it is a
@@ -371,6 +371,13 @@ def _fetch_fields(columns: list[dict]) -> list[str]:
 		c["depends_on_field"] for c in columns
 		if c["fieldtype"] == "Dynamic Link" and c.get("depends_on_field")
 	]
+	# Fields something else on the screen needs, whether or not anybody is
+	# looking at that column: where the record stands, and whatever a board is
+	# making columns of. A reader who dropped the status column from the list
+	# has not stopped a board from being made of it — the same rule a Dynamic
+	# Link's companion field already had. Each is validated before it gets
+	# here, by `_status_field` and by `_board`.
+	wanted += [one for one in always if one]
 	return list(dict.fromkeys(wanted + list(ALWAYS)))
 
 
@@ -437,6 +444,31 @@ META_COLUMN = "__activity"
 MIN_WIDTH = 64
 MAX_WIDTH = 800
 PINS = ("left", "right")
+
+
+# The other column that is not a field. `_user_tags` is a real column on the
+# doctype's own table — Frappe adds it the first time anything on that doctype
+# is tagged — so once it exists it filters, sorts and pages like any other, and
+# a tag is a first-class way to find a record rather than a decoration on one.
+#
+# Offered only where the column exists, because a filter on a column that is
+# not there is a SQL error rather than an empty list. The first tag on a
+# doctype creates it.
+TAGS_COLUMN = "_user_tags"
+
+
+def _tags_column() -> dict:
+	return {
+		"fieldname": TAGS_COLUMN,
+		"label": _("Tags"),
+		"fieldtype": "Data",
+		"options": None,
+		"cell": "tags",
+		"icon": "lucide-tag",
+		"editable": False,
+		"read_only": 1,
+		"width": 200,
+	}
 
 
 def _meta_column() -> dict:
@@ -669,7 +701,18 @@ def _resolve(space_code: str, screen: str | None = None,
 		# that rather than an error, because a stale link is not a failure.
 		"view_types": offered,
 		"view_type": view_type if view_type in offered else offered[0],
+		# Raw here, validated once the columns are known — see `_board`. A
+		# fieldname is only checkable against a field list, and that list is
+		# built forty lines below this.
 		"view_settings": _json(chosen.get("view_settings")),
+		# An icon per tab of the record form, keyed by the tab's label, and an
+		# override rather than the answer: every tab already gets a glyph
+		# derived from its own words in the browser, because Frappe has no icon
+		# property on a Tab Break and a doctype we do not own will never have a
+		# manifest entry. Carried verbatim and checked there against the closed
+		# set the build emits — a name outside it draws nothing at all, so the
+		# derived glyph is the better answer to a typo.
+		"tab_icons": _json(chosen.get("tab_icons")),
 		# The escape hatch, and the reason the manifest is a shortcut rather
 		# than a cage: name a component and none of the rest of this applies.
 		"component": chosen.get("component") or None,
@@ -683,7 +726,7 @@ def _resolve(space_code: str, screen: str | None = None,
 
 	doctype = chosen.get("document_type")
 	if not doctype:
-		resolved["error"] = _("This screen names neither a doctype nor a component.")
+		resolved["error"] = _("This screen has nothing to show yet.")
 		return resolved
 
 	if doctype not in _granted_doctypes(space):
@@ -707,6 +750,8 @@ def _resolve(space_code: str, screen: str | None = None,
 	# field list rather than the manifest's — see `_offerable`. The manifest
 	# decides what is on by default; a person decides what they look at.
 	offerable = [*_columns(meta, _offerable(meta, keep=wanted)), _meta_column()]
+	if collab.has_tags_column(meta.name):
+		offerable.append(_tags_column())
 	offered = {c["fieldname"]: c for c in offerable}
 	# What the list may draw, which is not everything the record may show.
 	listable = {name: c for name, c in offered.items() if c.get("list_ok", True)}
@@ -738,7 +783,9 @@ def _resolve(space_code: str, screen: str | None = None,
 		**presentation(meta),
 		# What to ask the database for: the columns that are fields, plus the
 		# identity that is never one. Activity is neither.
-		"fields": _fetch_fields(columns),
+		# Replaced below, once the board is resolved. Set here so the key exists
+		# in the same place as everything else the screen answers with.
+		"fields": _fetch_fields(columns, _status_field(chosen, offered)),
 		"filters": _json(chosen.get("filters")),
 		"order_by": chosen.get("order_by") or _default_order(meta),
 		# How many rows a page is, and what the footer may offer instead. The
@@ -761,11 +808,49 @@ def _resolve(space_code: str, screen: str | None = None,
 		"form": _form(meta, {
 			c["fieldname"]: c for c in offerable if c["fieldname"] != META_COLUMN
 		}),
-		"can_create": bool(frappe.has_permission(doctype, "create")),
+		# Three answers, and the narrowest wins.
+		#
+		# The permission is the first, and on its own it was the only one — which
+		# is why New sat over the credit ledger, the webhook log and the
+		# provisioning queue. `has_permission(create)` is true for all of them:
+		# the code that owns those rows writes them through this same
+		# permission, so taking it away would break the writer to tidy a button.
+		#
+		# `in_create` is Frappe's own answer to exactly that — "User Cannot
+		# Create", a flag that hides New while leaving the permission intact.
+		# The desk reads it in `perm.js` and `toolbar.js`, and now so does this.
+		#
+		# `hide_new` is the manifest's, and it can only narrow: a screen over a
+		# doctype we do not own — ERPNext's, on a tenant site — may still be a
+		# reading surface.
+		"can_create": (
+			bool(frappe.has_permission(doctype, "create"))
+			and not int(getattr(meta, "in_create", 0) or 0)
+			and not int(chosen.get("hide_new") or 0)
+		),
 		"can_write": bool(frappe.has_permission(doctype, "write")),
+		# Frappe's own `print`, which is a permission like any other and which
+		# the manifest's Write and Manage levels both grant. A screen over a
+		# doctype nobody may print draws no printer.
+		"can_print": bool(frappe.has_permission(doctype, "print")),
 		"can_delete": bool(frappe.has_permission(doctype, "delete")),
+		# Frappe's own gate, and the whole of it: `allow_rename` on the doctype
+		# plus write on the document. A doctype that names its records by hash
+		# or by a series says `allow_rename` is off, and the desk hides its
+		# rename for the same reason — an id somebody chose is a different kind
+		# of thing from an id the framework issued.
+		"can_rename": (
+			bool(int(getattr(meta, "allow_rename", 0) or 0))
+			and bool(frappe.has_permission(doctype, "write"))
+		),
 	})
-	return resolved
+
+	# Now that there are columns to check names against. The screen's own
+	# settings are validated here rather than where they were read, and the
+	# board is resolved from them; a saved view narrows both again in
+	# `_apply_saved`.
+	resolved["view_settings"] = _view_settings(resolved, resolved.get("view_settings"))
+	return _resolve_views(resolved)
 
 
 # What the record form is laid out as, when the doctype says nothing: one tab,
@@ -866,9 +951,22 @@ def _status_field(screen: dict, offered: dict) -> str:
 # drops what is not built, so such a screen opens as a list rather than as
 # nothing. `apps/oneapp/frontend/src/lib/viewTypes.js` is the same list, and a
 # test fails when the two drift.
-VIEW_TYPES = ("list", "board", "calendar", "grid", "map")
-BUILT_VIEW_TYPES = ("list",)
+VIEW_TYPES = ("list", "board", "calendar", "dashboard", "grid", "map")
+BUILT_VIEW_TYPES = ("list", "board", "grid", "dashboard")
 DEFAULT_VIEW_TYPE = "list"
+
+# View types that are a way of reading one field, and are nothing without it.
+# A board is columns of a status: no status field, no columns, and a board of
+# one column called "everything" is not a board. Declaring one without a
+# `status_field` is caught by the manifest check; this is the runtime half of
+# the same rule, because a manifest is not the only way a screen is written.
+NEEDS_STATUS = ("board",)
+
+# And the same rule for the dashboard, which is nothing without something to
+# measure. A screen that offers one and declares no widgets would open on an
+# empty page — so the type is dropped and the screen opens on its list, the
+# way a board is dropped where there is no field to make columns of.
+NEEDS_WIDGETS = ("dashboard",)
 
 
 def _view_types(screen: dict) -> list[str]:
@@ -878,7 +976,42 @@ def _view_types(screen: dict) -> list[str]:
 		for one in str(screen.get("view_types") or "").split(",")
 		if one.strip().lower() in BUILT_VIEW_TYPES
 	]
+	if not _has_column_field(screen):
+		declared = [one for one in declared if one not in NEEDS_STATUS]
+	if not _has_widgets(screen):
+		declared = [one for one in declared if one not in NEEDS_WIDGETS]
 	return list(dict.fromkeys(declared)) or [DEFAULT_VIEW_TYPE]
+
+
+def _has_widgets(screen: dict) -> bool:
+	"""Whether this screen declares anything for a dashboard to draw.
+
+	A declaration check, like `_has_column_field`: whether each widget is
+	*valid* is decided in `_dashboard`, where there are columns to check the
+	fieldnames against.
+	"""
+	settings = _json(screen.get("view_settings"))
+	found = settings.get("dashboard") if isinstance(settings, dict) else None
+	return bool(isinstance(found, dict) and found.get("widgets"))
+
+
+def _has_column_field(screen: dict) -> bool:
+	"""Whether this screen names a field a board could make columns of.
+
+	The `status_field` is the usual answer and the one a manifest should give.
+	A screen may instead name another in its own `view_settings`, which is what
+	a doctype with no status but an obvious grouping field wants — and either
+	way this is a *declaration* check, not a fieldtype one: the fieldtype is
+	checked in `_board`, where there are columns to check it against.
+
+	A reader's own choice does not appear here on purpose. A saved view narrows
+	what a screen offers; it cannot add a view type the screen never offered.
+	"""
+	if (screen.get("status_field") or "").strip():
+		return True
+	settings = _json(screen.get("view_settings"))
+	board = settings.get("board") if isinstance(settings, dict) else None
+	return bool(isinstance(board, dict) and (board.get("column_field") or "").strip())
 
 
 def _json(raw):
@@ -991,6 +1124,7 @@ def rows(space_code: str, screen: str | None = None, limit: int = PAGE,
 	)
 	found = [_with_meta(row) for row in found]
 	_with_links(resolved, found[:limit])
+	_with_people(found[:limit])
 
 	# The columns come back with the rows, not only from `spec`. An unsaved
 	# change to the column list narrows what is fetched, and a header list that
@@ -1001,6 +1135,15 @@ def rows(space_code: str, screen: str | None = None, limit: int = PAGE,
 		"columns": resolved["columns"],
 		"order_by": resolved["order_by"],
 		"group_by": resolved.get("group_by") or "",
+		# The board these rows were fetched for, not the one the screen opened
+		# with. Changing the column field changes which field is fetched, so a
+		# board drawn from the spec while rows arrive for a different field is a
+		# board of empty columns for as long as the request takes.
+		"board": resolved.get("board") or {},
+		# And what a card says, for the same reason: choosing a card field
+		# changes what is fetched, so a card drawn from the spec before the
+		# rows arrive is a card of empty fields.
+		"cards": resolved.get("cards") or {},
 	}
 
 
@@ -1046,8 +1189,26 @@ def record(space_code: str, screen: str, name: str) -> dict:
 
 	found = [_with_meta(row) for row in found]
 	_with_links(resolved, found)
+	_with_people(found)
+	_with_authors(found[0])
 	_with_children(resolved, found[0], name)
 	return found[0]
+
+
+def _with_authors(row: dict) -> None:
+	"""Who made it and who touched it last, as people rather than as ids.
+
+	`owner` and `modified_by` are user ids, and a user id is an email address.
+	Printing one is printing the database's answer to a question that was about
+	a person — so they are resolved to the same face-and-name every other person
+	in this product is drawn as, from the same lookup, in one query for both.
+
+	The ids stay on the row. A person removed from the workspace resolves to
+	nothing, and "created by somebody who is gone" still has to say who.
+	"""
+	found = _users([one for one in (row.get("owner"), row.get("modified_by")) if one])
+	row["_owner"] = found.get(row.get("owner"))
+	row["_editor"] = found.get(row.get("modified_by"))
 
 
 def _with_children(resolved: dict, row: dict, name: str) -> None:
@@ -1123,9 +1284,16 @@ def _total(resolved: dict, filters: list) -> int:
 
 
 # What every list carries beside its columns: when a row last changed, how many
-# comments are on it, and who liked it. Frappe keeps all three on the document,
-# so this costs no extra query.
-META_FIELDS = ("modified", "_comments", "_liked_by")
+# comments are on it, who liked it, and who it is on. Frappe keeps all four on
+# the document, so reading them costs no extra query — resolving `_assign`'s
+# ids into faces costs one for the whole page, in `_with_people`.
+# `_user_tags` rides with them and is *not* consumed by `_with_meta`: it stays
+# on the row under its own name, because it is a column like any other when
+# somebody has added it to the list — and it is on every row regardless, so a
+# card can show a record's tags without the reader having gone to the picker
+# first. Frappe's `db_query` drops it from the field list on a doctype whose
+# table has no such column, so asking for it is always safe.
+META_FIELDS = ("modified", "_comments", "_liked_by", "_assign", "_user_tags")
 
 # Read for a record and never for a row. Who made it and who last touched it is
 # the question every desk sidebar answers, and it is the one thing on a record
@@ -1136,6 +1304,83 @@ META_FIELDS = ("modified", "_comments", "_liked_by")
 # a form that does not know it is looking at one offers every field and has
 # every save refused.
 RECORD_META = ("owner", "creation", "modified_by", "docstatus")
+
+
+def _ids(assigned) -> list[str]:
+	"""`_assign` — a JSON array of user ids — as a list of ids.
+
+	Frappe stores assignment as JSON on the document and keeps a ToDo beside it.
+	Anything else in that column is not an assignment: it is written by the
+	framework, but a doctype whose field somebody edited by hand is still a
+	doctype we have to render.
+	"""
+	try:
+		ids = frappe.parse_json(assigned or "[]")
+	except (TypeError, ValueError):
+		# `_assign` is written by the framework and should always be a JSON
+		# array. Should is not is: a column edited by hand, or a fixture that
+		# put a bare id there, would otherwise take out the whole page rather
+		# than one row's faces.
+		return []
+	if not isinstance(ids, list):
+		return []
+	return [one for one in dict.fromkeys(ids) if isinstance(one, str) and one]
+
+
+def _users(ids: list[str]) -> dict[str, dict]:
+	"""Those ids as people you can look at, keyed by id.
+
+	Resolved into the same three things every other identity in this product is
+	drawn from — a name, a face, and the id underneath — so a stack of
+	assignees, a Link cell and the title column are one rendering.
+
+	One query, never one per id, and never one per row: a page of forty cards
+	is one lookup over the ids on all of them. A user who no longer exists is
+	simply absent from the answer rather than rendering as a blank face —
+	`_assign` is not a foreign key and Frappe does not clean it up when an
+	account goes.
+	"""
+	wanted = list(dict.fromkeys(ids))
+	if not wanted:
+		return {}
+
+	return {
+		row["name"]: {
+			"value": row["name"],
+			"label": row["full_name"] or row["name"],
+			"image": row["user_image"],
+		}
+		for row in frappe.get_all(
+			"User",
+			filters={"name": ["in", wanted]},
+			# `get_all` rather than `get_list`: a name beside a face on a
+			# record you can already read is not a directory, and the
+			# alternative is a reader seeing "assigned to" with nobody in it.
+			fields=["name", "full_name", "user_image"],
+		)
+	}
+
+
+def _people(assigned) -> list[dict]:
+	"""One document's `_assign`, resolved. In the order the document holds them,
+	so the face on the left is the same face on every reload."""
+	ids = _ids(assigned)
+	found = _users(ids)
+	return [found[one] for one in ids if one in found]
+
+
+def _with_people(rows: list[dict]) -> None:
+	"""Who each row is on, in place — one lookup for the page.
+
+	The same shape `_with_links` has and for the same reason. Assignment is the
+	one thing on a row that no field carries and that everybody looks for
+	first, and the naive version of this is `_people` per row: forty rows is
+	forty queries over a table whose ids repeat on almost every one of them.
+	"""
+	wanted = [_ids(row.pop("_assign", None)) for row in rows]
+	found = _users([one for ids in wanted for one in ids])
+	for row, ids in zip(rows, wanted):
+		row["_assigned"] = [found[one] for one in ids if one in found]
 
 
 def _with_links(resolved: dict, rows: list[dict]) -> None:
@@ -1235,6 +1480,10 @@ def _with_meta(row: dict) -> dict:
 		"comments": len(comments) if isinstance(comments, list) else 0,
 		"likes": len(liked) if isinstance(liked, list) else 0,
 		"liked": frappe.session.user in liked if isinstance(liked, list) else False,
+		# Read rather than popped: the same value is the Tags column's cell
+		# when somebody has added that column, and a card's tags when nobody
+		# has. One fetch, two readers, no second opinion about what it says.
+		"tags": collab.parse(row.get("_user_tags")),
 	}
 	return row
 
@@ -1307,7 +1556,7 @@ def save(space_code: str, screen: str, values: str | dict, name: str | None = No
 	if isinstance(values, str):
 		values = frappe.parse_json(values)
 	if not isinstance(values, dict):
-		frappe.throw(_("Expected an object of values."))
+		frappe.throw(_("Those changes could not be read."))
 
 	# The allowlist is the screen. A field the screen does not show is not a field
 	# this screen may write, whatever arrives in the payload.
@@ -1551,7 +1800,7 @@ def link_new(space_code: str, screen: str, fieldname: str, values: str | dict,
 	if isinstance(values, str):
 		values = frappe.parse_json(values)
 	if not isinstance(values, dict):
-		frappe.throw(_("Expected an object of values."))
+		frappe.throw(_("Those changes could not be read."))
 
 	meta = frappe.get_meta(target)
 	allowed = {df.fieldname for df in meta.fields if _quick_entry(df)}
@@ -1720,6 +1969,10 @@ def timeline(space_code: str, screen: str, name: str) -> dict:
 	doc = frappe.get_doc(doctype, name)
 	doc.check_permission("read")
 
+	# Imported here rather than at the top: `notifications` reads screens
+	# through this module, so a module-level import either way is a cycle.
+	from oneapp.oneapp_core import notifications as follow
+
 	comments = frappe.get_all(
 		"Comment",
 		filters={"reference_doctype": doctype, "reference_name": name,
@@ -1759,6 +2012,13 @@ def timeline(space_code: str, screen: str, name: str) -> dict:
 		"likes": liked,
 		"liked": frappe.session.user in liked,
 		"can_comment": True,
+		# Following, on the same request as the likes and for the same reason:
+		# it is the record's social state, the reader is already waiting for
+		# this call, and a second round trip to draw one bell is a second round
+		# trip. `can_follow` because a doctype whose changes are not tracked has
+		# nothing to report, and a control that cannot work should not be drawn.
+		"can_follow": follow.followable(doctype),
+		"following": follow.is_following(doctype, name),
 	}
 
 
@@ -1769,7 +2029,7 @@ def _change(row: dict, resolved: dict) -> dict:
 	gives a customer `grand_total: 120.0 → 140.0` for a field their screen calls
 	"Total"; the labels are already resolved on the columns, so use them.
 	"""
-	labels = {c["fieldname"]: c["label"] for c in resolved.get("columns") or []}
+	columns = {c["fieldname"]: c for c in resolved.get("columns") or []}
 
 	try:
 		data = frappe.parse_json(row.get("data") or "{}")
@@ -1778,11 +2038,16 @@ def _change(row: dict, resolved: dict) -> dict:
 
 	entries = []
 	for fieldname, before, after in (data.get("changed") or []):
-		if fieldname in HIDDEN or fieldname not in labels:
+		column = columns.get(fieldname)
+		if fieldname in HIDDEN or not column:
 			# Only what this screen shows. A change to a field the customer
 			# cannot see reads as noise about something that does not exist.
 			continue
-		entries.append({"label": labels[fieldname], "from": before, "to": after})
+		entries.append({
+			"label": column["label"],
+			"from": _said(column, before),
+			"to": _said(column, after),
+		})
 
 	return {
 		"name": row["name"],
@@ -1790,6 +2055,26 @@ def _change(row: dict, resolved: dict) -> dict:
 		"on": row["creation"],
 		"entries": entries,
 	}
+
+
+# The fieldtypes whose value is markup rather than words. A Version keeps what
+# was stored, so a Text Editor's history is a line of `<p>` tags — which is
+# what the record used to show on its timeline, tags and all.
+MARKUP_TYPES = ("Text Editor", "HTML Editor", "Markdown Editor", "HTML", "Code")
+
+
+def _said(column: dict, value) -> str:
+	"""One side of a change, as a person reads it.
+
+	Only the markup fieldtypes are stripped, and deliberately: a Data field
+	holding `a < b` is a Data field holding `a < b`, and running every value
+	through an HTML stripper to tidy one fieldtype is how that becomes `a `.
+	"""
+	if value is None:
+		return ""
+	if column.get("fieldtype") not in MARKUP_TYPES:
+		return value
+	return frappe.utils.strip_html(str(value)).strip()
 
 
 # What a File row carries that is worth showing. `file_size` in bytes, because
@@ -1945,6 +2230,425 @@ def toggle_like(space_code: str, screen: str, name: str) -> dict:
 	return {"liked": frappe.session.user in after, "likes": after}
 
 
+@frappe.whitelist(methods=["POST"])
+def rename(space_code: str, screen: str, name: str, new_name: str) -> dict:
+	"""Give this record a different id.
+
+	Through `frappe.rename_doc`, which is not a nicety: an id is a foreign key
+	in every Link field pointing at it, in `_assign`, in every Comment, File,
+	ToDo, Version and Document Follow row that references it, and in the child
+	tables it parents. The framework's own rename updates all of them in one
+	transaction. An `UPDATE ... SET name` would leave a workspace full of links
+	to a record that no longer exists.
+
+	Renaming the *title* is not this: the title is an ordinary field on the
+	form, and changing it is a save. This changes the id, which is why it is
+	behind `allow_rename` and lives beside the id rather than beside the title.
+	"""
+	resolved = _resolve(space_code, screen)
+	doctype = resolved.get("doctype")
+	if not doctype:
+		frappe.throw(_("There is nothing to rename here."))
+
+	wanted = (new_name or "").strip()
+	if not wanted:
+		frappe.throw(_("A record needs an id."))
+	if wanted == name:
+		return {"name": name}
+
+	# The screen's own reach, not `get_doc`: a record this screen would not
+	# list is not a record this screen may rename. `record()` already applies
+	# the filters and User Permissions, so an empty answer is a refusal.
+	if not record(space_code, screen, name):
+		frappe.throw(_("There is nothing to rename here."))
+
+	# `allow_rename` is re-read here rather than trusted from the spec the
+	# browser was sent: a flag that decides whether a button is drawn and a
+	# flag that decides whether a write happens have to be the same flag, read
+	# at the same moment.
+	frappe.get_doc(doctype, name).check_permission("write")
+
+	from frappe.model.rename_doc import update_document_title
+
+	# `enqueue=False`: the reader is looking at the record and the URL has to
+	# change to the new id when this answers. Frappe enqueues for the desk
+	# because a rename of something with thousands of links is slow — that is
+	# a real limit and it belongs in the copy beside the control rather than in
+	# a background job whose result nobody is watching for.
+	return {
+		"name": update_document_title(
+			doctype=doctype, docname=name, name=wanted, enqueue=False
+		)
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def toggle_follow(space_code: str, screen: str, name: str) -> dict:
+	"""Follow this record, or stop.
+
+	The store is Frappe's `Document Follow`; the delivery is ours, because the
+	framework only ever built a digest email. See `oneapp_core.notifications`.
+	"""
+	from oneapp.oneapp_core import notifications as follow
+
+	resolved = _resolve(space_code, screen)
+	doctype = resolved.get("doctype")
+	if not doctype:
+		frappe.throw(_("There is nothing to follow here."))
+
+	if not follow.followable(doctype):
+		frappe.throw(_("This kind of record does not report its changes."))
+
+	# Reading the document is the permission: being told when something changes
+	# is exactly as private as being able to look at it.
+	frappe.get_doc(doctype, name).check_permission("read")
+
+	wanted = not follow.is_following(doctype, name)
+	return {"following": follow.set_following(doctype, name, wanted)}
+
+
+# --------------------------------------------------------------------------- #
+# Assignment
+#
+# Frappe's own model, unchanged: `_assign` is a JSON list of user ids on the
+# document, and `frappe.desk.form.assign_to` keeps a ToDo beside each one so the
+# person sees it in their own list. Both halves matter — writing `_assign`
+# directly would put a face on the record and no task in anybody's day — so the
+# framework's functions do the writing here and this only decides who may ask.
+# --------------------------------------------------------------------------- #
+
+# How many people one picker offers. The same bound the link picker uses, for
+# the same reason: a workspace with four hundred users is a scroll, not a list.
+ASSIGNEE_PAGE = 20
+
+
+def _assignable(doctype: str, name: str):
+	"""The document, if this person may assign it.
+
+	Read permission and nothing more, deliberately. Assigning is how work
+	reaches somebody, and a reader who can see a record and cannot ask a
+	colleague to look at it is a reader who sends an email instead. Frappe takes
+	the same line — `assign_to.add` checks share/read, not write — and it runs
+	its own checks under everything below regardless.
+	"""
+	doc = frappe.get_doc(doctype, name)
+	doc.check_permission("read")
+	return doc
+
+
+@frappe.whitelist()
+def assignees(space_code: str, screen: str, query: str = "") -> list[dict]:
+	"""Who this record could be assigned to.
+
+	Everybody who can sign in to *this workspace*: an enabled account holding
+	one of the roles this app manages. Not "everybody with a User row" — a
+	disabled account is not a colleague — and not Frappe's own filter either,
+	which is the mistake this used to make.
+
+	Frappe's assignment dialog asks for `user_type = "System User"`, because on
+	a desk site that separates a colleague from a portal customer. Here it
+	separates nobody from everybody: our roles are created with `desk_access`
+	off — that is what keeps a workspace out of `/app`, DECISIONS §7 — and
+	Frappe recomputes `user_type` from exactly that flag, so **every member of
+	every workspace is a Website User by design**. Copying the desk's filter
+	therefore offered the Administrator and nobody else, on every real
+	workspace, for as long as assignment has existed.
+
+	So the question is asked the way this product answers every other version
+	of it: who holds a role we granted. `_granted_roles` is the same set the
+	permission sync reconciles against.
+
+	Bounded by the screen like every other read, so a space code somebody
+	guessed does not become a directory of the workspace.
+	"""
+	resolved = _resolve(space_code, screen)
+	if not resolved.get("doctype"):
+		return []
+
+	found = frappe.get_all(
+		"User",
+		filters={"enabled": 1, "name": ["in", _colleagues()]},
+		or_filters=(
+			{"full_name": ["like", f"%{query}%"], "name": ["like", f"%{query}%"]}
+			if query else None
+		),
+		fields=["name", "full_name", "user_image"],
+		limit_page_length=ASSIGNEE_PAGE,
+		order_by="full_name asc",
+	)
+	return [
+		{"value": row["name"], "label": row["full_name"] or row["name"],
+		 "image": row["user_image"]}
+		for row in found
+	]
+
+
+def _colleagues() -> list[str]:
+	"""Everybody on this workspace, by the only definition this site has.
+
+	A role this app granted. The owner and the members hold one; the
+	Administrator holds none of them and is added back, because it is the
+	account that sets a workspace up and the one a support session arrives as.
+
+	Guest is excluded by holding no such role, which is the right reason rather
+	than a name check.
+	"""
+	from oneapp.oneapp_core.sync import _granted_roles
+
+	roles = _granted_roles()
+	holders = set(
+		frappe.get_all("Has Role", filters={"role": ["in", list(roles)]}, pluck="parent")
+	) if roles else set()
+	holders.add("Administrator")
+	return sorted(holders)
+
+
+@frappe.whitelist(methods=["POST"])
+def assign(space_code: str, screen: str, name: str, users: str | list) -> dict:
+	"""Set who this record is assigned to, whole.
+
+	A list rather than an add and a remove, because that is what the control
+	above it is: a set of people, edited. The difference is worked out here and
+	handed to Frappe's own `add` and `remove`, so every assignment still writes
+	the ToDo that puts the record in that person's own list — and every
+	unassignment still closes it.
+
+	Re-read at the end rather than reported from what was asked for: an id that
+	is not a user, one Frappe refuses, or a duplicate all end with the document
+	holding something other than the argument, and answering with the argument
+	is how a control ends up out of step with the record it edits.
+	"""
+	resolved = _resolve(space_code, screen)
+	doctype = resolved.get("doctype")
+	if not doctype:
+		frappe.throw(_("There is nothing to assign here."))
+
+	_assignable(doctype, name)
+
+	from frappe.desk.form.assign_to import add as assign_add, remove as assign_remove
+
+	wanted = frappe.parse_json(users) if isinstance(users, str) else (users or [])
+	wanted = [one for one in dict.fromkeys(wanted) if one]
+
+	held = frappe.parse_json(
+		frappe.db.get_value(doctype, name, "_assign") or "[]")
+	held = held if isinstance(held, list) else []
+
+	for one in wanted:
+		if one not in held:
+			assign_add({"doctype": doctype, "name": name, "assign_to": [one]})
+	for one in held:
+		if one not in wanted:
+			assign_remove(doctype, name, one)
+
+	after = frappe.db.get_value(doctype, name, "_assign")
+	return {"assigned": _people(after)}
+
+
+@frappe.whitelist(methods=["GET"])
+def dashboard_data(space_code: str, screen: str | None = None,
+                   overrides: str | dict | None = None,
+                   layout: str | None = None) -> dict:
+	"""The numbers behind one screen's dashboard.
+
+	Its own request, and separate from `spec` on purpose: a spec is read on
+	every navigation and this is one aggregate query per widget. A dashboard
+	that cost nine `GROUP BY`s to open a list would be a dashboard nobody could
+	afford to leave declared.
+
+	Through `_apply_saved` and `_apply_overrides` like the rows are, so a
+	filter somebody set in the toolbar narrows the charts as well as the list.
+	A dashboard that ignored the filter above it would be a dashboard that
+	disagrees with the screen it is on.
+	"""
+	resolved = _apply_overrides(
+		_apply_saved(_resolve(space_code, screen, "dashboard"), layout), overrides
+	)
+	doctype = resolved.get("doctype")
+	widgets = resolved.get("widgets") or []
+	if not doctype or not widgets:
+		return {"widgets": []}
+
+	# The screen's own filters plus whatever is unsaved above it — the same
+	# `_all_filters` the rows go through, so the charts and the list are
+	# answering the same question.
+	filters = _all_filters(resolved, resolved.get("asked") or [])
+	precision = None
+
+	return {
+		"widgets": [
+			{**widget, **dashboard.compute(widget, doctype, filters, precision)}
+			for widget in widgets
+		]
+	}
+
+
+# --------------------------------------------------------------------------- #
+# Printing
+#
+# The rendering is Frappe's and so is the PDF; what is here is the screen.
+# Frappe's own print endpoints take a doctype and a name, and ours take a space
+# and a screen — so a record this screen would not list is not one it prints,
+# and a doctype the space never granted has no route here at all.
+#
+# See `oneapp_core.printing` for what each piece of the stack actually is.
+# --------------------------------------------------------------------------- #
+
+
+@frappe.whitelist(methods=["GET"])
+def print_options(space_code: str, screen: str, name: str) -> dict:
+	"""What this record can be printed as: formats, letter heads, defaults."""
+	doctype = _reachable(space_code, screen, name)
+	return {
+		"formats": printing.formats(doctype),
+		"letter_heads": printing.letter_heads(),
+		"settings": printing.settings(),
+	}
+
+
+@frappe.whitelist(methods=["GET"])
+def print_preview(space_code: str, screen: str, name: str, format: str = "",
+                  letterhead: str = "", language: str = "") -> dict:
+	"""The rendered format, as HTML and its stylesheet.
+
+	HTML back to a browser that will put it in an iframe, which is where the
+	`style` half matters: a print format's CSS is written to win against a
+	blank page, and dropping it into the app's own document would restyle the
+	app. See `PrintDialog`.
+	"""
+	doctype = _reachable(space_code, screen, name)
+	return printing.preview(doctype, name, format, letterhead, language)
+
+
+@frappe.whitelist(methods=["GET"])
+def print_pdf(space_code: str, screen: str, name: str, format: str = "",
+              letterhead: str = "", language: str = ""):
+	"""The same thing as a PDF, downloaded.
+
+	Written into the response rather than returned: a PDF is bytes, and an
+	endpoint that base64s them into JSON asks the browser to rebuild a file it
+	could have been handed.
+	"""
+	doctype = _reachable(space_code, screen, name)
+	content = printing.pdf(doctype, name, format, letterhead, language)
+
+	frappe.local.response.filename = "{0}.pdf".format(
+		str(name).replace(" ", "-").replace("/", "-")
+	)
+	frappe.local.response.filecontent = content
+	frappe.local.response.type = "pdf"
+
+
+# --------------------------------------------------------------------------- #
+# Tags and sharing
+#
+# Both are Frappe's — see `oneapp_core.collab` for what each one actually is
+# and why neither was worth inventing. What is here is the screen: which
+# doctype, and whether this reader may reach this record at all.
+#
+# `record()` rather than `get_doc` for the reach check, in every one of these.
+# A record this screen would not list is not a record this screen may tag or
+# share, and `record()` is the one path that applies the screen's own filters
+# and this person's User Permissions together.
+# --------------------------------------------------------------------------- #
+
+
+def _reachable(space_code: str, screen: str, name: str) -> str:
+	"""The doctype, if this reader may reach this record through this screen."""
+	resolved = _resolve(space_code, screen)
+	doctype = resolved.get("doctype")
+	if not doctype:
+		frappe.throw(_("There are no records on this screen."))
+	if not record(space_code, screen, name):
+		frappe.throw(_("That record is not on this screen."), frappe.PermissionError)
+	return doctype
+
+
+@frappe.whitelist(methods=["GET"])
+def tags(space_code: str, screen: str, name: str) -> dict:
+	"""This record's tags, and what else the workspace calls things."""
+	doctype = _reachable(space_code, screen, name)
+	held = collab.tags_of(doctype, name)
+	return {"tags": held, "options": collab.tag_options(exclude=held)}
+
+
+@frappe.whitelist(methods=["GET"])
+def tag_options(space_code: str, screen: str, name: str, query: str = "") -> list:
+	"""Tags to pick from, as somebody types.
+
+	The workspace's whole vocabulary rather than this doctype's: "urgent" means
+	the same thing on an invoice and on a task, and offering it only where it
+	has been used already is how one word becomes three spellings of it.
+	"""
+	doctype = _reachable(space_code, screen, name)
+	return collab.tag_options(query, exclude=collab.tags_of(doctype, name))
+
+
+@frappe.whitelist(methods=["POST"])
+def set_tag(space_code: str, screen: str, name: str, tag: str,
+            on: str | int = 1) -> dict:
+	"""Put a tag on this record, or take it off.
+
+	One endpoint rather than two: it is a toggle in the UI, the permission is
+	the same, and the answer is the same — the tags as they stand afterwards,
+	re-read rather than reported from the argument.
+	"""
+	doctype = _reachable(space_code, screen, name)
+	held = collab.set_tag(doctype, name, tag, on=frappe.utils.sbool(on))
+	return {"tags": held, "options": collab.tag_options(exclude=held)}
+
+
+@frappe.whitelist(methods=["GET"])
+def shares(space_code: str, screen: str, name: str) -> dict:
+	"""Who this record has been given to, and how far."""
+	doctype = _reachable(space_code, screen, name)
+	return {
+		**collab.shares_of(doctype, name),
+		# Asked here rather than taken from the spec: a control that is drawn
+		# and a write that is allowed have to read the same flag at the same
+		# moment, and `share` is a permission on the doctype like any other.
+		"can_share": bool(frappe.has_permission(doctype, "share", doc=str(name))),
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def set_share(space_code: str, screen: str, name: str, user: str | None = None,
+              everyone: str | int = 0, level: str = "read") -> dict:
+	"""Share it with somebody, or change how far their share goes."""
+	doctype = _reachable(space_code, screen, name)
+	if user and user not in _colleagues():
+		# The same bound the assignment picker uses: sharing is a thing you do
+		# with the people on this workspace, and a share with an account from
+		# somewhere else on the site is a hole rather than a feature.
+		frappe.throw(_("{0} is not on this workspace.").format(user))
+	return {
+		**collab.share(doctype, name, user=user, everyone=everyone, level=level),
+		"can_share": True,
+	}
+
+
+@frappe.whitelist(methods=["POST"])
+def unshare(space_code: str, screen: str, name: str, user: str | None = None,
+            everyone: str | int = 0) -> dict:
+	"""Take a share back."""
+	doctype = _reachable(space_code, screen, name)
+	return {
+		**collab.unshare(doctype, name, user=user, everyone=everyone),
+		"can_share": True,
+	}
+
+
+@frappe.whitelist(methods=["GET"])
+def shareable(space_code: str, screen: str, query: str = "") -> list[dict]:
+	"""Who this record can be shared with: the workspace, minus nobody.
+
+	The same list the assignment picker offers and for the same reason — these
+	are colleagues, and an account that holds no role on any space this
+	workspace granted is not one.
+	"""
+	return assignees(space_code, screen, query)
+
+
 # --------------------------------------------------------------------------- #
 # Saved views, as named layouts
 #
@@ -1983,15 +2687,27 @@ LAYOUT_FIELDS = ("name", "label", "icon", "user", "is_default", "filters", "orde
 # works: it is text, so any of them renders. Frappe CRM tolerates an emoji here
 # for legacy reasons; for us it is the more capable of the two.
 VIEW_ICONS = (
-	"lucide-layout-grid", "lucide-users", "lucide-user-round",
-	"lucide-briefcase", "lucide-file-text", "lucide-receipt",
-	"lucide-wallet", "lucide-shopping-cart", "lucide-package",
-	"lucide-truck", "lucide-factory", "lucide-store", "lucide-calendar",
-	"lucide-clock", "lucide-message-square", "lucide-mail",
-	"lucide-phone", "lucide-chart-line", "lucide-chart-pie",
-	"lucide-database", "lucide-book-open", "lucide-graduation-cap",
-	"lucide-stethoscope", "lucide-wrench", "lucide-shield",
-	"lucide-sparkles",
+	# General
+	"lucide-layout-grid", "lucide-database",
+	"lucide-sparkles", "lucide-shield",
+	# People
+	"lucide-users", "lucide-user-round",
+	"lucide-graduation-cap", "lucide-stethoscope",
+	# Work
+	"lucide-briefcase", "lucide-calendar",
+	"lucide-clock", "lucide-wrench",
+	# Money
+	"lucide-file-text", "lucide-receipt",
+	"lucide-wallet", "lucide-shopping-cart",
+	# Goods
+	"lucide-package", "lucide-truck",
+	"lucide-factory", "lucide-store",
+	# Talking
+	"lucide-message-square", "lucide-mail",
+	"lucide-phone",
+	# Numbers
+	"lucide-chart-line", "lucide-chart-pie",
+	"lucide-book-open",
 )
 
 # Eight code points at most. One emoji is often several — a flag is two, a skin
@@ -2150,16 +2866,36 @@ def _chosen_layout(rows: list[dict], layout: str | None = None):
 	return _default_layout(rows)
 
 
-def _saved(space_code: str, screen: str):
+def _of_type(view_type: str | None):
+	"""A filter value matching the layouts of one view type.
+
+	Empty counts as the default type, in exactly one direction: a row written
+	before view types existed, or by a screen that only ever had one, belongs to
+	the list. `_layouts` says the same thing when it reads them back, and the
+	two have to agree or a save lands on a row the switcher will not show.
+	"""
+	wanted = view_type or DEFAULT_VIEW_TYPE
+	if wanted == DEFAULT_VIEW_TYPE:
+		return ["in", [DEFAULT_VIEW_TYPE, "", None]]
+	return wanted
+
+
+def _saved(space_code: str, screen: str, view_type: str | None = None):
 	"""This person's unnamed default — the one Save writes when nothing is named.
 
 	Kept as its own lookup because "save what I am looking at" has to land on the
 	same row every time, and a named layout is not that row.
+
+	One per *view type*, not one per screen. A screen offering a list and a
+	board has two unnamed defaults, because "what I am looking at" is two
+	different things — and while this was keyed by screen alone, saving on the
+	board rewrote the list's row with the board's columns and re-filed it, so
+	the list quietly lost the answers somebody had saved for it.
 	"""
 	return frappe.db.get_value(
 		"OneSpace Saved View",
 		{"user": frappe.session.user, "space_code": space_code, "screen": screen,
-		 "label": ["in", ["", None]]},
+		 "label": ["in", ["", None]], "view_type": _of_type(view_type)},
 		["name"],
 		as_dict=True,
 	)
@@ -2204,6 +2940,7 @@ def _apply_saved(resolved: dict, layout: str | None = None) -> dict:
 	resolved["group_by"] = ""
 	if not saved or not resolved.get("doctype"):
 		return resolved
+	kept_settings: dict = {}
 
 	offered = {c["fieldname"]: c for c in resolved.get("all_columns") or resolved["columns"]}
 	# Intersected, not substituted: a saved column list that names something the
@@ -2223,6 +2960,20 @@ def _apply_saved(resolved: dict, layout: str | None = None) -> dict:
 
 	resolved["favourites"] = bool(saved.get("favourites"))
 	resolved["group_by"] = _group_by(resolved, saved.get("group_by"))
+
+	# The reader's own answer to "columns of what, and what does a card say".
+	#
+	# Stored by `save_layout` since saved views shipped and read by nothing
+	# until now, which is why a board only ever drew the status field. Merged
+	# over the screen's rather than replacing it: a view that names a column
+	# field and no card fields should keep the manifest's card.
+	kept_settings = _view_settings(resolved, saved.get("view_settings"))
+	if kept_settings:
+		merged = {**(resolved.get("view_settings") or {})}
+		for view_type, settings in kept_settings.items():
+			merged[view_type] = {**(merged.get(view_type) or {}), **settings}
+		resolved["view_settings"] = merged
+		_resolve_views(resolved)
 	resolved["page_length"] = (
 		_page_length(saved.get("page_length")) or resolved.get("page_length") or PAGE
 	)
@@ -2231,6 +2982,7 @@ def _apply_saved(resolved: dict, layout: str | None = None) -> dict:
 		"filters": resolved["asked"],
 		"favourites": resolved["favourites"],
 		"group_by": resolved["group_by"],
+		"view_settings": kept_settings,
 		"order_by": saved.get("order_by") or "",
 		"columns": [
 			{"fieldname": c["fieldname"], "width": c["width"], "pin": c["pin"]}
@@ -2506,6 +3258,17 @@ def _apply_overrides(resolved: dict, overrides) -> dict:
 	if "group_by" in overrides:
 		resolved["group_by"] = _group_by(resolved, overrides.get("group_by"))
 
+	# A board's field changed and not yet saved, through the same door a filter
+	# uses — narrowing only, and re-checked here rather than trusted because it
+	# was checked when it was saved.
+	if "view_settings" in overrides:
+		asked = _view_settings(resolved, overrides.get("view_settings"))
+		merged = {**(resolved.get("view_settings") or {})}
+		for view_type, settings in asked.items():
+			merged[view_type] = {**(merged.get(view_type) or {}), **settings}
+		resolved["view_settings"] = merged
+		_resolve_views(resolved)
+
 	if overrides.get("order_by"):
 		resolved["order_by"] = _safe_order(resolved, overrides["order_by"])
 
@@ -2547,7 +3310,7 @@ def save_layout(space_code: str, screen: str, filters: str | list | dict | None 
 	columns = _placed(offered, columns)
 	filters = _asked_filters(_filterable(resolved), filters)
 
-	doc = _layout_doc(space_code, screen, layout, label)
+	doc = _layout_doc(space_code, screen, layout, label, resolved["view_type"])
 	# Sharing is a permission, so it is checked against what the row will be
 	# rather than what it was: taking a personal layout public is the same
 	# decision as writing a public one.
@@ -2577,7 +3340,13 @@ def save_layout(space_code: str, screen: str, filters: str | list | dict | None 
 		# Which way of looking this view is of. Checked against the screen's own
 		# list rather than taken: a layout tagged with a type the screen does
 		# not offer would be invisible in every switcher.
-		"view_type": resolved["view_type"],
+		#
+		# Settled when the row is made and never rewritten. A view *belongs* to
+		# a view type — renaming one, or sharing it, is not a decision to move
+		# it, and those writes carry no view type of their own. Before this, a
+		# rename re-filed the view under whatever the screen happened to open
+		# with, which for a board view meant it vanished from the board.
+		"view_type": doc.view_type or resolved["view_type"],
 		"view_settings": json.dumps(_view_settings(resolved, view_settings)),
 		"favourites": 1 if frappe.utils.sbool(favourites) else 0,
 		"group_by": _group_by(resolved, group_by),
@@ -2601,10 +3370,16 @@ def save_layout(space_code: str, screen: str, filters: str | list | dict | None 
 def _view_settings(resolved: dict, asked) -> dict:
 	"""What a view type needs that columns and filters do not carry.
 
-	Every value in it that names a field is checked against the screen's own
-	columns, the same way a filter or a sort is — a board's column field is a
-	fieldname reaching a query, and "it came from the settings blob" is not a
-	reason to trust one.
+	Nested by view type — `{"board": {"column_field": "status"}}` — because one
+	screen offers several, and a flat blob makes "which field" ambiguous the
+	moment a calendar wants one too. The same shape in the manifest and in a
+	saved view, so there is one thing to learn.
+
+	Every fieldname in it is checked against the screen's own columns, the same
+	way a filter or a sort is: a board's column field reaches a query, and "it
+	came from the settings blob" has never been a reason to trust one. A key
+	ending in `_field` is one fieldname; one ending in `_fields` is a list of
+	them. Anything else is dropped — this is a validator, not a passthrough.
 	"""
 	if isinstance(asked, str):
 		try:
@@ -2617,26 +3392,199 @@ def _view_settings(resolved: dict, asked) -> dict:
 		return {}
 
 	offered = {c["fieldname"] for c in resolved.get("all_columns") or []}
-	kept = {}
-	for key, value in asked.items():
-		if not isinstance(key, str) or not key.endswith("_field"):
+	kept: dict[str, dict] = {}
+	for view_type, settings in asked.items():
+		if view_type not in VIEW_TYPES or not isinstance(settings, dict):
 			continue
-		if isinstance(value, str) and value in offered:
-			kept[key] = value
+		for key, value in settings.items():
+			if not isinstance(key, str):
+				continue
+			if key == "widgets" and view_type == "dashboard":
+				# The one key that is a list of objects rather than a field or
+				# a list of them. Still a validator and not a passthrough:
+				# `dashboard.shape` drops a widget whose kind, aggregate or
+				# fieldnames are not ones this screen has, and drops it whole
+				# rather than narrowing it to the parts that were valid.
+				widgets = dashboard.shape(value, offered)
+				if widgets:
+					kept.setdefault(view_type, {})["widgets"] = widgets
+			elif key.endswith("_fields") and isinstance(value, list):
+				names = [
+					one for one in dict.fromkeys(value)
+					if isinstance(one, str) and one in offered
+				][:MAX_CARD_FIELDS]
+				if names:
+					kept.setdefault(view_type, {})[key] = names
+			elif key.endswith("_field") and isinstance(value, str) and value in offered:
+				kept.setdefault(view_type, {})[key] = value
 	return kept
 
 
-def _layout_doc(space_code: str, screen: str, layout: str | None, label: str | None):
+# How many fields a board card may carry. A card is a glance: past this it is a
+# record rendered badly, and the person wanting the sixth field wants the record.
+MAX_CARD_FIELDS = 6
+
+# What a board may make columns of.
+#
+# A Select is the obvious one — its options *are* the columns, in the doctype's
+# own order, and they exist whether or not any record is in them. A Link works
+# too and is the one people ask for next ("by assignee", "by customer"), with
+# one difference worth being honest about: its columns are the values actually
+# present on the page, because the alternative is a column for every row of the
+# target doctype and nobody wants four hundred empty ones.
+#
+# Nothing else. A Date wants a calendar, a Currency wants a chart, and a board
+# of two hundred one-card columns is not a board.
+BOARDABLE = ("Select", "Link")
+
+
+def _boardable(column: dict | None) -> bool:
+	return bool(column) and column.get("fieldtype") in BOARDABLE
+
+
+def _board(resolved: dict) -> dict:
+	"""Which field a board draws columns of, and what its cards say.
+
+	Three answers, narrowest last. The screen's `status_field` is the default,
+	because a manifest that offers a board has already said where a record
+	stands. The manifest's own `view_settings` may name another. A saved view
+	may name another again — that is the reader's, and it is why this is
+	resolved here rather than read straight off the screen.
+
+	Empty `column_field` means no board: the type is dropped on the way out and
+	the screen opens as a list, which is what `_view_types` already does for a
+	screen that never had a status field.
+	"""
+	offered = {c["fieldname"]: c for c in resolved.get("all_columns") or []}
+	settings = (resolved.get("view_settings") or {}).get("board") or {}
+
+	asked = settings.get("column_field") or ""
+	status = resolved.get("status_field") or ""
+	# `_view_settings` already checked the name is a column this screen offers;
+	# what it cannot check is that a board can be made of it, because that is a
+	# question about the fieldtype rather than about the name.
+	column = asked if _boardable(offered.get(asked)) else ""
+	if not column and _boardable(offered.get(status)):
+		column = status
+
+	return {
+		"column_field": column,
+		# Every field a board could be columns of, so the picker offers them
+		# without asking the doctype a second question.
+		"fields": [
+			{"fieldname": c["fieldname"], "label": c["label"], "fieldtype": c["fieldtype"]}
+			for c in resolved.get("all_columns") or []
+			if _boardable(c) and c.get("list_ok", True)
+		],
+	}
+
+
+# The view types that draw a record as a card rather than as a line.
+#
+# A board and a grid are the same card twice: an identity, then the few fields
+# worth reading without opening the record. What differs is the arrangement —
+# a board buckets its cards by a field and lets you drag one between buckets,
+# a grid lays the same cards out flat — and arrangement is not something a
+# card knows about. `apps/oneapp/frontend/src/lib/cards.js` is the browser's
+# half of exactly this.
+#
+# Each keeps its own list, because the two have different room and different
+# context: a board card sits in a column already labelled with the field it is
+# bucketed by, so repeating that field on it says nothing, and a grid card has
+# no such heading and often wants it.
+CARD_VIEW_TYPES = ("board", "grid")
+
+
+def _cards(resolved: dict) -> dict:
+	"""What a card says, on whichever card-shaped view this is.
+
+	Empty is not "nothing": it is "the browser decides", from the columns the
+	reader is already looking at. That is the right default and the one thing a
+	manifest should not have to repeat — a screen that lists four columns has
+	described its card by listing them.
+
+	`list_ok` is the same rule the column picker uses, and here it is also what
+	keeps the query valid: a child table and an attachment gallery are not
+	fields the database has, and a card field is fetched whether or not it is a
+	column somebody is looking at.
+	"""
+	view_type = resolved.get("view_type") or DEFAULT_VIEW_TYPE
+	if view_type not in CARD_VIEW_TYPES:
+		return {"card_fields": []}
+
+	settings = (resolved.get("view_settings") or {}).get(view_type) or {}
+	offered = {c["fieldname"]: c for c in resolved.get("all_columns") or []}
+	chosen = [
+		one for one in settings.get("card_fields") or []
+		if one in offered and offered[one].get("list_ok", True)
+	]
+	return {"card_fields": chosen[:MAX_CARD_FIELDS]}
+
+
+def _widgets(resolved: dict) -> list[dict]:
+	"""What the dashboard draws, checked against this screen's own columns.
+
+	Only the declaration travels to the browser — a kind, a label, a width, the
+	fieldnames — and never the numbers. A screen's spec is read on every
+	navigation and a dashboard is nine aggregate queries; folding them into it
+	would put nine `GROUP BY`s in front of every list anybody opens. The
+	numbers come from `dashboard()`, once, when the dashboard is the thing
+	being looked at.
+	"""
+	settings = resolved.get("view_settings") or {}
+	found = settings.get("dashboard") if isinstance(settings, dict) else None
+	if not isinstance(found, dict):
+		return []
+
+	offered = {c["fieldname"] for c in resolved.get("all_columns") or []}
+	return dashboard.shape(found.get("widgets"), offered)
+
+
+def _resolve_views(resolved: dict) -> dict:
+	"""Settle what the view types need, and what has to be fetched for them.
+
+	Three callers — the screen's own settings, a saved view's, and a change
+	somebody has made and not saved — and all three change the same three
+	answers together, because they are one answer: which field a board is
+	columns of, what a card says, and therefore what the query asks for.
+
+	The fetch is the part that is easy to forget and silent when it is wrong.
+	A card field nobody has as a column is still a field the card draws, and
+	without it here every such card renders blank in exactly the case somebody
+	went to the trouble of choosing one.
+	"""
+	resolved["board"] = _board(resolved)
+	resolved["cards"] = _cards(resolved)
+	resolved["widgets"] = _widgets(resolved)
+	resolved["fields"] = _fetch_fields(
+		resolved["columns"],
+		resolved.get("status_field") or "",
+		resolved["board"]["column_field"],
+		# What a record *is*, which every surface draws and none of them asked
+		# for. The doctype's own `title_field` and `image_field`: the title cell
+		# reads one and the card reads the other, and neither is a column
+		# unless a manifest happened to list it. Missing, a screen shows a page
+		# of ids and a gallery of empty frames — which is what it did, quietly,
+		# because a doctype whose title field is also a column looks right.
+		resolved.get("title_field") or "",
+		resolved.get("image_field") or "",
+		*resolved["cards"]["card_fields"],
+	)
+	return resolved
+
+
+def _layout_doc(space_code: str, screen: str, layout: str | None, label: str | None,
+                view_type: str | None = None):
 	"""The row a save lands on — an existing one, or a new one."""
 	if layout:
 		doc = frappe.get_doc("OneSpace Saved View", layout)
 		if (doc.space_code, doc.screen) != (space_code, screen):
 			# A layout belongs to one screen. Naming another screen's row would
 			# otherwise move it, silently, out from under whoever saved it.
-			frappe.throw(_("That screen belongs to a different screen."), frappe.PermissionError)
+			frappe.throw(_("That view belongs to a different screen."), frappe.PermissionError)
 		return doc
 	if not label:
-		existing = _saved(space_code, screen)
+		existing = _saved(space_code, screen, view_type)
 		if existing:
 			return frappe.get_doc("OneSpace Saved View", existing["name"])
 	doc = frappe.new_doc("OneSpace Saved View")
@@ -2666,11 +3614,18 @@ def _may_write(doc) -> None:
 
 
 def _only_default(doc) -> None:
-	"""One default per person per screen, and one shared default per screen."""
+	"""One default per person per screen per view type, and one shared each.
+
+	Per view type because a default is "what this screen opens with", and a
+	screen opens differently as a list and as a board. Without it, marking a
+	board view the default un-marked the list's — so the list went back to the
+	manifest's answer because somebody had chosen a favourite board.
+	"""
 	siblings = frappe.get_all(
 		"OneSpace Saved View",
 		filters={"space_code": doc.space_code, "screen": doc.screen,
-		         "user": doc.user or ["in", ["", None]], "is_default": 1},
+		         "user": doc.user or ["in", ["", None]], "is_default": 1,
+		         "view_type": _of_type(doc.view_type)},
 		pluck="name", ignore_permissions=True,
 	)
 	for name in siblings:
@@ -2684,7 +3639,7 @@ def delete_layout(space_code: str, screen: str, layout: str) -> dict:
 	"""Remove a layout. Whose it is decides who may."""
 	doc = frappe.get_doc("OneSpace Saved View", layout)
 	if (doc.space_code, doc.screen) != (space_code, screen):
-		frappe.throw(_("That screen belongs to a different screen."), frappe.PermissionError)
+		frappe.throw(_("That view belongs to a different screen."), frappe.PermissionError)
 	_may_write(doc)
 	frappe.delete_doc("OneSpace Saved View", doc.name, ignore_permissions=True)
 	# Whoever had hidden it is no longer hiding anything. Swept here rather
@@ -2708,7 +3663,7 @@ def hide_layout(space_code: str, screen: str, layout: str) -> dict:
 	"""
 	doc = frappe.get_doc("OneSpace Saved View", layout)
 	if (doc.space_code, doc.screen) != (space_code, screen):
-		frappe.throw(_("That screen belongs to a different screen."), frappe.PermissionError)
+		frappe.throw(_("That view belongs to a different screen."), frappe.PermissionError)
 	if doc.user:
 		frappe.throw(_("That view is yours — delete it rather than hiding it."))
 	if not frappe.db.exists("OneSpace Hidden View",
@@ -2745,7 +3700,7 @@ def default_layout(space_code: str, screen: str, layout: str) -> dict:
 	"""
 	doc = frappe.get_doc("OneSpace Saved View", layout)
 	if (doc.space_code, doc.screen) != (space_code, screen):
-		frappe.throw(_("That screen belongs to a different screen."), frappe.PermissionError)
+		frappe.throw(_("That view belongs to a different screen."), frappe.PermissionError)
 	_may_write(doc)
 	doc.is_default = 1
 	doc.save(ignore_permissions=True)
@@ -2755,13 +3710,15 @@ def default_layout(space_code: str, screen: str, layout: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def reset_layout(space_code: str, screen: str) -> dict:
-	"""Back to what the screen declares.
+def reset_layout(space_code: str, screen: str, view_type: str | None = None) -> dict:
+	"""Back to what the screen declares, for the way you are looking at it.
 
-	Only this person's unnamed default: a named layout is a thing somebody made
-	and is deleted deliberately, not by a button that means "undo my tinkering".
+	Only this person's unnamed default, and only this view type's: a named
+	layout is a thing somebody made and is deleted deliberately rather than by a
+	button that means "undo my tinkering", and the board's tinkering is not the
+	list's.
 	"""
-	existing = _saved(space_code, screen)
+	existing = _saved(space_code, screen, view_type)
 	if existing:
 		frappe.delete_doc("OneSpace Saved View", existing["name"], ignore_permissions=True)
 		frappe.db.commit()
@@ -2873,3 +3830,65 @@ def run_action(space_code: str, screen: str, action: str, name: str | list) -> d
 	method = frappe.get_attr(chosen["method"])
 	results = [method(one) for one in names]
 	return {"ok": True, "results": results}
+
+
+@frappe.whitelist(methods=["GET"])
+def fetched(space_code: str, screen: str, fieldname: str, value: str) -> dict:
+	"""What a Link's choice fills in elsewhere on this form.
+
+	Frappe's `fetch_from` is `<link fieldname>.<field on the target>`, and the
+	server already applies it on save — `Document.set_fetch_from_value` does it
+	whatever wrote the record. So this changes no outcome; it changes *when* you
+	see it. Without it a form shows an empty Company box, you type into it, and
+	the save silently replaces what you typed. The field's note said "From
+	Customer" and nothing filled it in.
+
+	Bounded the same way every other read here is, and it has to be: the value
+	is a record id from a browser.
+
+	  * the source field must be one this screen offers, and a Link — so a
+	    request cannot name any field it likes and read across the site
+	  * the doctype read is the source field's own `options`, never a parameter
+	  * only fields *on this screen* whose `fetch_from` names that source are
+	    answered, so the reply cannot carry a column the screen does not show
+	  * `frappe.db.get_value` runs the caller's own permissions, so a link to a
+	    record they may not read answers nothing rather than leaking it
+
+	The empty dict is a real answer: a Link with nothing fetching from it is
+	most Links.
+	"""
+	resolved = _resolve(space_code, screen)
+	column = _link_column(resolved, fieldname)
+
+	if column.get("fieldtype") not in ("Link", "Dynamic Link"):
+		frappe.throw(_("{0} is not a link.").format(fieldname), frappe.PermissionError)
+
+	target = _link_target(resolved, column)
+	if not target or not value or not frappe.db.exists("DocType", target):
+		return {}
+
+	prefix = f"{fieldname}."
+	wanted = {}
+	for one in resolved.get("all_columns") or resolved.get("columns") or []:
+		source = one.get("fetch_from") or ""
+		if source.startswith(prefix):
+			wanted[one["fieldname"]] = {
+				"field": source[len(prefix):],
+				# The half that decides whether this overwrites what somebody
+				# typed. Frappe's own rule: `fetch_if_empty` means fill a blank
+				# and leave anything else alone.
+				"only_if_empty": bool(one.get("fetch_if_empty")),
+			}
+
+	if not wanted:
+		return {}
+
+	# One read for every field, rather than one read per field.
+	fields = sorted({spec["field"] for spec in wanted.values()})
+	row = frappe.db.get_value(target, value, fields, as_dict=True) or {}
+
+	return {
+		fieldname: {"value": row.get(spec["field"]), "only_if_empty": spec["only_if_empty"]}
+		for fieldname, spec in wanted.items()
+		if spec["field"] in row
+	}
