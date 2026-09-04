@@ -225,6 +225,90 @@ test('a tracking pixel does not load itself', async ({ page, baseURL }, info) =>
   expectNoRealErrors(errors)
 })
 
+test('a forward carries the message, its files and nobody on the To', async ({
+  page,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name === 'mobile', 'three columns are a desktop layout')
+  const errors = collectConsoleErrors(page)
+
+  await signIn(page, baseURL)
+  await page.goto('/one/mail')
+  await threads(page).filter({ hasText: SUBJECT }).click()
+  await page.locator('[data-slot="mail-forward"]').click()
+
+  // Scoped to the dialog and by role: `getByLabel('To')` also finds "Reply to
+  // all" and "Move to" behind it, which is a lesson about aria-labels rather
+  // than about mail.
+  const compose = page.getByRole('dialog')
+
+  // Built on the server — quoting in the browser would quote the copy with its
+  // remote images held back and send somebody a reply full of empty `<img>`.
+  await expect(compose.getByRole('textbox', { name: 'Subject' }))
+    .toHaveValue(`Fwd: ${SUBJECT}`)
+  await expect(compose.getByRole('textbox', { name: 'To' })).toHaveValue('')
+  await expect(compose).toContainText('wrote:')
+  // The message being forwarded is the newest one in the thread, which is the
+  // one on screen — not the one that started it.
+  await expect(compose).toContainText('glazing line moved')
+
+  await page.keyboard.press('Escape')
+  expectNoRealErrors(errors)
+})
+
+test('a reply goes to the sender, and carries Cc when it is to all', async ({
+  page,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name === 'mobile', 'three columns are a desktop layout')
+  const errors = collectConsoleErrors(page)
+
+  await signIn(page, baseURL)
+  await page.goto('/one/mail')
+  await threads(page).filter({ hasText: SUBJECT }).click()
+
+  await page.locator('[data-slot="mail-reply-all"]').click()
+  const compose = page.getByRole('dialog')
+  await expect(compose.getByRole('textbox', { name: 'To' }))
+    .toHaveValue('hala@client.test')
+  // Cc and Bcc are behind a toggle, opened here because reply-to-all filled
+  // one in — a field with something in it must not be hidden.
+  const cc = compose.getByRole('textbox', { name: 'Cc', exact: true })
+  await expect(cc).toBeVisible()
+  // And never back to an address this person holds: answering yourself is the
+  // oldest bug in mail.
+  await expect(cc).not.toHaveValue(new RegExp(ADDRESS))
+
+  await page.keyboard.press('Escape')
+  expectNoRealErrors(errors)
+})
+
+test('the composer writes prose, not a textarea', async ({ page, baseURL }, info) => {
+  test.skip(info.project.name === 'mobile', 'three columns are a desktop layout')
+  const errors = collectConsoleErrors(page)
+
+  await signIn(page, baseURL)
+  await page.goto('/one/mail')
+  await page.getByRole('button', { name: 'Write' }).click()
+
+  // A real editor: the thing typed into is ProseMirror's, and it has a
+  // toolbar. A paragraph of plain text arrives at the other end as one long
+  // line, which is what a textarea sends.
+  const body = page.getByRole('dialog').locator('.ProseMirror')
+  await expect(body).toBeVisible()
+  await body.click()
+  await page.keyboard.type('Bold this')
+  await page.keyboard.press('Control+A')
+  await page.getByRole('dialog').getByRole('button', { name: /bold/i }).first().click()
+  await expect(body.locator('strong')).toHaveText('Bold this')
+
+  // And a place to put a file on it.
+  await expect(page.locator('[data-slot="mail-attach"]')).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  expectNoRealErrors(errors)
+})
+
 test('anybody may connect the mailbox they already have', async ({ page, baseURL }, info) => {
   test.skip(info.project.name === 'mobile', 'the settings dialog has its own spec')
   const errors = collectConsoleErrors(page)
