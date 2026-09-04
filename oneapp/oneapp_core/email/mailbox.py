@@ -29,7 +29,7 @@ import re
 
 import frappe
 from frappe import _
-from frappe.utils import escape_html
+from frappe.utils import add_to_date, escape_html, now_datetime
 
 # `folder_ops`, not `folders`: this module has its own `folders()` — the rail
 # endpoint — and importing the module under its own name binds the function over
@@ -38,6 +38,7 @@ from frappe.utils import escape_html
 from oneapp.oneapp_core.email import people
 from oneapp.oneapp_core.email import folders as folder_ops
 from oneapp.oneapp_core.email.folders import FOLDER_FIELD, QUIET
+from oneapp.oneapp_core.email.threading import THREAD_FIELD
 
 # `Re:`, `Fwd:`, `FW:`, `RE :`, and the same again nested five deep, which is
 # what a thread looks like after two people and a phone. Stripped repeatedly
@@ -303,12 +304,12 @@ def threads(folder: str = "all", start: int = 0, search: str = "") -> dict:
 	"""
 	held = _held()
 	if not held:
-		return {"threads": [], "more": False}
+		return {"threads": [], "more": False, "next": 0}
 
 	filters, or_filters = _filters(folder)
 
 	if search:
-		filters["subject"] = ("like", f"%{_like(search)}%")
+		filters["name"] = ("in", _matching(search))
 
 	rows = frappe.get_all(
 		"Communication",
@@ -317,7 +318,7 @@ def threads(folder: str = "all", start: int = 0, search: str = "") -> dict:
 		fields=[
 			"name", "subject", "sender", "sender_full_name", "recipients",
 			"communication_date", "sent_or_received", "seen", "reference_doctype",
-			"reference_name", "content",
+			"reference_name", "content", THREAD_FIELD,
 		],
 		order_by="communication_date desc",
 		start=int(start),
@@ -328,13 +329,17 @@ def threads(folder: str = "all", start: int = 0, search: str = "") -> dict:
 	rows = rows[:PAGE]
 
 	seen = _seen_set()
+	starred = _starred_set()
 	# Senders resolved once for the page, not once per row: fifty lookups to
 	# draw one list is how a list that was fast stops being one.
 	who = people.profiles([(row.sender, row.sender_full_name) for row in rows])
 
 	grouped: dict[str, dict] = {}
 	for row in rows:
-		key = normalise(row.subject)
+		# The column where there is one. The fallback is the old subject
+		# grouping, and it is only reached by mail that arrived before the
+		# column existed and before the patch that fills it has run.
+		key = row.get(THREAD_FIELD) or normalise(row.subject)
 		thread = grouped.setdefault(
 			key,
 			{
@@ -354,13 +359,76 @@ def threads(folder: str = "all", start: int = 0, search: str = "") -> dict:
 				"reference_doctype": row.reference_doctype,
 				"reference_name": row.reference_name,
 				"preview": _preview(row.content),
+				"starred": False,
 			},
 		)
 		thread["count"] += 1
 		if row.name not in seen and row.sent_or_received == "Received":
 			thread["unread"] += 1
+		# A conversation is starred if any message in it is: somebody stars the
+		# thread, and which message they were looking at when they did is not
+		# something they should have to remember.
+		if row.name in starred:
+			thread["starred"] = True
 
-	return {"threads": list(grouped.values()), "more": more}
+	return {
+		"threads": list(grouped.values()),
+		"more": more,
+		# Where the next page starts. Messages consumed, not conversations
+		# returned: fifty messages can be twelve conversations, and paging by
+		# what came back would re-read the same rows forever.
+		"next": int(start) + len(rows),
+	}
+
+
+# How many messages a search may consider. The subject-or-body query answers
+# names only and the real query then applies this person's own filter to them,
+# so this is a cost bound and not a permission one — but it is a bound: a search
+# for "the" on a busy site should not build a list of every message ever.
+SEARCH_CEILING = 2000
+
+
+def _matching(text: str) -> list[str]:
+	"""The names of messages whose subject *or* body matches.
+
+	Two OR groups cannot go in one `get_all`: the address scope is already an
+	`or_filters`, and a second one would replace it rather than be added to it —
+	which is the kind of mistake that turns a search into "everybody's mail".
+	So the search runs first and answers names, and the real query filters those
+	names by who is allowed to see them. Nothing leaks, because nothing but ids
+	comes out of here and the gate is downstream.
+	"""
+	like = f"%{_like(text)}%"
+	found = frappe.get_all(
+		"Communication",
+		filters={"communication_type": "Communication", "communication_medium": "Email"},
+		or_filters=[["subject", "like", like], ["content", "like", like]],
+		pluck="name",
+		order_by="communication_date desc",
+		limit_page_length=SEARCH_CEILING,
+	)
+	# Never empty: an `in` on an empty list matches nothing in some engines and
+	# everything in others, and this one stands in front of the whole site.
+	return found or [""]
+
+
+def _in_thread(key: str) -> list[str]:
+	"""Names of messages that could belong to one conversation.
+
+	Names only and unscoped, for the same reason `_matching` is: two OR groups
+	cannot go in one `get_all`, and the address scope already owns the one this
+	query would need. The gate is the caller's, which applies it to these names
+	— so nothing but ids comes out of here.
+	"""
+	like = f"%{_like(key)}%"
+	found = frappe.get_all(
+		"Communication",
+		filters={"communication_type": "Communication", "communication_medium": "Email"},
+		or_filters=[[THREAD_FIELD, "=", key], ["subject", "like", like]],
+		pluck="name",
+		limit_page_length=SEARCH_CEILING,
+	)
+	return found or [""]
 
 
 def _preview(html: str) -> str:
@@ -387,7 +455,11 @@ def thread(key: str, folder: str = "all") -> list[dict]:
 	# the cheap half — it turns "every message I can read" into "the handful
 	# whose subject contains this" — and it cannot be the whole answer, because
 	# a subject containing another subject is not the same conversation.
-	filters["subject"] = ("like", f"%{_like(key)}%")
+	# The conversation column where the message has one, and the old subject
+	# narrowing for anything that predates it. Both, because a thread can hold
+	# messages from either side of the upgrade — the exact check below sorts
+	# them out, as it always did.
+	filters["name"] = ("in", _in_thread(key))
 	rows = frappe.get_all(
 		"Communication",
 		filters=filters,
@@ -399,13 +471,16 @@ def thread(key: str, folder: str = "all") -> list[dict]:
 			# Which mailbox it is in, so filing knows whose server to talk to —
 			# a conversation can span two addresses and only one half of it is
 			# any given server's to move.
-			"email_account", FOLDER_FIELD,
+			"email_account", FOLDER_FIELD, THREAD_FIELD,
 		],
 		order_by="communication_date asc",
 		limit_page_length=200,
 	)
 
-	wanted = [row for row in rows if normalise(row.subject) == key]
+	wanted = [
+		row for row in rows
+		if (row.get(THREAD_FIELD) or normalise(row.subject)) == key
+	]
 	who = people.profiles([(row.sender, row.sender_full_name) for row in wanted])
 	for row in wanted:
 		row["who"] = who.get((row.sender or "").lower(), {})
@@ -463,6 +538,98 @@ def mark_read(names: str | list) -> dict:
 
 	frappe.defaults.set_user_default(SEEN_KEY, ",".join(seen), frappe.session.user)
 	return {"ok": True, "seen": len(seen)}
+
+
+STARRED_KEY = "oneapp_mail_starred"
+
+
+def _starred_set() -> set:
+	raw = frappe.defaults.get_user_default(STARRED_KEY, frappe.session.user) or ""
+	return set(filter(None, raw.split(",")))
+
+
+@frappe.whitelist(methods=["POST"])
+def star(key: str, folder: str = "all", on: int = 1) -> dict:
+	"""Flag a conversation, or take the flag off.
+
+	Per person for the same reason unread is: two people on `sales@` star
+	different things. Where there is a real mailbox behind it the IMAP
+	`\\Flagged` flag goes on too, so the star is the same star in Outlook.
+	"""
+	names = [row["name"] for row in thread(key, folder)]
+	if not names:
+		return {"ok": True, "starred": 0}
+
+	starred = _starred_set()
+	starred = (starred | set(names)) if int(on) else (starred - set(names))
+	if len(starred) > SEEN_LIMIT:
+		starred = set(list(starred)[-SEEN_LIMIT:])
+
+	frappe.defaults.set_user_default(
+		STARRED_KEY, ",".join(sorted(starred)), frappe.session.user
+	)
+	folder_ops.flag(names, bool(int(on)))
+	return {"ok": True, "starred": len(names)}
+
+
+@frappe.whitelist(methods=["POST"])
+def mark_unread(key: str, folder: str = "all") -> dict:
+	"""Put a conversation back to unread.
+
+	The other half of `mark_read`, and the reason both exist: opening a message
+	to see whether it matters is not the same as dealing with it, and every
+	mail client learned to let somebody undo the first.
+	"""
+	names = {row["name"] for row in thread(key, folder)}
+	remaining = _seen_set() - names
+	frappe.defaults.set_user_default(
+		SEEN_KEY, ",".join(sorted(remaining)), frappe.session.user
+	)
+	return {"ok": True, "unread": len(names)}
+
+
+@frappe.whitelist(methods=["POST"])
+def bin(key: str, address: str, folder: str = "all") -> dict:
+	"""Delete a conversation, which means putting it in the mailbox's Trash.
+
+	Not `frappe.delete_doc`. Deleting the document would remove it from the
+	record it is filed against and from everybody else who holds the address,
+	permanently, on a click that every mail client has taught people is
+	reversible. Trash is reversible; emptying it is Frappe's own deletion and
+	is not this button.
+	"""
+	return _into(key, address, folder, "trash", "Trash")
+
+
+@frappe.whitelist(methods=["POST"])
+def archive(key: str, address: str, folder: str = "all") -> dict:
+	"""Out of the inbox and still there, which is what archiving is."""
+	return _into(key, address, folder, "archive", "Archive")
+
+
+def _into(key: str, address: str, folder: str, kind: str, fallback: str) -> dict:
+	"""File a conversation into whichever folder plays a given role.
+
+	The name is the server's, not ours: `classify` read it off the SPECIAL-USE
+	flags, so this lands in `[Gmail]/Bin` or `Deleted Items` or whatever that
+	mailbox actually calls it. Where the mailbox has none — a routed address has
+	no server and so no Trash — one is made, once.
+	"""
+	account = _account_of(address)
+	known = folder_ops.kinds(account.name)
+	name = next((one for one, role in known.items() if role == kind), "")
+
+	if not name:
+		name = fallback
+		if not any(row.folder_name == name for row in account.imap_folder or []):
+			folder_ops.create(account, name)
+		account.db_set(
+			"custom_folder_kinds",
+			frappe.as_json({**known, name: kind}),
+			update_modified=False,
+		)
+
+	return file_thread(key, address, name, folder)
 
 
 @frappe.whitelist(methods=["GET"])
@@ -533,6 +700,12 @@ def send(to: str, subject: str, content: str, sender: str = "",
 			"recipients": to,
 			"cc": cc,
 			"bcc": bcc,
+			# The window in which "Sent" can be taken back. The framework's own
+			# field, and the queue's picker already refuses rows whose
+			# `send_after` has not arrived — so this is a real delay in the
+			# sending and not a countdown in the browser that a closed tab
+			# defeats.
+			"send_after": add_to_date(now_datetime(), seconds=UNDO_SECONDS),
 			**reference,
 		}
 	).insert(ignore_permissions=True)
@@ -546,7 +719,91 @@ def send(to: str, subject: str, content: str, sender: str = "",
 		_carry(doc.name, names)
 
 	doc.send_email()
-	return {"ok": True, "name": doc.name, "attached": len(names)}
+	return {
+		"ok": True,
+		"name": doc.name,
+		"attached": len(names),
+		"undo_seconds": UNDO_SECONDS,
+	}
+
+
+# How long "Sent" stays undoable. Long enough to notice the wrong recipient,
+# short enough that nobody wonders why their mail has not arrived.
+UNDO_SECONDS = 15
+
+
+@frappe.whitelist(methods=["POST"])
+def unsend(name: str) -> dict:
+	"""Take back a message the queue has not sent yet.
+
+	Only while every row for it is still `Not Sent`. Once a row is Sending or
+	Sent the message is somebody else's, and a button that claimed otherwise
+	would be lying about the one thing it exists to promise.
+	"""
+	doc = frappe.get_doc("Communication", name)
+	if (doc.sender or "").lower() not in _held():
+		frappe.throw(_("That is not your message."), frappe.PermissionError)
+
+	rows = frappe.get_all(
+		"Email Queue", filters={"communication": name}, fields=["name", "status"]
+	)
+	if any(row.status != "Not Sent" for row in rows):
+		return {"ok": False, "reason": "gone"}
+
+	for row in rows:
+		frappe.delete_doc("Email Queue", row.name, force=True, ignore_permissions=True)
+	frappe.delete_doc("Communication", name, force=True, ignore_permissions=True)
+	return {"ok": True, "unsent": name}
+
+
+# --------------------------------------------------------------------------- #
+# Drafts
+# --------------------------------------------------------------------------- #
+#
+# A `Communication` with `sent_or_received = "Sent"` and no queue row behind it,
+# marked by a status the framework already has. Not a doctype of our own: a
+# draft becomes the message when it is sent, and two models for one thing means
+# copying between them and losing the attachments on the way.
+
+DRAFT_KEY = "oneapp_mail_draft"
+
+
+@frappe.whitelist(methods=["POST"])
+def keep(values: str | dict) -> dict:
+	"""Hold what somebody has typed, so closing the composer does not lose it.
+
+	One draft per person rather than many: this is the "I closed it by accident"
+	case, not a filing system for half-written mail. It is a user default for
+	the same reason the read receipts are — a table with a row per person for a
+	value only that person reads is a table nobody queries.
+	"""
+	values = frappe.parse_json(values) if isinstance(values, str) else (values or {})
+	kept = {
+		key: values.get(key) or ""
+		for key in ("sender", "to", "cc", "bcc", "subject", "content", "in_reply_to")
+	}
+	kept["attachments"] = values.get("attachments") or []
+	# Nothing to keep is a reason to forget, not to store an empty shell: a
+	# composer opened and closed should not leave a draft behind it.
+	if not any(kept[key] for key in ("to", "cc", "bcc", "subject", "content")):
+		return forget()
+
+	frappe.defaults.set_user_default(
+		DRAFT_KEY, frappe.as_json(kept), frappe.session.user
+	)
+	return {"ok": True}
+
+
+@frappe.whitelist(methods=["GET"])
+def kept() -> dict:
+	raw = frappe.defaults.get_user_default(DRAFT_KEY, frappe.session.user)
+	return frappe.parse_json(raw) if raw else {}
+
+
+@frappe.whitelist(methods=["POST"])
+def forget() -> dict:
+	frappe.defaults.set_user_default(DRAFT_KEY, "", frappe.session.user)
+	return {"ok": True, "forgotten": True}
 
 
 def _names(value) -> list[str]:

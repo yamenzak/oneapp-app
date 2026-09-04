@@ -381,10 +381,105 @@ export const workspace = {
       { successMessage: 'Filed' },
     ),
 
+  mailStar: (key, folder, on) =>
+    callMethod(
+      'oneapp.oneapp_core.email.mailbox.star',
+      { key, folder, on: on ? 1 : 0 },
+      { silent: true },
+    ),
+
+  mailMarkUnread: (key, folder) =>
+    callMethod(
+      'oneapp.oneapp_core.email.mailbox.mark_unread',
+      { key, folder },
+      { successMessage: 'Marked unread' },
+    ),
+
+  mailBin: (key, address, folder) =>
+    callMethod(
+      'oneapp.oneapp_core.email.mailbox.bin',
+      { key, address, folder },
+      { successMessage: 'Moved to Trash' },
+    ),
+
+  mailArchive: (key, address, folder) =>
+    callMethod(
+      'oneapp.oneapp_core.email.mailbox.archive',
+      { key, address, folder },
+      { successMessage: 'Archived' },
+    ),
+
   mailDraft: (message, kind) =>
     callMethod(
       'oneapp.oneapp_core.email.mailbox.draft',
       { message, kind },
+      { silent: true, method: 'GET' },
+    ),
+
+  // --- filing rules and the out-of-office ----------------------------------
+  //
+  // `oneapp_core/email/rules.py`. A rule belongs to a mailbox, so every one of
+  // these checks the address is one the caller holds — which is why they are
+  // whitelisted endpoints rather than a screen over `Mail Rule`.
+  mailRules: (address) =>
+    callMethod(
+      'oneapp.oneapp_core.email.rules.listing',
+      { address },
+      { silent: true, method: 'GET' },
+    ),
+
+  mailSaveRule: (values) =>
+    callMethod(
+      'oneapp.oneapp_core.email.rules.save',
+      { values: JSON.stringify(values) },
+      { successMessage: 'Rule saved' },
+    ),
+
+  mailDropRule: (name) =>
+    callMethod(
+      'oneapp.oneapp_core.email.rules.drop',
+      { name },
+      { successMessage: 'Rule removed' },
+    ),
+
+  mailAway: (address) =>
+    callMethod(
+      'oneapp.oneapp_core.email.rules.away',
+      { address },
+      { silent: true, method: 'GET' },
+    ),
+
+  mailSetAway: (values) =>
+    callMethod('oneapp.oneapp_core.email.rules.set_away', values, {
+      successMessage: 'Saved',
+    }),
+
+  mailUnsend: (name) =>
+    callMethod(
+      'oneapp.oneapp_core.email.mailbox.unsend',
+      { name },
+      { successMessage: 'Unsent' },
+    ),
+
+  mailKeep: (values) =>
+    callMethod(
+      'oneapp.oneapp_core.email.mailbox.keep',
+      { values: JSON.stringify(values) },
+      { silent: true },
+    ),
+
+  mailKept: () =>
+    callMethod('oneapp.oneapp_core.email.mailbox.kept', {}, {
+      silent: true, method: 'GET',
+    }),
+
+  mailForget: () =>
+    callMethod('oneapp.oneapp_core.email.mailbox.forget', {}, { silent: true }),
+
+  mailSuggest: (text) =>
+    callMethod(
+      'oneapp.oneapp_core.email.people.suggest',
+      { text },
       { silent: true, method: 'GET' },
     ),
 

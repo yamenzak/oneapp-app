@@ -14,8 +14,18 @@
     message.
   -->
   <div class="flex h-full min-h-0">
-    <!-- What has arrived -->
-    <div class="flex w-96 shrink-0 flex-col border-r border-outline-gray-1">
+    <!--
+      What has arrived.
+
+      On a phone the two panes are one screen at a time: the list until a
+      conversation is open, the conversation after. Which is the same thing the
+      URL already says — `?thread=` — so this is a class and not a second state
+      to keep in step, and the back button still closes a conversation.
+    -->
+    <div
+      class="flex w-full shrink-0 flex-col border-r border-outline-gray-1 sm:w-96"
+      :class="chosen ? 'hidden sm:flex' : 'flex'"
+    >
       <div class="flex items-center gap-2 border-b border-outline-gray-1 p-2">
         <FormControl
           v-model="search"
@@ -78,6 +88,18 @@
             <span class="shrink-0 text-p-xs tabular-nums text-ink-gray-5">
               {{ when(one.at) }}
             </span>
+            <!-- `.prevent` because the whole row is a link: without it, starring
+                 also opens the conversation. -->
+            <Button
+              variant="ghost"
+              size="sm"
+              :icon="one.starred ? 'lucide-star' : 'lucide-star-off'"
+              :label="one.starred ? 'Unstar' : 'Star'"
+              :tooltip="one.starred ? 'Unstar' : 'Star'"
+              :class="one.starred ? 'text-ink-amber-3' : ''"
+              data-slot="mail-star"
+              @click.prevent.stop="toggleStar(one)"
+            />
           </div>
           <span
             class="truncate text-p-sm"
@@ -88,11 +110,24 @@
           </span>
           <span class="truncate text-p-xs text-ink-gray-5">{{ one.preview }}</span>
         </RouterLink>
+
+        <!-- The list held the first fifty messages and stopped, which on a real
+             mailbox is not a limit but a broken screen. -->
+        <div v-if="more" class="p-2">
+          <Button
+            class="w-full"
+            variant="subtle"
+            :label="loadingMore ? 'Loading…' : 'Older conversations'"
+            :loading="loadingMore"
+            data-slot="mail-more"
+            @click="loadMore()"
+          />
+        </div>
       </div>
     </div>
 
     <!-- What it says -->
-    <div class="flex min-w-0 flex-1 flex-col">
+    <div class="flex min-w-0 flex-1 flex-col" :class="chosen ? 'flex' : 'hidden sm:flex'">
       <EmptyState
         v-if="!chosen"
         icon="lucide-mail-open"
@@ -101,7 +136,16 @@
       />
 
       <div v-else class="min-h-0 flex-1 overflow-y-auto p-5">
-        <h2 class="text-lg font-semibold text-ink-gray-9">{{ openSubject }}</h2>
+        <!-- The phone has no second column to go back to, so it needs a way
+             out. `sm:hidden` because on a desktop the list never left. -->
+        <RouterLink
+          class="sm:hidden"
+          :to="{ name: 'Mail', query: { folder } }"
+          data-slot="mail-back"
+        >
+          <Button variant="ghost" icon-left="lucide-arrow-left" label="All conversations" />
+        </RouterLink>
+        <h2 class="mt-2 text-lg font-semibold text-ink-gray-9 sm:mt-0">{{ openSubject }}</h2>
 
         <article
           v-for="one in messages"
@@ -160,7 +204,7 @@
           </div>
         </article>
 
-        <div class="mt-4 flex items-center gap-2">
+        <div class="mt-4 flex flex-wrap items-center gap-2">
           <Button
             variant="subtle"
             icon-left="lucide-reply"
@@ -186,6 +230,27 @@
             leaving the original in the inbox is the behaviour every mail
             client got complained about until it stopped.
           -->
+          <Button
+            variant="ghost"
+            icon-left="lucide-archive"
+            label="Archive"
+            data-slot="mail-archive"
+            @click="act('archive')"
+          />
+          <Button
+            variant="ghost"
+            icon-left="lucide-trash-2"
+            label="Delete"
+            data-slot="mail-delete"
+            @click="act('bin')"
+          />
+          <Button
+            variant="ghost"
+            icon-left="lucide-mail"
+            label="Mark unread"
+            data-slot="mail-unread"
+            @click="act('unread')"
+          />
           <Dropdown v-if="fileable.length" :options="fileable">
             <Button
               variant="ghost"
@@ -198,6 +263,21 @@
       </div>
     </div>
 
+    <!--
+      The window in which "Sent" can be taken back. Not a countdown in the
+      browser that a closed tab defeats: the message really is held, by the
+      framework's own `send_after`, and the queue refuses to pick it up until
+      the window passes.
+    -->
+    <div
+      v-if="justSent"
+      class="fixed bottom-8 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-6 border border-outline-gray-2 bg-surface-elevation-2 px-4 py-2 shadow-xl"
+      data-slot="mail-undo"
+    >
+      <span class="text-p-sm text-ink-gray-8">Sent</span>
+      <Button variant="ghost" size="sm" label="Undo" @click="unsend()" />
+    </div>
+
     <Dialog v-model="writing" :title="writingTitle" size="xl">
       <div class="flex flex-col gap-3">
         <Select
@@ -207,12 +287,7 @@
           :options="addresses.map((one) => ({ label: one, value: one }))"
         />
         <div class="flex items-end gap-2">
-          <FormControl
-            v-model="draft.to"
-            class="flex-1"
-            label="To"
-            placeholder="somebody@example.com"
-          />
+          <RecipientField v-model="draft.to" class="flex-1" label="To" />
           <!-- Behind a toggle, because most messages have neither and two
                empty boxes above every one of them is two boxes to skip. -->
           <Button
@@ -222,8 +297,8 @@
             @click="copies = !copies"
           />
         </div>
-        <FormControl v-if="copies" v-model="draft.cc" label="Cc" />
-        <FormControl v-if="copies" v-model="draft.bcc" label="Bcc" />
+        <RecipientField v-if="copies" v-model="draft.cc" label="Cc" placeholder="Also to" />
+        <RecipientField v-if="copies" v-model="draft.bcc" label="Bcc" placeholder="Privately to" />
         <FormControl v-model="draft.subject" label="Subject" />
 
         <!--
@@ -292,8 +367,8 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
-import { RouterLink, useRoute } from 'vue-router'
+import { computed, onUnmounted, reactive, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import {
   Button,
   Dialog,
@@ -314,6 +389,8 @@ import {
 } from '@/ui'
 import EmptyState from '../components/EmptyState.vue'
 import SenderChip from '../components/SenderChip.vue'
+import RecipientField from '../components/RecipientField.vue'
+import { onDoctypeChange } from '../lib/socket'
 import { holdImages, loadMail, mail, showImages } from '../lib/mail'
 import { workspace } from '../lib/workspace'
 
@@ -322,9 +399,37 @@ const sending = ref(false)
 const error = ref('')
 
 const route = useRoute()
+const router = useRouter()
 
 const threads = ref([])
 const addresses = ref([])
+const cursor = ref(0)
+const more = ref(false)
+const loadingMore = ref(false)
+
+/** Two pages of conversations as one list, the older half folded into the newer. */
+function merge(have, next) {
+  const by = new Map(have.map((one) => [one.key, one]))
+  for (const one of next) {
+    const already = by.get(one.key)
+    if (!already) {
+      by.set(one.key, one)
+      continue
+    }
+    already.count += one.count
+    already.unread += one.unread
+  }
+  return [...by.values()]
+}
+
+async function loadMore() {
+  loadingMore.value = true
+  try {
+    await load({ append: true })
+  } finally {
+    loadingMore.value = false
+  }
+}
 const search = ref('')
 const messages = ref([])
 
@@ -343,11 +448,7 @@ const openSubject = computed(
 // Where this conversation can go: the folders of the address it is in. An
 // address it is not in has folders on a server that has never seen it.
 const fileable = computed(() => {
-  const here = messages.value[0]
-  const address = mail.folders.find((one) => one.key === folder.value)?.address
-    || (here?.recipients || '').split(',').map((one) => one.trim()).find((one) =>
-      mail.addresses.includes(one),
-    )
+  const address = owner.value
   if (!address) return []
   return mail.folders
     .filter((one) => one.address === address && one.folder && one.folder !== SENT_KEY)
@@ -361,6 +462,49 @@ const fileable = computed(() => {
 // The one folder name that is not a folder — see `mailbox.SENT`. A conversation
 // cannot be filed into it, because it is a question about the sender.
 const SENT_KEY = '__sent'
+
+/** Which of this person's addresses the open conversation belongs to. */
+const owner = computed(() => {
+  const here = messages.value[0]
+  return (
+    mail.folders.find((one) => one.key === folder.value)?.address ||
+    (here?.recipients || '')
+      .split(',')
+      .map((one) => one.trim())
+      .find((one) => mail.addresses.includes(one)) ||
+    mail.addresses[0] ||
+    ''
+  )
+})
+
+async function toggleStar(one) {
+  one.starred = !one.starred
+  await workspace.mailStar(one.key, folder.value, one.starred)
+}
+
+/**
+ * Archive, delete, or put back to unread.
+ *
+ * Delete is a move to Trash and not `delete_doc`: removing the document would
+ * take the message off the record it is filed against and away from everybody
+ * else who holds the address, permanently, on a click every mail client has
+ * taught people is reversible.
+ */
+async function act(what) {
+  const address = owner.value
+  if (what === 'unread') {
+    await workspace.mailMarkUnread(chosen.value, folder.value)
+  } else if (what === 'archive') {
+    await workspace.mailArchive(chosen.value, address, folder.value)
+  } else {
+    await workspace.mailBin(chosen.value, address, folder.value)
+  }
+  // Back to the list: the conversation somebody just filed away is not the
+  // thing they want still open in front of them.
+  router.push({ name: 'Mail', query: { folder: folder.value } })
+  await load()
+  await loadMail({ reload: true })
+}
 
 async function moveTo(address, into) {
   await workspace.mailFileThread(chosen.value, address, into, folder.value)
@@ -396,11 +540,20 @@ async function boot() {
   await load()
 }
 
-async function load() {
-  loading.value = true
+async function load({ append = false } = {}) {
+  if (!append) loading.value = true
   try {
-    const found = await workspace.mailThreads(folder.value, 0, search.value)
-    threads.value = found.threads || []
+    const found = await workspace.mailThreads(
+      folder.value,
+      append ? cursor.value : 0,
+      search.value,
+    )
+    // Merged by key rather than concatenated. A conversation can straddle two
+    // pages — the grouping happens per page of *messages* — and appending
+    // blindly would show it twice with half its messages in each.
+    threads.value = append ? merge(threads.value, found.threads || []) : (found.threads || [])
+    cursor.value = found.next || 0
+    more.value = !!found.more
   } finally {
     loading.value = false
   }
@@ -473,8 +626,14 @@ async function compose(from, kind = 'reply') {
     Object.assign(draft, opening, { bcc: '' })
     draft.attachments = opening.attachments || []
     copies.value = !!opening.cc
-  } else if (!draft.sender) {
-    draft.sender = addresses.value[0] || ''
+  } else {
+    // A blank composer opens on whatever was left behind, if anything was.
+    const opening = await workspace.mailKept()
+    if (opening && Object.keys(opening).length) {
+      Object.assign(draft, opening)
+      copies.value = !!(opening.cc || opening.bcc)
+    }
+    if (!draft.sender) draft.sender = addresses.value[0] || ''
   }
   writing.value = true
 }
@@ -483,13 +642,21 @@ async function post() {
   error.value = ''
   sending.value = true
   try {
-    await workspace.mailSend({
+    const done = await workspace.mailSend({
       ...draft,
       // Names, not the files. They are already on the site; sending the bytes
       // back through this call would be a second upload of what we hold.
       attachments: JSON.stringify(draft.attachments.map((one) => one.name)),
     })
     writing.value = false
+    await workspace.mailForget()
+    // The undo bar lives exactly as long as the server is holding the message.
+    justSent.value = done?.name || ''
+    clearTimeout(undoTimer)
+    undoTimer = setTimeout(
+      () => { justSent.value = '' },
+      (done?.undo_seconds || 15) * 1000,
+    )
     await load()
   } catch (e) {
     error.value = e.message || String(e)
@@ -498,11 +665,73 @@ async function post() {
   }
 }
 
+const justSent = ref('')
+let undoTimer = null
+
+async function unsend() {
+  const name = justSent.value
+  justSent.value = ''
+  clearTimeout(undoTimer)
+  const done = await workspace.mailUnsend(name)
+  if (done?.ok) {
+    // Straight back into the composer with what was sent, because "undo" that
+    // discards the message is not undo.
+    const opening = await workspace.mailKept()
+    Object.assign(draft, opening)
+    writing.value = true
+  }
+  await load()
+}
+
 boot()
 
 // The list follows the folder; the reading pane follows the thread. Separately,
 // because changing folder should not refetch a thread and opening a thread
 // should not refetch the list.
-watch(folder, load)
+// --- keeping what was typed --------------------------------------------------
+//
+// Closing the composer by accident and losing a written message is the failure
+// people remember. Held server-side rather than in this browser, so it survives
+// the tab as well as the dialog.
+let keeping = null
+watch(
+  () => [draft.to, draft.cc, draft.bcc, draft.subject, draft.content].join('\u0000'),
+  () => {
+    if (!writing.value) return
+    clearTimeout(keeping)
+    keeping = setTimeout(() => workspace.mailKeep({ ...draft }), 800)
+  },
+)
+
+watch(folder, () => load())
+watch(search, () => load())
 watch([chosen, folder], read, { immediate: true })
+
+// --- mail arriving ----------------------------------------------------------
+//
+// A list left open stops being a photograph of when it was opened. Frappe
+// publishes `list_update` for every document that changes and inbound mail is a
+// `Communication`, so this is the same seam the record lists already use — the
+// bell's one-minute poll is for the rail, not for the screen somebody is
+// looking at.
+//
+// Coalesced: an IMAP sync that pulls forty messages publishes forty of these in
+// a second, and one refetch each is a list that spends its afternoon reloading.
+let pending = null
+const arrived = onDoctypeChange('Communication', () => {
+  clearTimeout(pending)
+  pending = setTimeout(() => {
+    // Only the first page. Somebody who has paged back four screens and is
+    // reading does not want the list to collapse under them because a
+    // newsletter arrived.
+    if (cursor.value <= PAGE_ONE) load()
+  }, 400)
+})
+
+const PAGE_ONE = 50
+
+onUnmounted(() => {
+  clearTimeout(pending)
+  if (arrived) arrived()
+})
 </script>
