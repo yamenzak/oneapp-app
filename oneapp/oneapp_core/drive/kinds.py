@@ -5,9 +5,14 @@ be a column. Deriving it from the mime type at read time would be a Python walk
 over a mime map for every row of every page; deriving it on insert is one
 comparison, once, ever.
 
-Seven kinds and no more. The point of a kind is the filter chip and the icon —
+Eight kinds and no more. The point of a kind is the filter chip and the icon —
 a reader scanning for the site photos does not want twelve buckets, and the
 mime type is still on the row for anything that needs to be exact.
+
+`Sheet` is the one that is not derived from a name. A sheet is a `File` whose
+grid lives in `Sheet Cell` rows and whose bytes do not exist until somebody
+exports it — see `docs/SHEETS.md` — so nothing about its filename says what it
+is, and `sheets.make` sets the kind itself.
 """
 
 import frappe
@@ -26,9 +31,10 @@ PDF = "PDF"
 VIDEO = "Video"
 AUDIO = "Audio"
 DOCUMENT = "Document"
+SHEET = "Sheet"
 OTHER = "Other"
 
-KINDS = (FOLDER, IMAGE, PDF, VIDEO, AUDIO, DOCUMENT, OTHER)
+KINDS = (FOLDER, IMAGE, PDF, VIDEO, AUDIO, DOCUMENT, SHEET, OTHER)
 
 # Matched in order, on the extension rather than on a mime type: Frappe stores
 # no mime type on `File`, and the browser's guess for an upload is famously the
@@ -45,12 +51,25 @@ BY_EXTENSION = (
 )
 
 
-def kind_of(file_name: str, is_folder=False) -> str:
-    """The kind of one file, from its name.
+#: Kinds no filename can say. A sheet is a sheet because `sheets.make` said so
+#: — "Padel Pro estimator" has no extension and nothing about it is a
+#: spreadsheet — so a kind derived from the name would quietly demote every
+#: sheet the first time anybody renamed one.
+DECLARED = (SHEET,)
+
+
+def kind_of(file_name: str, is_folder=False, current: str = "") -> str:
+    """The kind of one file, from its name — unless it was declared.
 
     A folder is a kind rather than a flag on the side, because every list this
     draws sorts folders first and a sort has to have something to sort on.
+
+    `current` is what the row already says. Passed by `rename`, which otherwise
+    re-derives the kind from the new name and turns a sheet into `Other` — with
+    the visible symptom, a rename later, being "That file is not a sheet."
     """
+    if current in DECLARED:
+        return current
     if is_folder:
         return FOLDER
 
