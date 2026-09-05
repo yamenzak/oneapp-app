@@ -69,6 +69,39 @@ export const screen = {
       { silent: true, method: 'GET' },
     ),
 
+  // What the money columns add up to. Its own request for the reason the count
+  // is one: an aggregate over the whole filter, which nothing should wait for.
+  screenTotals: (spaceCode, screen, overrides, layout, viewType) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.totals',
+      {
+        space_code: spaceCode,
+        screen,
+        layout,
+        view_type: viewType,
+        overrides: overrides ? JSON.stringify(overrides) : null,
+      },
+      { silent: true, method: 'GET' },
+    ),
+
+  // The same rows, as a file. Its own endpoint rather than a page size of five
+  // thousand: an export is the whole answer, it is built as a CSV on the server
+  // where the quoting is testable, and `names` narrows it to a selection so
+  // "export this list" and "export the four I ticked" are one path.
+  screenExport: (spaceCode, screen, overrides, layout, viewType, names) =>
+    callMethod(
+      'oneapp.oneapp_core.spaceview.export_rows',
+      {
+        space_code: spaceCode,
+        screen,
+        layout,
+        view_type: viewType,
+        overrides: overrides ? JSON.stringify(overrides) : null,
+        names: names?.length ? JSON.stringify(names) : null,
+      },
+      { method: 'GET' },
+    ),
+
   // One record, by id. The list row carries only the columns somebody chose to
   // see; the record shows the doctype's whole field list, so it is fetched
   // rather than read out of the row — which is also what lets a record be a

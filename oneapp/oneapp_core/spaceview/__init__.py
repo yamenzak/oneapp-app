@@ -36,6 +36,7 @@ is what stops it becoming one module again.
     people      users as the UI needs them
     links       Link fields: searching a target, and creating into one
     records     reading and writing the records a screen is over
+    export      those same rows, as a file somebody can open elsewhere
     guard       the one check every record-scoped endpoint makes first
     surround    a record's timeline, files, comments, likes
     mail        the correspondence about a record, and writing more
@@ -183,8 +184,11 @@ from .links import (
 	link_preview,
 )
 from .records import (
+	SUMMABLE,
 	_child_changes,
 	_link_groups,
+	_summable,
+	_summed,
 	_total,
 	_with_authors,
 	_with_children,
@@ -199,6 +203,18 @@ from .records import (
 	rows,
 	save,
 	spec,
+	totals,
+)
+from .export import (
+	EXCEL_BOM,
+	MAX_EXPORT,
+	UNSAFE_IN_FILENAME,
+	_export_cell,
+	_export_columns,
+	_export_csv,
+	_export_filename,
+	_export_names,
+	export_rows,
 )
 from .guard import _reachable
 from .surround import (
@@ -307,6 +323,15 @@ __all__ = [
 	"_boardable",
 	"_calendar",
 	"_dateable",
+	"EXCEL_BOM",
+	"MAX_EXPORT",
+	"UNSAFE_IN_FILENAME",
+	"_export_cell",
+	"_export_columns",
+	"_export_csv",
+	"_export_filename",
+	"_export_names",
+	"export_rows",
 	"_gantt",
 	"_tree",
 	"_nests",
@@ -376,6 +401,10 @@ __all__ = [
 	"_space",
 	"_status_field",
 	"_tags_column",
+	"SUMMABLE",
+	"_summable",
+	"_summed",
+	"totals",
 	"_total",
 	"_users",
 	"_view_icon",
