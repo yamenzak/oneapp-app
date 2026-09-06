@@ -18,7 +18,10 @@ const EVENT = 'Quarterly review'
 // The record's own tab strip is nested inside the pane's, so both have a
 // "Details". The inner one is the doctype's.
 const openEvent = async (page, tab) => {
-  await page.goto('/one/space/zzmock?screen=events')
+  // `type=list` because the fixture's events screen opens on its calendar,
+  // and this is a test about a record rather than about a list — the list is
+  // only how it gets there.
+  await page.goto('/one/space/zzmock?screen=events&type=list')
   const row = page.locator('[data-slot="list-row"]').filter({ hasText: EVENT })
   await row.first().waitFor({ timeout: 15_000 })
   await row.first().locator('[data-slot="list-cell"]').nth(1).click()
@@ -150,4 +153,35 @@ test('a row can be dragged to a new position', async ({ page }, info) => {
   await expect(before(0)).toHaveValue('1')
   await expect(before(1)).toHaveValue('30')
   await expect(before(2)).toHaveValue('2')
+})
+
+test('which columns are across is the reader\'s to change', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'the phone opens a record as a page')
+  const errors = collectConsoleErrors(page)
+  await openEvent(page, 'Notifications')
+
+  const panel = page.getByRole('tabpanel', { name: 'Notifications' })
+  // The doctype's own answer: `in_list_view` on the child's fields, which for
+  // Event Notification is the two that fit.
+  await expect(panel.getByRole('columnheader', { name: 'Before' })).toBeVisible()
+
+  await panel.locator('[data-slot="child-columns"]').click()
+  await page.getByRole('checkbox', { name: 'Before' }).click()
+  await page.keyboard.press('Escape')
+
+  await expect(panel.getByRole('columnheader', { name: 'Before' })).toHaveCount(0)
+
+  // And the choice survives the record being closed and opened again: it is
+  // this browser's, like the pane's width and the sidebar's fold.
+  await page.reload()
+  await openEvent(page, 'Notifications')
+  await expect(panel.getByRole('columnheader', { name: 'Before' })).toHaveCount(0)
+
+  // Put it back, so the next run starts where this one did.
+  await panel.locator('[data-slot="child-columns"]').click()
+  await page.getByRole('button', { name: 'Reset' }).click()
+  await page.keyboard.press('Escape')
+  await expect(panel.getByRole('columnheader', { name: 'Before' })).toBeVisible()
+
+  expectNoRealErrors(errors)
 })
