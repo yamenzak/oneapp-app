@@ -1,6 +1,6 @@
 /** The parts of Frappe a workspace owns: its own settings, its books, its naming. */
 
-import { callMethod } from '../resource'
+import { callMethod } from '@/lib/runtime/resource'
 
 export const settings = {
   settings: () =>
@@ -14,10 +14,6 @@ export const settings = {
         successMessage: 'Saved',
       },
     ),
-
-  // The AI tab is not a field list like the rest: it is the feature registry
-  // rendered, so the server sends rows rather than a spec. What it never sends
-  // is our own instructions for a feature — only what the workspace added.
 
   // The AI tab is not a field list like the rest: it is the feature registry
   // rendered, so the server sends rows rather than a spec. What it never sends

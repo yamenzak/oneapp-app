@@ -1,6 +1,6 @@
 /** Saved views: reading them, writing them, hiding them. */
 
-import { callMethod } from '../resource'
+import { callMethod } from '@/lib/runtime/resource'
 
 export const layouts = {
   // Every named layout in a space, keyed by screen. The sidebar's question:
@@ -39,9 +39,6 @@ export const layouts = {
 
   // Not a delete. A shared view belongs to the workspace and somebody else may
   // be living in it — this says only that one reader would rather not see it.
-
-  // Not a delete. A shared view belongs to the workspace and somebody else may
-  // be living in it — this says only that one reader would rather not see it.
   hideLayout: (spaceCode, screen, layout) =>
     callMethod(
       'oneapp.oneapp_core.spaceview.hide_layout',
@@ -62,10 +59,6 @@ export const layouts = {
       { space_code: spaceCode, screen, layout },
       { successMessage: 'This opens the screen now' },
     ),
-
-  // The view type goes with it: a screen has one unnamed default per way of
-  // looking at it, and "undo my tinkering" on the board is not a decision about
-  // the list.
 
   // The view type goes with it: a screen has one unnamed default per way of
   // looking at it, and "undo my tinkering" on the board is not a decision about
