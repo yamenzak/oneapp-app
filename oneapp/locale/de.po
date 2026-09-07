@@ -245,6 +245,9 @@ msgstr "Bild hinzufügen"
 msgid "Add a section"
 msgstr "Abschnitt hinzufügen"
 
+msgid "Add a space"
+msgstr "Bereich hinzufügen"
+
 msgid "Add a tag"
 msgstr "Schlagwort hinzufügen"
 
@@ -268,6 +271,9 @@ msgstr "Diese Domain hinzufügen"
 
 msgid "Add to favourites"
 msgstr "Zu Favoriten hinzufügen"
+
+msgid "Add to workspace"
+msgstr "Zum Arbeitsbereich hinzufügen"
 
 msgid "Add {0} to favourites"
 msgstr "{0} zu Favoriten hinzufügen"
@@ -297,6 +303,11 @@ msgstr "Hinzugefügt — Ihr DNS wird jetzt geprüft"
 
 msgid "Added — it is on your next invoice"
 msgstr "Hinzugefügt — es steht auf Ihrer nächsten Rechnung"
+
+msgid "Adding this did not finish. We have been told and are looking at it."
+msgstr ""
+"Das Hinzufügen wurde nicht abgeschlossen. Wir wurden benachrichtigt und "
+"sehen uns das an."
 
 msgid "Address created"
 msgstr "Adresse erstellt"
@@ -574,6 +585,12 @@ msgstr "Vor Ablauf"
 
 msgid "Before restoring “{0}”"
 msgstr "Vor dem Wiederherstellen von „{0}“"
+
+msgid "Being added"
+msgstr "Wird hinzugefügt"
+
+msgid "Being added to your workspace. A few minutes."
+msgstr "Wird Ihrem Arbeitsbereich hinzugefügt. Ein paar Minuten."
 
 msgid "Belongs to"
 msgstr "Gehört zu"
@@ -1010,6 +1027,9 @@ msgstr "Endgültig gelöscht"
 
 msgid "Delivery update"
 msgstr "Zustellungsmeldung"
+
+msgid "Did not finish"
+msgstr "Nicht abgeschlossen"
 
 msgid "Direct"
 msgstr "Direkt"
@@ -2220,6 +2240,9 @@ msgstr ""
 msgid "Not about this record"
 msgstr "Nicht zu diesem Datensatz"
 
+msgid "Not available here"
+msgstr "Hier nicht verfügbar"
+
 msgid "Not available yet — the platform has no signing key configured."
 msgstr ""
 "Noch nicht verfügbar — für die Plattform ist kein Signaturschlüssel "
@@ -2370,6 +2393,9 @@ msgstr "Nichts mit Ihnen geteilt"
 
 msgid "Nothing stored yet"
 msgstr "Noch nichts gespeichert"
+
+msgid "Nothing to add right now"
+msgstr "Derzeit nichts hinzuzufügen"
 
 msgid "Nothing to alert on"
 msgstr "Nichts, worüber benachrichtigt werden kann"
@@ -4082,6 +4108,13 @@ msgstr ""
 "Dies ist derzeit für alle pausiert. Nichts, was Sie hier ändern, geht "
 "verloren."
 
+msgid ""
+"This one needs {0}, which your workspace cannot carry yet. Ask us and we "
+"will move it."
+msgstr ""
+"Dieser benötigt {0}, was Ihr Arbeitsbereich noch nicht tragen kann. "
+"Sagen Sie uns Bescheid, dann verschieben wir ihn."
+
 msgid "This opens the screen now"
 msgstr "Dies öffnet die Ansicht jetzt"
 
@@ -4606,6 +4639,14 @@ msgstr ""
 "Was dieses ganze Gespräch gekostet hat, aufsummiert, sobald jeder "
 "Gesprächszug abgerechnet ist."
 
+msgid ""
+"What this workspace could add is kept with your account, and it is not "
+"answering. Everything you already have is unaffected."
+msgstr ""
+"Was dieser Arbeitsbereich hinzufügen könnte, liegt bei Ihrem Konto, und "
+"dieses antwortet nicht. Alles, was Sie bereits haben, ist davon "
+"unberührt."
+
 msgid "What this workspace is keeping, and how much room is left."
 msgstr "Was dieser Arbeitsbereich speichert und wie viel Platz noch frei ist."
 
@@ -5055,6 +5096,13 @@ msgstr ""
 "Minute zurück. Ist am {0} noch nicht gezahlt, wird der Arbeitsbereich "
 "abgeschaltet und nur eine Sicherung bleibt erhalten."
 
+msgid ""
+"Your workspace already has everything on offer to it. When something new "
+"is, it appears here."
+msgstr ""
+"Ihr Arbeitsbereich hat bereits alles, was ihm angeboten wird. Sobald "
+"etwas Neues dazukommt, erscheint es hier."
+
 msgid "Your workspace did not load"
 msgstr "Ihr Arbeitsbereich wurde nicht geladen"
 
@@ -5294,8 +5342,14 @@ msgstr "{0} ist bereits verbunden."
 msgid "{0} is already running."
 msgstr "{0} läuft bereits."
 
+msgid "{0} is being added"
+msgstr "{0} wird hinzugefügt"
+
 msgid "{0} is being set up"
 msgstr "{0} wird eingerichtet"
+
+msgid "{0} is in your workspace"
+msgstr "{0} ist in Ihrem Arbeitsbereich"
 
 msgid ""
 "{0} is named by its own scheme, which is part of the app rather than a "
