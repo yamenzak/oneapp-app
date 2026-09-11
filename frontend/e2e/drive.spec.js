@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { collectConsoleErrors, expectNoRealErrors, signIn } from './auth.js'
+import { openSettings } from './shell.js'
 
 /**
  * The file manager, and the picker that made it worth building.
@@ -59,7 +60,7 @@ test('the drive lists the workspace files, and every place in the rail loads', a
   expectNoRealErrors(errors)
 })
 
-test('opening a file opens a preview, and the preview offers a link', async ({ page }) => {
+test('opening a file opens a pane, and the pane offers a link', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await page.goto('/one/files?place=all')
 
@@ -79,9 +80,15 @@ test('opening a file opens a preview, and the preview offers a link', async ({ p
   await file.first().waitFor({ timeout: 20_000 })
   await file.first().click()
 
-  const preview = page.getByRole('dialog')
+  // A pane beside the list, not a dialog over it: looking at a photograph is
+  // how you decide which photograph, and a modal makes that open-look-close
+  // rather than a walk down the list.
+  const preview = page.locator('[data-slot="record-pane"]')
   await expect(preview).toBeVisible()
   await expect(preview.getByRole('button', { name: 'Download' })).toBeVisible()
+
+  // The list is still there beside it, which is the whole point.
+  await expect(page.locator('[data-slot="drive-file"]').first()).toBeVisible()
 
   // A text preview is the case that catches the download route serving an
   // error page instead of the file — which is what it did on any site without
@@ -92,7 +99,8 @@ test('opening a file opens a preview, and the preview offers a link', async ({ p
   // Opening it is what makes it recent, so Recents has something in it now.
   // Nothing called the endpoint that stamps this, so the rail's second place
   // was empty on every site and looked like a place nobody used.
-  await page.keyboard.press('Escape')
+  await page.locator('[data-slot="drive-pane-close"]').click()
+  await expect(preview).toHaveCount(0)
   await goToPlace(page, 'Recent')
   await expect(page.locator('[data-slot="drive-file"]').first()).toBeVisible({
     timeout: 15_000,
@@ -102,13 +110,14 @@ test('opening a file opens a preview, and the preview offers a link', async ({ p
   await page.goBack()
   await file.first().click()
 
-  // Sharing replaces the preview rather than stacking on it, because two open
-  // modals nest and the outer one goes `aria-hidden` under the inner. What
-  // makes a link different from a copy of the file is that it ends, so the
-  // expiry is the part worth asserting.
+  // Sharing is still a dialog — it has a list, a form and a destructive control
+  // of its own — and it opens over the pane rather than replacing it, which it
+  // could not do while the preview was a modal too. What makes a link different
+  // from a copy of the file is that it ends, so the expiry is the part worth
+  // asserting.
   await preview.getByRole('button', { name: 'Share a link' }).click()
   const share = page.getByRole('dialog')
-  await expect(share.getByText('It stops working after')).toBeVisible()
+  await expect(share.getByText('It stops working after')).toBeVisible({ timeout: 15_000 })
   await expect(share.getByRole('button', { name: 'Make a link' })).toBeVisible()
 
   expectNoRealErrors(errors)
@@ -302,8 +311,7 @@ test('the storage screen says which file and not only which kind', async ({ page
   const errors = collectConsoleErrors(page)
   await page.goto('/one/files')
 
-  await page.getByRole('button', { name: 'Administrator' }).click()
-  await page.getByRole('menuitem', { name: 'Settings' }).click()
+  await openSettings(page)
   await page.getByRole('tab', { name: 'Storage' }).click()
 
   await expect(page.getByText('By kind')).toBeVisible({ timeout: 15_000 })
@@ -327,15 +335,16 @@ test('a link made here is a link a stranger can follow', async ({ page, browser 
   const errors = collectConsoleErrors(page)
   await page.goto('/one/files?place=all')
 
-  // The fixture's own pictures, for the same reason as the preview test above:
-  // a sheet is a file and clicking one opens its grid rather than a dialog.
+  // The fixture's own pictures, for the same reason as the pane test above:
+  // a sheet is a file and clicking one opens its grid rather than a pane.
   await page.getByPlaceholder('Search files').fill('zzmock')
   await expect(page.locator('[data-slot="drive-file"]').first()).toContainText('zzmock')
 
   const file = page.locator('button[data-slot="drive-open"]')
   await file.first().waitFor({ timeout: 20_000 })
   await file.first().click()
-  await page.getByRole('dialog').getByRole('button', { name: 'Share a link' }).click()
+  await page.locator('[data-slot="record-pane"]')
+    .getByRole('button', { name: 'Share a link' }).click()
 
   // Links this file already has, from earlier runs. The dialog draws them
   // before the new one exists, so waiting for "a row" would read whichever was
@@ -518,7 +527,10 @@ test('a file dragged onto a folder ends up inside it', async ({ page }) => {
   const folder = `Landing ${stamp}`
 
   await page.goto('/one/files')
-  await page.getByRole('button', { name: 'New folder' }).click()
+  // A row in the New menu now, not a button of its own: everything made
+  // rather than uploaded is behind one button, a folder included.
+  await page.getByRole('button', { name: 'New', exact: true }).click()
+  await page.getByRole('menuitem', { name: 'New folder' }).click()
   await page.getByRole('textbox', { name: 'Name' }).fill(folder)
   await page.getByRole('button', { name: 'Make it', exact: true }).click()
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -544,4 +556,37 @@ test('a file dragged onto a folder ends up inside it', async ({ page }) => {
   await target.locator('[data-slot="drive-open"]').click()
   await expect(page.locator('[data-slot="drive-file"]').first())
     .toContainText(`mover-${stamp}.txt`, { timeout: 20_000 })
+})
+
+test('a place can be put in an order, and it is the server that orders it', async ({ page }) => {
+  await page.goto('/one/files')
+  await page.locator('[data-slot="drive-file"]').first().waitFor({ timeout: 20_000 })
+
+  // The files, not the folders: a folder is first whatever the order is, which
+  // is the one rule a file manager keeps, so the whole list is two runs rather
+  // than one. And the name alone — the row says the size and the age under it.
+  const names = async () => page.locator('[data-slot="drive-file"]:not([data-kind="Folder"])')
+    .locator('[data-slot="file-name"]')
+    .allInnerTexts()
+
+  const ordered = (shown, down) => shown.length > 1 && shown.every((one, at) => {
+    if (at === 0) return true
+    const before = shown[at - 1].toLowerCase()
+    const now = one.toLowerCase()
+    return down ? now <= before : now >= before
+  })
+
+  await page.locator('[data-slot="drive-order"]').click()
+  await page.getByRole('menuitem', { name: 'Name' }).click()
+  await expect.poll(async () => ordered(await names(), false)).toBe(true)
+
+  // Pressing the same key again turns it round rather than clearing it.
+  await page.locator('[data-slot="drive-order"]').click()
+  await page.getByRole('menuitem', { name: 'Name' }).click()
+  await expect.poll(async () => ordered(await names(), true)).toBe(true)
+
+  // And it survives a reload: the choice is the reader's, not the page's.
+  await page.reload()
+  await page.locator('[data-slot="drive-file"]').first().waitFor({ timeout: 20_000 })
+  await expect(page.locator('[data-slot="drive-order"]')).toContainText('Name')
 })

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 
 import { collectConsoleErrors, expectNoRealErrors, signIn } from './auth.js'
+import { openSettings } from './shell.js'
 
 /**
  * Rules that tell somebody when something happens to a record.
@@ -18,8 +19,7 @@ async function openAlerts(page, baseURL) {
   await page.goto('/one/space/zzmock?screen=tasks')
   await page.locator('[data-slot="list-row"]').first().waitFor({ timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Administrator' }).click()
-  await page.getByRole('menuitem', { name: 'Workspace settings' }).click()
+  await openSettings(page)
   await page.getByRole('tab', { name: 'Alerts' }).click()
 }
 
@@ -63,7 +63,7 @@ test('a condition is three controls, never a box you can type code into', async 
 
   // Off until asked for: most rules have no condition at all.
   await expect(dialog.getByRole('combobox', { name: 'Test' })).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Add a test' }).click()
+  await dialog.getByRole('button', { name: 'Only when a field says something' }).click()
 
   // A field, an operator and a value — all three chosen, none of them typed as
   // an expression. Frappe evaluates `condition` as code, so a free text box

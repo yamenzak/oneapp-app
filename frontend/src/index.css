@@ -5,6 +5,52 @@
 @tailwind utilities;
 
 /*
+ * The brand marks' knockout, and the one cavity that is its opposite.
+ *
+ * A mark is drawn in its own colours and does not follow the theme — that is
+ * what makes an app recognisable at 20px in a rail. These two are the
+ * exception, and they are not colour: they are the *structure* the design
+ * knocks out of a mark. A pallet under a crate, a page block inside a ledger,
+ * the stem of the numeral. Drawn as pure white they disappear on a light
+ * ground, which is exactly what four of the sixteen did.
+ *
+ * So they invert, which is what a knockout in a logo normally does. The values
+ * are also written into every standalone file `scripts/gen_brand.py` produces,
+ * behind a `prefers-color-scheme` query, so a mark used outside this app —
+ * a favicon, an email — adapts on its own.
+ *
+ * Declared here rather than in the theme's token set because they belong to
+ * the artwork rather than to the interface: nothing but a mark reads them, and
+ * a workspace's accent must never move them.
+ */
+:root {
+  --brand-knockout: #e6ebf1;
+  --brand-ground: #ffffff;
+}
+
+:root[data-theme='dark'] {
+  --brand-knockout: #ffffff;
+  --brand-ground: #0b0f19;
+}
+
+/*
+ * The sidebar is not a surface of its own here.
+ *
+ * frappe-ui's `Sidebar` paints `--surface-sidebar`, which is right for a shell
+ * where the column is a panel beside the page. Ours is the other shape: the
+ * bar, the column and the ground behind them are one piece, and the page is
+ * what steps out of it. A column with its own fill inside that is a block of
+ * a third colour with no edge to explain it.
+ *
+ * Overridden rather than each column carrying `!bg-transparent`, because five
+ * of them fill that slot and the fifth would have been added without it. Dark
+ * already resolves to transparent; light is the one that had a value.
+ */
+:root {
+  --surface-sidebar: transparent;
+}
+
+/*
  * The display face: one family, two files, split by script.
  *
  * Everything in this product is set in the UI face, and that is right for a
@@ -52,6 +98,80 @@
   unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
     U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF,
     U+FE70-FE74, U+FE76-FEFC;
+}
+
+/*
+ * The interface face, in Arabic.
+ *
+ * frappe-ui sets everything in InterVar, which has no Arabic glyphs at all —
+ * so an Arabic workspace fell through to whatever the reader's operating
+ * system happened to have. On Windows that is Tahoma, which is a 1990s system
+ * font with no medium weight; the product looked like a different, older
+ * product to every Arabic customer, and nothing in the code said why.
+ *
+ * IBM Plex Sans Arabic, declared **under InterVar's own family name**. That is
+ * the whole mechanism and it is not a trick: a `@font-face` whose
+ * `unicode-range` does not overlap the family's existing coverage extends that
+ * family rather than replacing it, so the browser sets Latin in Inter and
+ * Arabic in Plex within the same word if it has to, and no stack anywhere in
+ * the product has to be edited or kept in step.
+ *
+ * Plex rather than Noto or Cairo: it is a UI face by design, its x-height and
+ * stroke contrast sit closest to Inter's of the OFL Arabics, and it has the
+ * three weights the interface actually uses. Three files, ~45KB each, and a
+ * Latin-only page downloads none of them.
+ *
+ * Self-hosted for the reason the display face is — see above. SIL OFL 1.1,
+ * licence beside the files.
+ */
+@font-face {
+  font-family: 'InterVar';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/plex-arabic-400.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF,
+    U+FE70-FE74, U+FE76-FEFC;
+}
+
+@font-face {
+  font-family: 'InterVar';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./assets/fonts/plex-arabic-500.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF,
+    U+FE70-FE74, U+FE76-FEFC;
+}
+
+@font-face {
+  font-family: 'InterVar';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./assets/fonts/plex-arabic-600.woff2') format('woff2');
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1,
+    U+08E3-08FF, U+200C-200E, U+2010-2011, U+204F, U+2E41, U+FB50-FDFF,
+    U+FE70-FE74, U+FE76-FEFC;
+}
+
+/*
+ * Arabic is set a little larger, and that is a typographic fact rather than a
+ * preference: at the same point size an Arabic face reads smaller than a Latin
+ * one, because the letterforms carry their weight below the baseline and the
+ * counters are tighter. 6% is the usual correction and it is applied to the
+ * document rather than per component, so nothing in the product has to know.
+ *
+ * `:lang(ar)` and not `[dir=rtl]`: this is about the script, and Farsi and
+ * Urdu are also right-to-left and also want it, while a right-to-left page
+ * showing a Latin name does not.
+ */
+:root:lang(ar),
+:root:lang(fa),
+:root:lang(ur) {
+  font-size: 106%;
 }
 
 /*
@@ -114,4 +234,137 @@
 .menu-content {
   max-height: var(--reka-popper-available-height, 100vh);
   overflow-y: auto;
+}
+
+/*
+ * An arrow that means "forward" points the other way in Arabic.
+ *
+ * `dir="rtl"` flips text, flex order, scroll and every logical property, and it
+ * cannot flip a picture: a chevron beside a collapsed section still points
+ * right, away from the words it belongs to, and Back still points at the page
+ * you came from in the wrong direction.
+ *
+ * frappe-ui draws a lucide icon as a CSS mask on a class named after it, which
+ * is why this is one rule rather than an edit in sixteen components — and why a
+ * new directional icon is covered the moment it is used.
+ *
+ * Cardinal names only. `arrow-up-right` is the open-this-elsewhere mark and
+ * would arguably flip, but the same name is also one of the icons a customer
+ * can pick for a value of their own, and turning a chosen icon round is a bug
+ * where an external-link arrow pointing the English way is a detail.
+ * `tests/test_rtl.py` keeps this list in step with what the SPA uses.
+ */
+[dir='rtl'] .lucide-chevron-left,
+[dir='rtl'] .lucide-chevron-right,
+[dir='rtl'] .lucide-chevrons-left,
+[dir='rtl'] .lucide-chevrons-right,
+[dir='rtl'] .lucide-arrow-left,
+[dir='rtl'] .lucide-arrow-right,
+[dir='rtl'] .lucide-arrow-left-to-line,
+[dir='rtl'] .lucide-arrow-right-to-line,
+[dir='rtl'] .lucide-corner-left,
+[dir='rtl'] .lucide-corner-right {
+  transform: scaleX(-1);
+}
+
+/*
+ * The glow: one animation for everything a model is writing.
+ *
+ * Here rather than in `shared/components/AiGlow.vue` for two reasons that
+ * both matter. The keyframes and the two hues are a product-wide primitive
+ * like `--brand-knockout` above — a mail summary, a paragraph in a document
+ * and a range of cells have to shimmer identically or the signal stops being
+ * one. And the overlay mode paints over a slot whose markup belongs to the
+ * caller, which a component's scoped stylesheet cannot reach.
+ */
+/*
+ * Not scoped. The overlay mode paints over a slot whose markup belongs to the
+ * caller, and a scoped rule cannot reach a child it did not compile.
+ *
+ * The two hues are written here rather than taken from the theme's tokens.
+ * They are the one piece of colour in the product that means a thing rather
+ * than showing a state — "a model is writing this" — and a workspace's accent
+ * moving them would make that unrecognisable on the one screen it mattered on.
+ */
+:root {
+  --oneapp-glow-one: rgba(99, 102, 241, 0.22);
+  --oneapp-glow-two: rgba(236, 72, 153, 0.18);
+  --oneapp-glow-lit: rgba(255, 255, 255, 0.75);
+  --oneapp-glow-bar: rgba(99, 102, 241, 0.14);
+}
+
+:root[data-theme='dark'] {
+  --oneapp-glow-one: rgba(129, 140, 248, 0.26);
+  --oneapp-glow-two: rgba(244, 114, 182, 0.22);
+  --oneapp-glow-lit: rgba(255, 255, 255, 0.14);
+  --oneapp-glow-bar: rgba(129, 140, 248, 0.18);
+}
+
+@keyframes oneapp-glow-travel {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+/* The sheen itself, shared by every mode. A pseudo-element so the caller's
+   own background, border and padding are untouched. */
+.oneapp-glow.is-writing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--oneapp-glow-one) 35%,
+    var(--oneapp-glow-lit) 50%,
+    var(--oneapp-glow-two) 65%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  animation: oneapp-glow-travel 1.6s linear infinite;
+}
+
+.oneapp-glow-block.is-writing,
+.oneapp-glow-inline.is-writing {
+  position: relative;
+}
+
+.oneapp-glow-inline {
+  display: inline-block;
+}
+
+/* Under the words, not over them: a sheen at full strength across text makes
+   the text unreadable for the second it passes, which is the second somebody
+   is reading it. */
+.oneapp-glow-block.is-writing::after,
+.oneapp-glow-inline.is-writing::after {
+  z-index: 0;
+  opacity: 0.85;
+}
+
+.oneapp-glow-block.is-writing > *,
+.oneapp-glow-inline.is-writing > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Over them, for the mode whose whole point is that the pane underneath is
+   being replaced and should not be read yet. */
+.oneapp-glow-overlay.is-writing::after {
+  z-index: 2;
+}
+
+.oneapp-glow-bar {
+  height: 0.625rem;
+  border-radius: 9999px;
+  background-color: var(--oneapp-glow-bar);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oneapp-glow.is-writing::after {
+    animation: none;
+    background-image: linear-gradient(100deg, var(--oneapp-glow-one), var(--oneapp-glow-two));
+    opacity: 0.35;
+  }
 }

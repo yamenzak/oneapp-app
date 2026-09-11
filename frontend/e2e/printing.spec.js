@@ -7,12 +7,12 @@
 // output rather than a drawing of it.
 import { expect, test } from '@playwright/test'
 import { collectConsoleErrors, expectNoRealErrors, signIn } from './auth.js'
+import { openSettings } from './shell.js'
 
 const FORMAT = 'zzmock Task Sheet'
 
-const openSettings = async (page, tab) => {
-  await page.getByRole('button', { name: 'Administrator' }).click()
-  await page.getByRole('menuitem', { name: 'Workspace settings' }).click()
+const openTab = async (page, tab) => {
+  await openSettings(page)
   await page.getByRole('tab', { name: tab }).click()
 }
 
@@ -26,7 +26,7 @@ const openSettings = async (page, tab) => {
 const clean = (page) =>
   page.evaluate(async (format) => {
     const call = (method, body) =>
-      fetch(`/api/method/oneapp.oneapp_core.workspace.${method}`, {
+      fetch(`/api/method/oneapp.onespace.workspace.${method}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -36,7 +36,7 @@ const clean = (page) =>
       }).then((r) => r.json())
 
     const found = await fetch(
-      '/api/method/oneapp.oneapp_core.workspace.print_formats',
+      '/api/method/oneapp.onespace.workspace.print_formats',
     ).then((r) => r.json())
     if ((found.message?.formats || []).some((one) => one.name === format)) {
       await call('delete_print_format', { name: format })
@@ -51,7 +51,7 @@ test('a format drawn in the builder prints the record', async ({ page, baseURL }
   await page.goto('/one/space/zzmock?screen=tasks')
   await page.locator('[data-slot="list-row"]').first().waitFor({ timeout: 15_000 })
 
-  await openSettings(page, 'Print formats')
+  await openTab(page, 'Print formats')
   await clean(page)
 
   // The doctypes offered are the ones this workspace's own screens show —

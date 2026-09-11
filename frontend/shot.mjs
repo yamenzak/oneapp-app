@@ -14,6 +14,7 @@
  *   yarn shot '/one/space/rua?screen=projects' rua.png --phone
  *   yarn shot '/one/space/rua?screen=projects' --wait='[data-slot="list-row"]'
  *   yarn shot '/one/mail' --click='text=Quotation' --wait='[data-slot="mail-body"]'
+ *   yarn shot '/one/files' --click='[data-slot="settings-link"]' --click='text=Security'
  *
  * `--wait` is the flag worth knowing: a selector to wait for before the
  * shutter. Without one this waits for the network to go quiet, which is right
@@ -25,10 +26,23 @@
  * only a keyboard can reach was a screen only a throwaway script could
  * photograph.
  *
+ * `--type=TEXT` types a line and presses Enter, repeatable — how an editor
+ * gets something in it to look at. Use it after a `--click` that puts the
+ * caret where the text should land.
+ *
+ * `--click`, `--press` and `--type` all happen in the order you wrote them, so
+ * click into an editor, type, and then click the control you want to
+ * photograph the effect of.
+ *
  * `--click` is the other one: a selector to press after the page loads, before
- * the shutter. Half of what is worth photographing is a row deep — a mail
+ * the shutter. Repeatable, in order — a settings panel is the dialog and then
+ * the tab. Half of what is worth photographing is a row deep — a mail
  * thread, an open record, a dialog — and without it the only way to reach any
  * of those was a throwaway Playwright script.
+ *
+ * `--scroll=PX` scrolls *inside* whatever is under the pointer before the
+ * shutter — a dialog scrolls in itself, so `--full` does not reach the bottom
+ * of a long settings panel. `--over=X,Y` moves the pointer first.
  *
  * The rest: `--phone` for the suite's phone viewport, `--full` for the whole
  * scrollable page, `--retina` when the detail is the point, `--settle=MS` for
@@ -57,6 +71,9 @@ const flag = (name, fallback) => {
   const found = args.find((one) => one.startsWith(`--${name}=`))
   return found === undefined ? fallback : found.slice(name.length + 3)
 }
+/** Every occurrence of a flag, in the order it was given. */
+const flags = (name) =>
+  args.filter((one) => one.startsWith(`--${name}=`)).map((one) => one.slice(name.length + 3))
 const has = (name) => args.includes(`--${name}`)
 const positional = args.filter((one) => !one.startsWith('--'))
 
@@ -64,8 +81,8 @@ const path = positional[0]
 if (!path) {
   console.error(
     'usage: yarn shot <path> [out.png] ' +
-      '[--wait=SELECTOR] [--click=SELECTOR] [--press=KEY] [--phone] [--full] ' +
-      '[--retina] [--settle=MS] ' +
+      '[--wait=SELECTOR] [--click=SELECTOR] [--press=KEY] [--type=TEXT] [--phone] [--full] ' +
+      '[--retina] [--stranger] [--settle=MS] ' +
       '[--tokens=--a,--b]',
   )
   process.exit(1)
@@ -84,6 +101,10 @@ const viewport = flag('width')
 const browser = await chromium.launch(project.use.launchOptions)
 const context = await browser.newContext({
   viewport,
+  // `--dark` renders the page as a reader whose system is set to dark. There
+  // was no way to screenshot the dark theme before this, which is a poor
+  // reason for it to have been looked at less often than the light one.
+  colorScheme: has('dark') ? 'dark' : 'light',
   // 1x by default: these get looked at and sent around, and a retina PNG is
   // four times the bytes for something somebody will glance at.
   deviceScaleFactor: has('retina') ? 2 : 1,
@@ -94,21 +115,52 @@ const page = await context.newPage()
 // obviously a screenshot of a broken screen — it is usually just empty.
 const complaints = []
 page.on('pageerror', (e) => complaints.push(String(e)))
+// Vue catches an error thrown in a component's setup and reports it to the
+// console rather than re-throwing, so `pageerror` never fires and a screen
+// that failed to mount comes back as a blank white PNG with nothing said. An
+// hour went into one of those. Console errors count as complaints.
+page.on('console', (m) => {
+  if (m.type() === 'error') complaints.push(m.text())
+})
 page.on('response', (r) => {
   if (r.status() >= 400) complaints.push(`${r.status()} ${r.url()}`)
 })
 
 try {
-  await signIn(page, base)
+  // `--stranger` looks at the page the way somebody who followed a shared link
+  // does: no account, no session, no workspace. It is the only way to see
+  // `/one/link/<secret>` at all — signed in, that route draws the same editor
+  // through the ordinary endpoints and proves nothing about the guest half.
+  if (!has('stranger')) await signIn(page, base)
   await page.goto(base + path)
-  const click = flag('click')
-  if (click) await page.locator(click).first().click({ timeout: 40_000 })
-  const keys = (flag('press', '') || '').split(',').filter(Boolean)
-  if (keys.length) {
+  // Clicks, keys and typed lines, in the order they were written on the command
+  // line rather than grouped by kind. Grouped was the first version and it is
+  // wrong in a way that looks like a bug in the app: `--click=.cm-content
+  // --type='# Hi' --click=[read]` toggled the reader *before* anything had been
+  // typed, so the screenshot showed an empty preview and the toggle looked
+  // broken. Read from argv because that is the only place the order survives.
+  let waited = false
+  for (const argument of process.argv.slice(2)) {
+    const matched = /^--(click|press|type)=([\s\S]*)$/.exec(argument)
+    if (!matched) continue
+    const [, kind, value] = matched
+
     // A key pressed at a page that has not finished loading is a key nothing is
-    // listening for: the screen binds its shortcuts when it mounts.
-    await page.waitForLoadState('networkidle').catch(() => {})
-    for (const key of keys) await page.keyboard.press(key)
+    // listening for: the screen binds its shortcuts when it mounts. Once, and
+    // only for the flags that need it.
+    if (!waited && kind !== 'click') {
+      await page.waitForLoadState('networkidle').catch(() => {})
+      waited = true
+    }
+
+    if (kind === 'click') {
+      await page.locator(value).first().click({ timeout: 40_000 })
+    } else if (kind === 'press') {
+      for (const key of value.split(',').filter(Boolean)) await page.keyboard.press(key)
+    } else {
+      await page.keyboard.type(value, { delay: 8 })
+      await page.keyboard.press('Enter')
+    }
   }
   const wait = flag('wait')
   if (wait) await page.locator(wait).first().waitFor({ timeout: 40_000 })
@@ -116,6 +168,17 @@ try {
   // A beat for the last transition to land. Short, because `--wait` is the
   // right answer whenever it actually matters.
   await page.waitForTimeout(Number(flag('settle', 600)))
+
+  // Down the panel, not down the page. `--full` photographs the document, and
+  // a dialog scrolls inside itself — so the second half of a long settings
+  // panel was reachable only by writing a throwaway script, which is the thing
+  // this command exists to stop.
+  const down = Number(flag('scroll', 0))
+  if (down) {
+    await page.mouse.move(...(flag('over', '700,450').split(',').map(Number)))
+    await page.mouse.wheel(0, down)
+    await page.waitForTimeout(400)
+  }
   await page.screenshot({ path: out, fullPage: has('full') })
   console.log(out)
 

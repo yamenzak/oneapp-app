@@ -33,8 +33,35 @@ const openRecord = async (page) => {
   await expect(page.locator('[data-slot="record-pane"]')).toBeVisible()
 }
 
-// What each column's fieldtype maps to. A phone shows two of the six, so the
-// assertion is per rendered header rather than a fixed count.
+// The record the link picker is asked about, and why it is not the ToDo above.
+//
+// A picker has two halves — a link you may create into and one you may not —
+// and until `registry.NEVER_GRANTED` landed the fixture demonstrated the first
+// with ToDo's `role`, a Link to Frappe's own `Role` that the space granted at
+// Manage. That is now refused to every space, and rightly: a customer building
+// a role out of it puts themselves in System Manager.
+//
+// A Compliance Document answers both halves by itself. `Renews` points at
+// Compliance Document, which the space does grant; `Belongs to` points at
+// DocType, which no space may. Same record, no grant invented to ask the
+// question.
+const COMPLIANCE = 'Residence Visa — Ali Haddad'
+
+const openCompliance = async (page) => {
+  await page.goto('/one/space/zzmock?screen=compliance')
+  await expect(page.locator('[data-slot="list-row"]').first()).toBeVisible()
+  await page.getByText(COMPLIANCE).first().click()
+  await expect(page.locator('[data-slot="record-pane"]')).toBeVisible()
+}
+
+// What each column's fieldtype maps to.
+//
+// Asserted in the column picker rather than on the list's own header. The
+// header used to carry the glyph too and no longer does: a fieldtype is a
+// property of a column you are *choosing*, and repeating it above every column
+// you already chose put six icons in a row that never changes and made the
+// header look like a toolbar. The mapping is the same mapping; this is where it
+// is now visible.
 const HEADER_ICONS = {
   Description: 'lucide-pilcrow',
   // The title column is the title field, so it carries that field's icon.
@@ -46,9 +73,6 @@ const HEADER_ICONS = {
   Color: 'lucide-palette',
 }
 
-// The three boxes of one filter row in the panel, in order: field, operator,
-// value. Scoped to the popover, because the quick boxes above are the same kind
-// of control and come first in the DOM.
 const box = (page, at) => page.locator('[data-slot="content-body"] button[role="combobox"]').nth(at)
 
 const pick = async (page, at, option) => {
@@ -65,26 +89,31 @@ test('every list header carries the icon its fieldtype maps to', async ({ page }
 
   // Not one icon repeated: the map is keyed by fieldtype, so a Select and a
   // Link and a Date are told apart at a glance.
+  await page.getByRole('button', { name: 'Columns' }).click()
+  await expect(page.locator('[data-slot="column-row"]').first()).toBeVisible()
+
+  // The grip comes first in every row and is the same glyph in all of them, so
+  // it is dropped rather than indexed past: a row that loses its drag handle
+  // should fail this on the fieldtype, not silently pass on the grip.
   const found = await page
-    .locator('[data-slot="list-header-cell"]')
-    .evaluateAll((cells) =>
-      cells
-        .filter((cell) => cell.querySelector('button')?.innerText.trim())
-        .map((cell) => [
-          cell.innerText.trim(),
-          [...(cell.querySelector('[class*="lucide-"]')?.classList || [])].find((c) =>
-            c.startsWith('lucide-'),
-          ),
-        ]),
+    .locator('[data-slot="column-row"]')
+    .evaluateAll((rows) =>
+      rows.map((row) => [
+        row.innerText.trim().split('\n')[0].trim(),
+        [...row.querySelectorAll('[class*="lucide-"]')]
+          .flatMap((el) => [...el.classList])
+          .filter((c) => c.startsWith('lucide-') && c !== 'lucide-grip-vertical')[0],
+      ]),
     )
-  console.log('header icons:', found)
+  console.log('column icons:', found)
 
   expect(found.length).toBeGreaterThanOrEqual(2)
   for (const [label, icon] of found) {
+    if (!(label in HEADER_ICONS)) continue
     expect(icon, `${label} has no icon`).toBe(HEADER_ICONS[label])
   }
 
-  await info.attach(`headers-${info.project.name}`, {
+  await info.attach(`columns-${info.project.name}`, {
     body: await page.screenshot({ fullPage: true }),
     contentType: 'image/png',
   })
@@ -443,33 +472,47 @@ test('a link search asks the server, and Create is offered only where it is allo
   page,
 }, info) => {
   const errors = collectConsoleErrors(page)
-  await openRecord(page)
+  await openCompliance(page)
   const dialog = page.locator('[data-slot="record-pane"]')
 
-  // Role is the second Link on the fixture and the one the space granted, so
-  // it is the one that may be created from. `allocated_to` points at User,
-  // which the space did not grant — no Create row, whatever this person's own
-  // permissions are.
-  const roles = dialog.getByLabel('Role', { exact: true })
-  await roles.click()
-  await expect(page.getByRole('option', { name: /Create a new Role/ })).toBeVisible()
-
-  await dialog.getByLabel('Allocated To', { exact: true }).click()
-  await expect(page.getByRole('option', { name: /^Create/ })).toHaveCount(0)
+  // `Renews` points at this record's own doctype, which the space grants, so
+  // it may be created from.
+  const renews = dialog.getByLabel('Renews', { exact: true })
+  await renews.click()
+  await expect(
+    page.getByRole('option', { name: /Create a new Compliance Document/ }),
+  ).toBeVisible()
   await page.keyboard.press('Escape')
 
+  // `Belongs to` points at DocType, which no space may grant however its
+  // manifest asks — so no Create row, whatever this person's own permissions
+  // are.
+  const belongs = dialog.getByLabel('Belongs to', { exact: true })
+  await belongs.click()
+  await expect(page.getByRole('option', { name: /^Create/ })).toHaveCount(0)
+
   // Typing searches the server rather than filtering what is already on
-  // screen: the row below is not in the first page of results.
+  // screen: the row below is not in the first page of results. Asked of the
+  // ungranted link on purpose — searching is not granting, and a picker that
+  // stopped searching what it may not create into would be a picker that
+  // cannot show you what a field already holds.
   const asked = []
   page.on('request', (r) => {
     if (r.url().includes('spaceview.link_options')) asked.push(r.url())
   })
-  await roles.click()
-  await roles.fill('Report')
-  await expect(page.getByRole('option', { name: 'Report Manager' })).toBeVisible()
-  expect(asked.some((url) => url.includes('query=Report'))).toBe(true)
+  await belongs.fill('Workflow Action')
+  // Not `exact`: an option carries its module as a description, so its
+  // accessible name is the label and the module together.
+  await expect(page.getByRole('option', { name: /Workflow Action/ }).first()).toBeVisible()
+  expect(asked.some((url) => url.includes('query=Workflow+Action')
+    || url.includes('query=Workflow%20Action'))).toBe(true)
 
-  // And what was typed is offered as a name rather than thrown away.
+  // And what was typed is offered as a name rather than thrown away — on a
+  // link that may be created into, which is the only place the offer means
+  // anything.
+  await page.keyboard.press('Escape')
+  await renews.click()
+  await renews.fill('Report')
   await expect(page.getByRole('option', { name: 'Create "Report"' })).toBeVisible()
 
   await info.attach(`link-create-${info.project.name}`, {
@@ -482,23 +525,25 @@ test('a link search asks the server, and Create is offered only where it is allo
 test('a record can be created from the picker and is adopted as the value', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   const made = `ZZ Picker ${Date.now()}`
-  await openRecord(page)
+  await openCompliance(page)
   const dialog = page.locator('[data-slot="record-pane"]')
 
-  const roles = dialog.getByLabel('Role', { exact: true })
-  await roles.click()
-  await roles.fill(made)
+  const renews = dialog.getByLabel('Renews', { exact: true })
+  await renews.click()
+  await renews.fill(made)
   await page.getByRole('option', { name: `Create "${made}"` }).click()
 
-  // The quick form is the doctype's own answer: Role marks `role_name`
-  // mandatory and nothing else, and the search text is already in it.
+  // The quick form is the doctype's own answer: Compliance Document marks
+  // `title` mandatory and nothing else, and the search text is already in it.
   const quick = page.locator('[role="dialog"]')
-  await expect(quick.getByLabel('Role Name')).toHaveValue(made)
+  // `/^Title/` and not the exact string: a mandatory field's label carries
+  // "(required)" into its accessible name.
+  await expect(quick.getByRole('textbox', { name: /^Title/ })).toHaveValue(made)
   await quick.getByRole('button', { name: 'Create', exact: true }).click()
 
   // Created and picked in one move — the point of creating one here was to
   // choose it.
-  await expect(roles).toHaveValue(made)
+  await expect(renews).toHaveValue(made)
   expectNoRealErrors(errors)
 })
 
@@ -711,7 +756,7 @@ test('rows can be selected and deleted together', async ({ page, baseURL }, info
   // it, which the browser reports as "Failed to fetch".
   await expect(page.locator('[data-slot="list-row"]').first()).toBeVisible()
   const csrf = await page.evaluate(() => window.csrf_token)
-  const made = await page.request.post(`${baseURL}/api/method/oneapp.oneapp_core.spaceview.save`, {
+  const made = await page.request.post(`${baseURL}/api/method/oneapp.onespace.spaceview.save`, {
     headers: { 'X-Frappe-CSRF-Token': csrf },
     form: {
       space_code: 'zzmock',
@@ -846,4 +891,68 @@ test('the boxes that do not fit are one click away', async ({ page }, info) => {
   await page.getByRole('button', { name: 'Fewer filters' }).click()
   await expect(page.getByPlaceholder('Description')).toBeHidden()
   expectNoRealErrors(errors)
+})
+
+// --------------------------------------------------------------------------
+// The three things the list could not do
+//
+// A box that asks every column, a handle on a column edge, and a filter that
+// reaches into a child table. Each is small and each was a reason to leave
+// this screen for the desk.
+// --------------------------------------------------------------------------
+
+test('one box asks every column at once', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await openList(page)
+
+  const box = page.locator('[data-slot="list-search"] input')
+  await expect(box).toBeVisible()
+
+  // A word out of one todo's description and out of no other. The quick boxes
+  // ask a named field; this asks all of them, so the reader does not have to
+  // know which one carries the word.
+  await box.fill('Halloway')
+  await expect(page.getByText('Chase the Halloway invoice')).toBeVisible()
+  await expect(page.getByText(SEEDED)).toHaveCount(0)
+
+  // And the count under the list follows it, or the footer is labelling a
+  // list it did not measure.
+  await expect(page.getByText('1 of 1')).toBeVisible()
+
+  // Emptying it puts everything back.
+  await box.fill('')
+  await expect(page.getByText(SEEDED).first()).toBeVisible()
+  expectNoRealErrors(errors)
+})
+
+test('the id is searchable, because it is what people paste', async ({ page }) => {
+  await openList(page)
+  await page.locator('[data-slot="list-search"] input').fill('zzmock-q3')
+  await expect(page.getByText('File Q3 returns')).toBeVisible()
+  await expect(page.getByText(SEEDED)).toHaveCount(0)
+})
+
+test('a column is dragged wider and stays that way', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'no pointer to drag with')
+  await openList(page)
+
+  const header = page.locator('[data-slot="list-header"]')
+  const before = await header.locator('[data-slot="list-header-cell"]').first().boundingBox()
+
+  const handle = page.locator('[data-slot="column-resizer"]').first()
+  await expect(handle).toBeAttached()
+  const grip = await handle.boundingBox()
+
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(grip.x + 120, grip.y + grip.height / 2, { steps: 8 })
+  await page.mouse.up()
+
+  // Wider, and still wider after the reload the release triggers: the width
+  // goes up as an override and comes back on the next resolve, so a resize
+  // that only changed local state would snap back here.
+  await expect(async () => {
+    const after = await header.locator('[data-slot="list-header-cell"]').first().boundingBox()
+    expect(after.width).toBeGreaterThan(before.width + 40)
+  }).toPass()
 })

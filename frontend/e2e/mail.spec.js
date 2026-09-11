@@ -14,6 +14,7 @@
 // to an owner — a mailbox somebody connects with their own password is theirs.
 import { expect, test } from '@playwright/test'
 import { collectConsoleErrors, expectNoRealErrors, signIn } from './auth.js'
+import { openSettings } from './shell.js'
 
 // What `_seed_mail` puts on the site.
 const SUBJECT = 'Quotation for the Al Reem tower'
@@ -321,6 +322,225 @@ test('a reply goes to the sender, and carries Cc when it is to all', async ({
   expectNoRealErrors(errors)
 })
 
+/**
+ * The strip under a conversation answers its newest message, which is right
+ * until somebody is reading an older one. That was the whole bug: pressing
+ * Forward while looking at a message from three weeks ago forwarded today's,
+ * and nothing on the screen said which one it meant.
+ */
+test('a message is forwarded from its own menu, not the thread\'s', async ({
+  page,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name === 'mobile', 'three columns are a desktop layout')
+  const errors = collectConsoleErrors(page)
+
+  await signIn(page, baseURL)
+  await page.goto('/one/mail')
+  await threads(page).filter({ hasText: SUBJECT }).click()
+
+  // The first message, not the last — the one the strip at the bottom would
+  // not have picked.
+  await messages(page).nth(0).locator('[data-slot="mail-message-menu"]').click()
+  await page.getByRole('menuitem', { name: 'Forward' }).click()
+
+  const compose = page.getByRole('dialog')
+  await expect(compose).toContainText('revised cladding quote')
+  await expect(compose).not.toContainText('glazing line moved')
+
+  await page.keyboard.press('Escape')
+  expectNoRealErrors(errors)
+})
+
+test('the envelope is behind the caret, and the date in it is a date', async ({
+  page,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name === 'mobile', 'three columns are a desktop layout')
+  const errors = collectConsoleErrors(page)
+
+  await signIn(page, baseURL)
+  await page.goto('/one/mail')
+  await threads(page).filter({ hasText: SUBJECT }).click()
+
+  const open = messages(page).nth(1)
+  await expect(open.locator('[data-slot="mail-details"]')).toHaveCount(0)
+  await open.locator('[data-slot="mail-details-toggle"]').click()
+
+  // "2 days ago" is the one thing the header already said, so the panel
+  // earning its place means saying the rest: who exactly, and when exactly.
+  const details = open.locator('[data-slot="mail-details"]')
+  await expect(details).toContainText('From')
+  await expect(details).toContainText('hala@client.test')
+  await expect(details).toContainText(String(new Date().getFullYear()))
+
+  // And the menu inside the header does not also collapse the message it is
+  // in, which is what the whole header row being the toggle would otherwise do.
+  await expect(open).toHaveAttribute('data-open', 'yes')
+  await open.locator('[data-slot="mail-message-menu"]').click()
+  await expect(open).toHaveAttribute('data-open', 'yes')
+  await page.keyboard.press('Escape')
+
+  expectNoRealErrors(errors)
+})
+
+/**
+ * The writing verbs, and the one thing about them that has to hold on a site
+ * whose gateway answers nothing.
+ *
+ * This bench has no model behind it, so what a run does here is fail — and
+ * that is the case worth a browser. A failed run that says nothing is a glow
+ * that never stops and a person who cannot tell whether to wait; a failed run
+ * that half-wrote the message is worse. Both are asserted.
+ */
+test('the verbs are offered, and a refused one leaves the message alone', async ({
+  page,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name === 'mobile', 'three columns are a desktop layout')
+  const errors = collectConsoleErrors(page)
+
+  await signIn(page, baseURL)
+  await page.goto('/one/mail')
+  await page.getByRole('button', { name: 'Write' }).click()
+
+  const compose = page.getByRole('dialog')
+  await compose.locator('[data-slot="ai-menu"]').click()
+
+  // Write first: on an empty message it is the only one that does anything.
+  const menu = page.getByRole('menuitem')
+  await expect(menu.first()).toHaveText('Write…')
+  for (const one of ['Improve', 'Proofread', 'Make it shorter', 'More formal']) {
+    await expect(page.getByRole('menuitem', { name: one })).toBeVisible()
+  }
+
+  const was = await compose.locator('.ProseMirror').innerText()
+  await page.getByRole('menuitem', { name: 'Improve' }).click()
+
+  // The run is enqueued, fails against a gateway with nothing behind it, and
+  // says so — rather than leaving the pane shimmering.
+  await expect(compose.getByText('That did not work')).toBeVisible({ timeout: 20000 })
+  await expect(compose.locator('[data-slot="ai-glow"][data-writing="yes"]')).toHaveCount(0)
+  // And the signature somebody was about to write under is still there.
+  expect(await compose.locator('.ProseMirror').innerText()).toBe(was)
+
+  await page.keyboard.press('Escape')
+  expectNoRealErrors(errors)
+})
+
+test('a suggested reply opens the composer rather than sending anything', async ({
+  page,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name === 'mobile', 'three columns are a desktop layout')
+  const errors = collectConsoleErrors(page)
+
+  await signIn(page, baseURL)
+  await page.goto('/one/mail')
+  await threads(page).filter({ hasText: SUBJECT }).click()
+  await page.locator('[data-slot="mail-suggest"]').click()
+
+  // A reply to edit: addressed, subject filled, quoted history under it, and
+  // no Send has happened.
+  const compose = page.getByRole('dialog')
+  await expect(compose.getByRole('textbox', { name: 'Subject' }))
+    .toHaveValue(`Re: ${SUBJECT}`)
+  await expect(compose).toContainText('wrote:')
+  await expect(compose.getByText('That did not work')).toBeVisible({ timeout: 20000 })
+
+  await page.keyboard.press('Escape')
+  expectNoRealErrors(errors)
+})
+
+/**
+ * A card on a conversation, and the one thing that has to be true of it:
+ * pressing Apply is what makes something happen, and nothing before that did.
+ *
+ * The card is written straight into the table rather than asked for from a
+ * model — this bench has none — which is the right level anyway: what is
+ * worth a browser here is the registry reaching a surface that is not the
+ * chat, and the Apply landing a real `ToDo`.
+ */
+test('a suggestion on a thread does nothing until Apply', async ({
+  page,
+  baseURL,
+}, info) => {
+  test.skip(info.project.name === 'mobile', 'three columns are a desktop layout')
+  const errors = collectConsoleErrors(page)
+
+  await signIn(page, baseURL)
+
+  // The newest message of the thread: cards are filed against a message and
+  // not against the thread key, because a thread key is a normalised subject
+  // and two conversations can share one.
+  const found = await page.request.get(
+    '/api/method/frappe.client.get_list?doctype=Communication'
+    + '&filters=' + encodeURIComponent(JSON.stringify({ subject: ['like', `%${SUBJECT}%`] }))
+    + '&order_by=' + encodeURIComponent('communication_date desc')
+    + '&limit_page_length=1',
+  )
+  expect(found.ok()).toBe(true)
+  const [message] = (await found.json()).message || []
+  expect(message, 'the fixture has no mail').toBeTruthy()
+
+  const what = `Send the revised schedule ${Date.now()}`
+  const made = await page.request.post('/api/method/frappe.client.insert', {
+    data: { doc: JSON.stringify({
+      doctype: 'OneSpace Suggestion',
+      kind: 'task',
+      state: 'Proposed',
+      summary: `Add a task: ${what}`,
+      payload: JSON.stringify({ what, due: '', priority: 'Medium' }),
+      before: '{}',
+      about_doctype: 'Communication',
+      about_name: message.name,
+    }) },
+  })
+  expect(made.ok()).toBe(true)
+  const suggestion = (await made.json()).message.name
+
+  await page.goto('/one/mail')
+  await threads(page).filter({ hasText: SUBJECT }).click()
+
+  const card = page.locator('[data-slot="suggestion"]')
+  await expect(card).toHaveCount(1)
+  await expect(card).toContainText(what)
+
+  // Read, and still not a task.
+  expect(await tasks(page, what)).toBe(0)
+
+  await card.locator('[data-slot="suggestion-apply"]').click()
+  await expect(card).toContainText('Applied')
+  expect(await tasks(page, what)).toBe(1)
+
+  await unmake(page, 'OneSpace Suggestion', suggestion)
+  expectNoRealErrors(errors)
+})
+
+/** How many ToDos say this. */
+async function tasks(page, description) {
+  const said = await page.request.get(
+    '/api/method/frappe.client.get_list?doctype=ToDo&filters='
+    + encodeURIComponent(JSON.stringify({ description: ['like', `%${description}%`] })),
+  )
+  expect(said.ok()).toBe(true)
+  return ((await said.json()).message || []).length
+}
+
+/**
+ * Take a row back out. The token because this runs after `page.goto` — a page
+ * load mints a fresh CSRF token and the old one stops being accepted, which
+ * is the same thing `chat.spec.js`'s own sweep ran into.
+ */
+async function unmake(page, doctype, name) {
+  const token = await page.evaluate(() => window.csrf_token)
+  const gone = await page.request.post('/api/method/frappe.client.delete', {
+    headers: token ? { 'X-Frappe-CSRF-Token': token } : {},
+    data: { doctype, name },
+  })
+  expect(gone.ok(), `${name} was left in the fixture: ${await gone.text()}`).toBe(true)
+}
+
 test('the composer writes prose, not a textarea', async ({ page, baseURL }, info) => {
   test.skip(info.project.name === 'mobile', 'three columns are a desktop layout')
   const errors = collectConsoleErrors(page)
@@ -359,13 +579,14 @@ test('anybody may connect the mailbox they already have', async ({ page, baseURL
   await page.goto('/one/space/zzmock?screen=tasks')
   await page.locator('[data-slot="list-row"]').first().waitFor({ timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Administrator' }).click()
-  await page.getByRole('menuitem', { name: 'Workspace settings' }).click()
-  await page.getByRole('tab', { name: 'Email' }).click()
+  await openSettings(page)
+  await page.getByRole('tab', { name: 'Mailbox' }).click()
 
   // The address the fixture granted, with its signature, is the top half.
+  // `mailbox-address` and not `mail-address`: this tab lists the ones this
+  // person holds, where the workspace's Email tab lists every one it owns.
   await expect(
-    page.locator('[data-slot="mail-address"]').filter({ hasText: ADDRESS }),
+    page.locator('[data-slot="mailbox-address"]').filter({ hasText: ADDRESS }),
   ).toHaveCount(1)
 
   // Typing an address fills in the servers. Somebody who says `gmail.com` has
@@ -376,6 +597,13 @@ test('anybody may connect the mailbox they already have', async ({ page, baseURL
   await page.getByRole('button', { name: 'Change the servers' }).click()
   await expect(page.getByLabel('Incoming (IMAP)')).toHaveValue('imap.gmail.com')
   await expect(page.getByLabel('Outgoing (SMTP)')).toHaveValue('smtp.gmail.com')
+
+  // And the ports, which are the whole of "my host is not one of the eight
+  // you know about". Filled in rather than left blank: somebody who opens
+  // this block to change one of them should see what the other one is.
+  const ports = page.getByRole('spinbutton', { name: 'Port' })
+  await expect(ports.first()).toHaveValue('993')
+  await expect(ports.last()).toHaveValue('587')
 
   expectNoRealErrors(errors)
 })
@@ -482,9 +710,8 @@ test('a rule files mail, and away answers it', async ({ page, baseURL }, info) =
   await page.goto('/one/space/zzmock?screen=tasks')
   await page.locator('[data-slot="list-row"]').first().waitFor({ timeout: 15_000 })
 
-  await page.getByRole('button', { name: 'Administrator' }).click()
-  await page.getByRole('menuitem', { name: 'Workspace settings' }).click()
-  await page.getByRole('tab', { name: 'Email' }).click()
+  await openSettings(page)
+  await page.getByRole('tab', { name: 'Mailbox' }).click()
 
   // A rule is four words: look at this field, for this text, and file it there.
   // Anything more is a query builder, which is not what somebody sorting their
@@ -504,9 +731,8 @@ test('a rule files mail, and away answers it', async ({ page, baseURL }, info) =
 
   // It survives the round trip, which is the half a list in memory would fake.
   await page.reload()
-  await page.getByRole('button', { name: 'Administrator' }).click()
-  await page.getByRole('menuitem', { name: 'Workspace settings' }).click()
-  await page.getByRole('tab', { name: 'Email' }).click()
+  await openSettings(page)
+  await page.getByRole('tab', { name: 'Mailbox' }).click()
   await expect(mine).toHaveCount(1)
 
   await mine.getByRole('button', { name: `Remove ${title}` }).click()
@@ -520,9 +746,8 @@ test('a rule files mail, and away answers it', async ({ page, baseURL }, info) =
   await page.locator('[data-slot="mail-save-away"]').click()
 
   await page.reload()
-  await page.getByRole('button', { name: 'Administrator' }).click()
-  await page.getByRole('menuitem', { name: 'Workspace settings' }).click()
-  await page.getByRole('tab', { name: 'Email' }).click()
+  await openSettings(page)
+  await page.getByRole('tab', { name: 'Mailbox' }).click()
   await expect(page.getByLabel('What it says')).toHaveValue('Back on Monday.')
 
   expectNoRealErrors(errors)
@@ -600,7 +825,7 @@ test('an attachment shows its size and opens in the previewer', async ({
   expectNoRealErrors(errors)
 })
 
-const MAILBOX = 'oneapp.oneapp_core.email.mailbox.reading'
+const MAILBOX = 'oneapp.onemail.mailbox.reading'
 // The thread key is the subject, lowercased with the `Re:` off — the whole of
 // what threading is here. Written out because this spec sets read state
 // straight through the API and needs to name the conversation before it has a
@@ -926,5 +1151,62 @@ test('search takes from: and has:attachment, and means them', async ({
   await box.fill('has:attachment fabricator')
   await expect(threads(page)).toHaveCount(0)
 
+  expectNoRealErrors(errors)
+})
+
+test('a message carries what a record says, as text', async ({ page, baseURL }, info) => {
+  test.skip(info.project.name === 'mobile', 'the composer is the same dialog on both')
+  const errors = collectConsoleErrors(page)
+
+  await signIn(page, baseURL)
+  // A composer opens on whatever was left behind, and the spec above
+  // deliberately leaves something. Start from an empty one, and leave one.
+  await page.request.post('/api/method/oneapp.onemail.mailbox.forget')
+  await page.goto('/one/mail')
+  await threads(page).first().waitFor({ timeout: 15_000 })
+
+  await page.getByRole('button', { name: 'Write' }).click()
+  const compose = page.getByRole('dialog')
+
+  // The same rail a document and a workbook have. Shut until asked for,
+  // because most messages are prose.
+  await compose.getByRole('button', { name: 'Records', exact: true }).click()
+  await compose.locator('[data-slot="source-add"]').click()
+
+  // Which kind, then which one — the rail's two steps, inside the composer's
+  // own dialog. That the second dialog's picker works at all is worth
+  // asserting: this is the one place in the product where one sits inside
+  // another.
+  await page.getByPlaceholder('Which kind of record?').fill('ToDo')
+  const kind = page.getByRole('option', { name: /^ToDo\b/ }).first()
+  await kind.waitFor({ timeout: 15_000 })
+  await kind.click()
+  await page.getByRole('button', { name: 'Next' }).click()
+
+  // Typed rather than clicked: the picker searches the site, so its list
+  // does not exist until there is something to search for.
+  const search = page.getByPlaceholder('Search', { exact: true })
+  await search.click()
+  await search.pressSequentially('Halloway', { delay: 40 })
+  const found = page.getByRole('option', { name: /Halloway/ })
+  await found.first().waitFor({ timeout: 15_000 })
+  await found.first().click()
+
+  // The record's own id, because every doctype has it and what it resolves
+  // to is a string this spec already knows.
+  await compose.locator('[data-slot="insert-name"]').click()
+
+  // In the body as words. Not a token: a message that has been sent cannot
+  // be read again, so there is nothing to keep live — which is also why the
+  // rail here has no Refresh.
+  await expect(compose.getByLabel('Message').getByText('zzmock-halloway'))
+    .toBeVisible()
+  await expect(compose.locator('[data-slot="fields-refresh"]')).toHaveCount(0)
+
+  // And the title beside the id is words too, though the doctype stores it
+  // as a Text Editor's HTML.
+  await expect(compose.getByText('<p>')).toHaveCount(0)
+
+  await page.request.post('/api/method/oneapp.onemail.mailbox.forget')
   expectNoRealErrors(errors)
 })

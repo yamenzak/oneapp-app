@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 
 import { expect, test } from '@playwright/test'
 
-import { collectConsoleErrors, expectNoRealErrors, signIn } from './auth.js'
+import { collectConsoleErrors, expectNoRealErrors, nameInUrl, signIn } from './auth.js'
 
 /**
  * The grid, in a browser.
@@ -47,8 +47,12 @@ const formulaBar = (page) => page.locator('input[name="formula-bar"]')
 // vendoring exists to avoid (`tests/vendored.py`).
 const moreMenu = (page) => page.locator('.sn-tool-more button')
 const addTab = (page) => page.locator('.sn-tab-add')
+// The sheet's own menu. A three-dot at the end of the bar, where the document
+// editor keeps its own — the two are one suite, so `File ⌄` at the other end
+// of the bar meant finding one taught you nothing about finding the other.
 const fileMenu = (page) =>
-  page.locator('.sn-topbar-right').getByRole('button', { name: 'File' })
+  page.locator('.sn-topbar-right')
+    .getByRole('button', { name: 'What to do with this sheet' })
 
 /**
  * What a cell came to, read back off the server.
@@ -64,7 +68,7 @@ const fileMenu = (page) =>
  */
 async function computed(page, id, ref) {
   const res = await page.request.get(
-    `/api/method/oneapp.oneapp_core.sheets.read_range?sheet=${id}&tab=Sheet1&ref=${ref}`,
+    `/api/method/oneapp.onesheet.read_range?sheet=${id}&tab=Sheet1&ref=${ref}`,
   )
   expect(res.ok()).toBe(true)
   return (await res.json()).message.values[0][0]
@@ -102,7 +106,7 @@ async function type(page, ref, text) {
 /**
  * Make an empty sheet from the Drive and land in it. Returns its id.
  *
- * Two clicks, not one: New sheet is a menu, because a workspace with an
+ * Two clicks, not one: New is a menu, because a workspace with an
  * estimator template starts from it far more often than from a blank grid.
  *
  * Waits for the toolbar *and* the canvas: the toolbar mounts before the grid
@@ -110,12 +114,12 @@ async function type(page, ref, text) {
  */
 async function newSheet(page) {
   await page.goto('/one/files')
-  await page.getByRole('button', { name: 'New sheet' }).click()
+  await page.getByRole('button', { name: 'New', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Blank sheet' }).click()
   await page.waitForURL(/\/one\/sheets\//)
   await ready(page)
   await expect(active(page)).toHaveText('A1')
-  return page.url().split('/one/sheets/')[1]
+  return nameInUrl(page, '/one/sheets/')
 }
 
 /**
@@ -204,26 +208,64 @@ async function attendeeSheet(page, title) {
   return id
 }
 
-test('a sheet in the file list opens its grid rather than a preview', async ({ page }) => {
-  // The one thing about a sheet that is not like every other file: it has no
-  // bytes to look at, so clicking it navigates instead of opening the preview
-  // dialog every other row opens.
-  const id = await newSheet(page)
+/** The row for the sheet just made, once the debounced search has settled. */
+async function sheetRow(page) {
   await page.goto('/one/files?place=all')
   await page.getByPlaceholder('Search files').fill('Untitled sheet')
   // The search is debounced; without this the click lands on whatever row the
   // unfiltered list had first.
   await expect(page.locator('[data-slot="drive-file"]').first())
     .toContainText('Untitled sheet')
-  const row = page.locator('button[data-slot="drive-open"]').first()
+  const row = page.locator('[data-slot="drive-open"]').first()
   await row.waitFor({ timeout: 20_000 })
-  await row.click()
+  return row
+}
 
-  await page.waitForURL(/\/one\/sheets\//)
-  await expect(grid(page)).toBeVisible()
-  await expect(page.getByRole('dialog')).toHaveCount(0)
-  expect(id).toBeTruthy()
-})
+test('a sheet in the file list opens its grid beside the list, and on its own page from a modifier',
+  async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'there is no beside on a phone — see the test below')
+    // The one thing about a sheet that is not like every other file: it has no
+    // bytes to look at. It opens its grid — editable, in the pane beside the
+    // list, because the point of a file manager is to work in a file without
+    // losing the folder you found it in.
+    const id = await newSheet(page)
+    const row = await sheetRow(page)
+
+    // An anchor, not a button — and it stays one, which is the point of the
+    // second half: the plain click is taken by the page, every modifier is
+    // left to the browser.
+    await expect(row).toHaveJSProperty('tagName', 'A')
+
+    const here = page.url()
+    await row.click()
+    await expect(page.locator('[data-slot="record-pane"]')).toBeVisible()
+    await expect(grid(page)).toBeVisible()
+    // Beside the list, not instead of it, and without leaving the Drive.
+    await expect(page.locator('[data-slot="drive-file"]').first()).toBeVisible()
+    expect(page.url()).toBe(here)
+
+    // And a modifier still opens it on its own page — a file manager where
+    // cmd-click does nothing is one people fight.
+    const opened = page.context().waitForEvent('page')
+    await row.click({ modifiers: ['ControlOrMeta'] })
+    const tab = await opened
+    await expect(tab).toHaveURL(/\/one\/sheets\//)
+    expect(id).toBeTruthy()
+  })
+
+test('on a phone the same row is a plain link to the sheet',
+  async ({ page }, info) => {
+    test.skip(info.project.name !== 'mobile', 'this is the phone half of the test above')
+    // The pane on a phone is a full-screen overlay, so opening a sheet in it
+    // buys nothing the page does not already give and costs the URL and the
+    // back button. So the row is left alone and behaves like what it looks
+    // like — which is also why nothing here has to intercept a tap.
+    await newSheet(page)
+    const row = await sheetRow(page)
+    await row.click()
+    await page.waitForURL(/\/one\/sheets\//)
+    await expect(grid(page)).toBeVisible()
+  })
 
 test('a sheet is made from the Drive and opens on an empty grid', async ({ page }) => {
   const errors = collectConsoleErrors(page)
@@ -360,7 +402,8 @@ test('a named range fills a record\'s child table', async ({ page }) => {
   await openParticipants(page)
 
   await page.getByRole('tabpanel', { name: 'Participants' })
-    .getByRole('button', { name: /^Fill/ }).click()
+    .getByRole('button', { name: 'Settings for these rows' }).click()
+  await page.getByRole('menuitem', { name: 'Use a different sheet…' }).click()
 
   // frappe-ui's Select is reka-ui's, not a native `<select>` — a combobox that
   // opens a listbox. `selectOption` throws on one.
@@ -388,34 +431,66 @@ test('a named range fills a record\'s child table', async ({ page }) => {
 })
 
 /**
- * A template is a sheet with a flag on it, and starting from one copies its
- * workbook. What is worth checking in a browser is the loop rather than the
- * copy: marking one, finding it in the New sheet menu, and landing in a grid
- * that already has the template's cells in it.
+ * A template is a sheet with a flag on it, and loading one puts its tabs into
+ * the workbook you are already in.
+ *
+ * Which is the whole point of it, and what this asserts. A sheet bound to a
+ * record's child table is that record's workbook: the estimator has to sit
+ * beside the bound tab so a formula can reach it and so it is still there next
+ * time. A template that opened as a separate file would be a calculation
+ * nobody can find again.
+ *
+ * So: the tab arrives, its cells are in it, the tab that was already here is
+ * untouched, and a formula written across the two of them computes.
  */
-test('a sheet can be made a template, and a new sheet starts from it', async ({ page }) => {
-  const title = `Estimator ${Date.now()}`
+test('a template loads into the workbook you are in, as tabs beside it',
+  async ({ page }) => {
+    const title = `Estimator ${Date.now()}`
 
-  await newSheet(page)
-  await rename(page, title)
-  await type(page, 'A1', 'Rate card')
-  await type(page, 'B1', '250')
-  await saved(page)
+    await newSheet(page)
+    await rename(page, title)
+    await type(page, 'A1', 'Rate card')
+    await type(page, 'B1', '250')
+    await saved(page)
 
-  await fileMenu(page).click()
-  await page.getByRole('menuitem', { name: 'Use as a template' }).click()
+    await fileMenu(page).click()
+    await page.getByRole('menuitem', { name: 'Use as a template' }).click()
 
-  await page.goto('/one/files')
-  await page.getByRole('button', { name: 'New sheet' }).click()
-  await page.getByRole('menuitem', { name: title, exact: true }).click()
+    // A different workbook, with something of its own in it — the thing that
+    // must survive being loaded into.
+    await newSheet(page)
+    const book = page.url()
+    await type(page, 'A1', 'Line items')
+    await saved(page)
 
-  await page.waitForURL(/\/one\/sheets\//)
-  await ready(page)
-  await select(page, 'A1')
-  await expect(formulaBar(page)).toHaveValue('Rate card')
-  await select(page, 'B1')
-  await expect(formulaBar(page)).toHaveValue('250')
-})
+    await fileMenu(page).click()
+    await page.getByRole('menuitem', { name: 'Load a template' }).click()
+    await page.locator('[data-slot="template-row"]', { hasText: title }).click()
+
+    // Same workbook. Not a new file, which is what the old behaviour was and
+    // what the URL is here to rule out.
+    await expect.poll(() => page.url()).toBe(book)
+
+    // The template's tab, with the template's cells in it.
+    await expect(page.locator('.sn-tabs-track')).toContainText('Sheet1 (2)')
+    await select(page, 'A1')
+    await expect(formulaBar(page)).toHaveValue('Rate card')
+    await select(page, 'B1')
+    await expect(formulaBar(page)).toHaveValue('250')
+
+    // And the tab that was here before still holds what it held.
+    await page.locator('.sn-tab', { hasText: /^Sheet1$/ }).click()
+    await select(page, 'A1')
+    await expect(formulaBar(page)).toHaveValue('Line items')
+
+    // The two are one workbook, which is the claim: a formula in the original
+    // tab reaches into the loaded one and computes. Read off the server, which
+    // is the only way to see a computed value — a canvas has no text.
+    await type(page, 'C1', "='Sheet1 (2)'!B1*2")
+    await saved(page)
+    const id = book.split('/').pop()
+    await expectComputed(page, id, 'C1').toBe('500')
+  })
 
 /**
  * Excel, both ways, as one round trip.
@@ -442,7 +517,7 @@ test('a sheet exports to Excel and comes back with its formulas', async ({ page 
   expect(download.suggestedFilename()).toMatch(/\.xlsx$/)
 
   await page.goto('/one/files')
-  await page.getByRole('button', { name: 'New sheet' }).click()
+  await page.getByRole('button', { name: 'New', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Import a spreadsheet' }).click()
   // Scoped to the dialog, not `input[type=file]` on the page: the Drive's own
   // Upload button is a second one, and a bare selector matched both the day
@@ -457,7 +532,7 @@ test('a sheet exports to Excel and comes back with its formulas', async ({ page 
 
   await page.waitForURL(/\/one\/sheets\//, { timeout: 60_000 })
   await ready(page)
-  const imported = page.url().split('/one/sheets/')[1]
+  const imported = nameInUrl(page, '/one/sheets/')
   await select(page, 'A2')
   await expect(formulaBar(page)).toHaveValue('120')
 
@@ -487,7 +562,7 @@ test('a filled table says where its rows came from, and can be locked', async ({
   await page.goto('/one/files')
   const csrf = await page.evaluate(() => window.csrf_token)
   const signed = { 'X-Frappe-CSRF-Token': csrf }
-  await page.request.post('/api/method/oneapp.oneapp_core.sheets.unlock', {
+  await page.request.post('/api/method/oneapp.onesheet.unlock', {
     form: table, headers: signed,
   })
 
@@ -498,7 +573,8 @@ test('a filled table says where its rows came from, and can be locked', async ({
   // Scoped to this table's panel: an Event has two child tables and the other
   // one has a Fill control of its own.
   const panel = page.getByRole('tabpanel', { name: 'Participants' })
-  await panel.getByRole('button', { name: /^Fill/ }).click()
+  await panel.getByRole('button', { name: 'Settings for these rows' }).click()
+  await page.getByRole('menuitem', { name: 'Use a different sheet…' }).click()
   await page.getByLabel('Sheet', { exact: true }).click()
   await page.getByRole('option', { name: title, exact: true }).click()
   await page.getByLabel('Named range').click()
@@ -514,13 +590,15 @@ test('a filled table says where its rows came from, and can be locked', async ({
   // Locked: the control that would replace them is gone, and so is the right.
   await note.getByRole('button', { name: 'Lock these rows' }).click()
   await expect(note).toContainText('Locked')
-  await expect(page.getByRole('tabpanel', { name: 'Participants' })
-    .getByRole('button', { name: /^Fill/ })).toHaveCount(0)
+  await page.getByRole('tabpanel', { name: 'Participants' })
+    .getByRole('button', { name: 'Settings for these rows' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Use a different sheet…' })).toHaveCount(0)
+  await page.keyboard.press('Escape')
 
   // The real sheet and the real range, signed. A made-up sheet name would be
   // refused for not existing, and an unsigned POST for being unsigned — either
   // would "pass" this without the lock existing at all.
-  const refused = await page.request.post('/api/method/oneapp.oneapp_core.sheets.pull', {
+  const refused = await page.request.post('/api/method/oneapp.onesheet.pull', {
     form: { sheet: id, label: 'Attendees', ...table },
     headers: signed,
   })
@@ -528,8 +606,10 @@ test('a filled table says where its rows came from, and can be locked', async ({
   expect(await refused.text()).toContain('locked')
 
   await note.getByRole('button', { name: 'Follow the sheet again' }).click()
-  await expect(page.getByRole('tabpanel', { name: 'Participants' })
-    .getByRole('button', { name: 'Fill again' })).toBeVisible()
+  await page.getByRole('tabpanel', { name: 'Participants' })
+    .getByRole('button', { name: 'Settings for these rows' }).click()
+  await expect(page.getByRole('menuitem', { name: 'Use a different sheet…' })).toBeVisible()
+  await page.keyboard.press('Escape')
 
   // Nothing pushes. Typing in the sheet does not touch the document — what it
   // does is make the note say so, with the control that would act on it
@@ -546,7 +626,167 @@ test('a filled table says where its rows came from, and can be locked', async ({
   await written
 
   await openParticipants(page)
-  await expect(page.locator('[data-slot="sheet-feed"]')).toContainText('has changed')
+  const changed = page.locator('[data-slot="sheet-feed"]')
+  await expect(changed).toContainText('has changed')
+  // Beside the sentence, and not two rows up in the header where it used to
+  // be: you are told here, so the thing to press is here.
+  await expect(changed.getByRole('button', { name: 'Fill again' })).toBeVisible()
   // And the rows are still what they were until somebody presses it.
   await expect(page.getByRole('row', { name: /Administrator/ }).first()).toBeVisible()
 })
+
+
+/**
+ * The first Quotation in the fixture, by id.
+ *
+ * Asked for rather than written down, for the reason `docs.spec.js` learnt
+ * the hard way: a spec pinned to an auto-numbered id fails the first time
+ * somebody sweeps the fixture.
+ */
+/** Throw away whatever sheet is bound to this record's tables. */
+async function clearFeeds(page, doctype, docname) {
+  const res = await page.request.get(
+    `/api/method/oneapp.onesheet.feeds?doctype=${doctype}&docname=${docname}`)
+  for (const one of ((await res.json()).message || [])) {
+    if (!one.sheet) continue
+    await page.request.post('/api/method/frappe.client.delete',
+      { data: { doctype: 'File', name: one.sheet } }).catch(() => {})
+  }
+}
+
+
+async function aQuotation(page) {
+  const res = await page.request.get(
+    '/api/method/frappe.client.get_list'
+    + '?doctype=Quotation&limit_page_length=1&fields=["name"]',
+  )
+  expect(res.ok()).toBe(true)
+  const rows = (await res.json()).message || []
+  expect(rows.length, 'the fixture has a quotation').toBeGreaterThan(0)
+  return rows[0].name
+}
+
+test('a workbook about a record picks its fields off the same rail a document does',
+  async ({ page }, info) => {
+    // Both halves of this need to be on screen at once — the rail to press a
+    // field, the grid to stand on a cell — and on a phone they are not. The
+    // rail is 20rem of a 412px window, which leaves the canvas 92px and puts
+    // every cell this test clicks underneath the rail. The phone's answer is
+    // a rail that takes the window rather than a column beside a sliver of
+    // grid, and that is not built — `onesheet/README.md` §4.
+    test.skip(info.project.name === 'mobile', 'there is no beside on a phone')
+    const errors = collectConsoleErrors(page)
+    const quote = await aQuotation(page)
+
+    // Made against the record, which is what seeds the workbook's first
+    // source — `shared/binding.py`, and `onesheet/writing.make`.
+    const made = await page.request.post('/api/method/oneapp.onesheet.make', {
+      data: { title: 'Estimator', doctype: 'Quotation', docname: quote },
+    })
+    expect(made.ok()).toBe(true)
+    const id = (await made.json()).message.name
+
+    await page.goto(`/one/sheets/${id}`)
+    await ready(page)
+
+    // The rail opens on its own for a workbook that reads something, and it
+    // says which record — the same component the document editor draws.
+    const rail = page.locator('[data-slot="source-record"]')
+    await expect(rail).toBeVisible()
+    await expect(rail.getByText(quote, { exact: false })).toBeVisible()
+
+    // Standing on a cell, pressing a field writes the formula that reads it.
+    await select(page, 'B2')
+    await rail.locator('[data-slot="insert-grand_total"]').click()
+
+    await expect(formulaBar(page)).toHaveValue('=RECORD("record", "grand_total")')
+    // And it resolves, which is the whole point: the server stores what the
+    // browser computed, so a number here is a number on disk.
+    await expectComputed(page, id, 'B2').not.toBe('')
+
+    // The schedule, as a block from the cell you are standing on: a header
+    // row and a `RECORDROW()` per cell. Formulas rather than a paste, which
+    // is the whole difference between this and exporting a CSV.
+    await select(page, 'A5')
+    await rail.locator('[data-slot="insert-table-items"]').click()
+
+    await expectComputed(page, id, 'A5').toBe('Item Code')
+    await select(page, 'A6')
+    await expect(formulaBar(page))
+      .toHaveValue('=RECORDROW("record", "items", 1, "item_code")')
+
+    // Numbers, not text — the reason `binding.rows` sends both halves. A
+    // schedule you cannot add up is a screenshot.
+    await type(page, 'F1', '=SUM(D6:D50)')
+    await expectComputed(page, id, 'F1').not.toBe('0')
+
+    expectNoRealErrors(errors)
+  })
+
+test('a sheet made from a child table protects its headings and knows what the columns hold',
+  async ({ page }, info) => {
+    // Same reason as the test above: a sheet bound to a child table opens its
+    // rail, and on a phone the rail covers the cells this types into.
+    test.skip(info.project.name === 'mobile', 'there is no beside on a phone')
+    const errors = collectConsoleErrors(page)
+    const quote = await aQuotation(page)
+
+    // A table has one sheet — `start_from` returns the one already bound
+    // rather than making a second, which is the feature and also the reason
+    // this has to start from nothing. A run that failed before its own
+    // cleanup would otherwise hand the next run its leftovers.
+    await clearFeeds(page, 'Quotation', quote)
+
+    const made = await page.request.post('/api/method/oneapp.onesheet.start_from', {
+      data: { doctype: 'Quotation', docname: quote, into: 'items' },
+    })
+    expect(made.ok()).toBe(true)
+    const sheet = (await made.json()).message
+
+    await page.goto(`/one/sheets/${sheet.name}`)
+    await ready(page)
+
+    // The headings are the contract — `feed._columns` matches them back to
+    // fields at the pull — so a heading renamed by accident is a column
+    // silently left out, found when the quotation comes back short.
+    const was = await computed(page, sheet.name, 'A1')
+    // The refusal is on the commit, not on the keystroke: the editor lets you
+    // open a protected cell and type, and turns the edit away at Enter.
+    await type(page, 'A1', 'Widgets')
+    // And it says where to work instead, rather than only that it will not
+    // let you. The description is the range's own — upstream writes none, so
+    // upstream had nothing to show.
+    const notice = page.locator('[data-slot="protection-notice"]')
+    await expect(notice).toContainText(/Work below them, or on another tab/)
+    await expectComputed(page, sheet.name, 'A1').toBe(was)
+
+    // The rows are not protected. That is the whole point of the sheet.
+    await type(page, 'B2', '7')
+    await expectComputed(page, sheet.name, 'B2').toBe('7')
+
+    // What the columns hold is the doctype's own answer, drawn as the
+    // engine's validation: Item Code is a Link, so the cell carries a
+    // dropdown of the items rather than accepting whatever was typed.
+    // `tests/test_sheet_rules.py` is where the rules themselves are pinned;
+    // what a browser is for is that they arrive at all.
+    await select(page, 'A2')
+    await expect(page.locator('.sn-dropdown-panel')).toHaveCount(0)
+    await grid(page).click({ position: { x: at('A2').x + 40, y: at('A2').y } })
+    await expect(page.locator('.sn-dropdown-panel')).toBeVisible()
+
+    await page.keyboard.press('Escape')
+
+    // And a formula is allowed in a validated column, which is the whole
+    // point of pricing in a grid. The commit runs before the recompute, so
+    // what a rule would see is `=1000*2` — a word to a number rule, and
+    // nothing any list contains. Every formula here was refused until the
+    // rules stopped reading formula text; the *result* is what gets checked,
+    // at the pull, off the computed slice.
+    await type(page, 'C2', '=1000*2')
+    // A string, where the seeded literals come back as numbers: what the
+    // engine computed is what it stores, and it stores what it rendered.
+    await expectComputed(page, sheet.name, 'C2').toBe('2000')
+
+    await clearFeeds(page, 'Quotation', quote)
+    expectNoRealErrors(errors)
+  })

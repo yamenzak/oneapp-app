@@ -7,14 +7,14 @@ no tokens, no CORS, no refresh dance.
 import frappe
 from frappe import _
 
-from oneapp.oneapp_core import jobs, sync
-from oneapp.oneapp_core.storage import quota
+from oneapp.onespace import jobs, sync
+from oneapp.onestorage import quota
 
 
 @frappe.whitelist()
 def session():
 	"""Everything the shell needs on boot, in one round trip."""
-	from oneapp.oneapp_core.workspace import OWNER_ROLE, SUPPORT_ROLE
+	from oneapp.onespace.workspace import OWNER_ROLE, SUPPORT_ROLE, account_url
 
 	state = sync.state()
 	user = frappe.session.user
@@ -37,6 +37,10 @@ def session():
 			"name": state.get("tenant"),
 			"status": state.get("status"),
 			"plan": state.get("plan_code"),
+			# The one link out of the product. Only an admin is shown it: the
+			# account is a billing surface, and somebody invited into one
+			# workspace has no business being pointed at its owner's.
+			"account_url": account_url() if roles & {OWNER_ROLE, SUPPORT_ROLE} else "",
 		},
 		"spaces": visible_spaces(),
 		# Measured here rather than read from cached state, which holds the
@@ -105,8 +109,8 @@ def visible_spaces():
 	the resolver did not — so a space absent from somebody's rail still
 	answered when its code was asked for by name.
 	"""
-	from oneapp.oneapp_core.spaceview import visible
-	from oneapp.oneapp_core import theming
+	from oneapp.onespace.spaceview import visible
+	from oneapp.onespace import theming
 
 	spaces = visible(sync.state().get("spaces", []))
 
