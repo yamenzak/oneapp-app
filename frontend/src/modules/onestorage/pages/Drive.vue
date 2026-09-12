@@ -24,7 +24,7 @@
         v-model="drive.search.value"
         type="text"
         :placeholder="__('Search files')"
-        class="w-28 sm:w-48"
+        class="w-28 md:w-48"
         @input="onSearch"
       />
       <!-- List or grid, remembered: a person who wants thumbnails wants them
@@ -420,7 +420,7 @@
   <div
     v-if="drive.anySelected.value"
     data-slot="drive-selection"
-    class="pointer-events-none fixed inset-x-0 bottom-24 z-10 flex justify-center px-4 sm:bottom-6"
+    class="pointer-events-none fixed inset-x-0 bottom-24 z-10 flex justify-center px-4 md:bottom-6"
   >
     <div
       class="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-2 rounded-6 border border-outline-gray-2 bg-surface-elevation-2 px-3 py-2 shadow-lg"
@@ -642,7 +642,7 @@ const folder = computed(() => route.query.folder || '')
  */
 const inRemote = computed(() => isRemote(folder.value))
 
-const drive = useDrive({ place, folder })
+const drive = useDrive({ place, folder, route, router })
 
 // --------------------------------------------------------------------------
 // Getting files in
@@ -796,9 +796,15 @@ const chosen = computed(() => {
   return count === 1 ? __('1 thing chosen') : __('{0} things chosen', [count])
 })
 
-// Per-person and per-browser, like the theme: a view preference is not
-// something the workspace has an opinion about.
-const grid = ref(read(GRID_KEY) === '1')
+// The URL first, then the browser's memory — the same split the order has.
+// A link that says `?as=grid` arrives as a grid whoever opens it; a visit
+// that says nothing gets what this person last chose. Sending somebody a
+// folder of drawings and having it arrive as a list of filenames because
+// *their* browser prefers lists is the thing this fixes.
+// `docs/UNIFICATION.md` §C4.
+const grid = ref(
+  route.query.as ? route.query.as === 'grid' : read(GRID_KEY) === '1',
+)
 function setGrid(wanted) {
   grid.value = wanted
   try {
@@ -807,6 +813,12 @@ function setGrid(wanted) {
     // A browser with site data blocked still gets the toggle, just not the
     // memory of it.
   }
+  // `replace`: switching to thumbnails is not a place to go back to. And the
+  // list is the default, so it is an absent key rather than `as=list`.
+  const query = { ...route.query }
+  if (wanted) query.as = 'grid'
+  else delete query.as
+  router.replace({ query })
 }
 function read(key) {
   try {
