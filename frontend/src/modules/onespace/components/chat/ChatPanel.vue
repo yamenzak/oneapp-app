@@ -1,0 +1,180 @@
+<template>
+  <!--
+    A conversation: what has been said, and the box to say the next thing in.
+
+    Mounted twice — in the panel beside whatever you are looking at, and on the
+    page at /one/chat. One component because they are the same conversation
+    seen at two widths, and two would be two places for "what happens when the
+    answer comes back" to drift apart.
+
+    Deliberately not a chat that types itself out. An answer here can be eight
+    provider calls deep, and streaming it would hold a worker open for the whole
+    loop; what arrives is the finished answer with the lookups it made under it.
+  -->
+  <div class="flex min-h-0 flex-1 flex-col" data-slot="chat">
+    <Alert
+      v-if="!state.available && state.loaded"
+      theme="amber"
+      :title="__('{0} is not switched on here', [assistantName])"
+    >
+      <template #description>
+        {{ __('A workspace owner can turn it on under Settings, AI.') }}
+      </template>
+    </Alert>
+
+    <!-- The transcript owns the scroller; the composer below it does not move. -->
+    <div ref="scroller" class="min-h-0 flex-1 overflow-auto px-4 py-6">
+      <div class="mx-auto flex w-full flex-col gap-6" :class="wide ? 'max-w-3xl' : ''">
+        <!--
+          Nothing asked yet. The face and the name together — §E8: a workspace
+          that named its assistant and gave it a picture met neither until it
+          had already asked something.
+        -->
+        <div v-if="!turns.length && !asking" class="flex flex-col items-start gap-3">
+          <AiFace size="xl" />
+          <div class="flex flex-col gap-2">
+            <p class="text-base-medium text-ink-primary">{{ assistantName }}</p>
+            <p class="text-p-base text-ink-muted">
+              {{ __('Ask about anything you can already open — records, files, what a document says.') }}
+            </p>
+            <!-- What it is scoped to, said before the first question rather than
+                 discovered from an answer that turned out to be narrower than
+                 expected. -->
+            <p v-if="on?.label" class="text-p-sm text-ink-muted">
+              {{ __('Looking at {0}.', [on.label]) }}
+            </p>
+          </div>
+        </div>
+
+        <ChatTurn
+          v-for="turn in turns"
+          :key="turn.name"
+          :turn="turn"
+          @changed="reload"
+        />
+
+        <!--
+          The three seconds the whole of §E8 is about.
+
+          A spinner beside the word "Looking" said the application was busy,
+          which is the one fact nobody needed. This is the shape the answer
+          will take — the face that is about to speak, and a skeleton at the
+          width of the paragraph that is coming — with the sheen travelling
+          across it. The component was built for exactly this and was rendered
+          on four surfaces, none of them the assistant's own.
+        -->
+        <div v-if="asking" class="flex w-full gap-2" data-slot="chat-thinking">
+          <AiFace size="sm" thinking class="mt-1" />
+          <AiGlow
+            mode="block"
+            active
+            empty
+            :lines="3"
+            class="min-w-0 flex-1 rounded-6 border border-outline-gray-1 px-3 py-2"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="border-t border-outline-gray-1 px-4 py-3">
+      <div class="mx-auto flex w-full items-end gap-2" :class="wide ? 'max-w-3xl' : ''">
+        <!--
+          Enter sends and shift-Enter breaks the line, which is what every chat
+          does and therefore what fingers expect. A Textarea rather than an
+          input because a question about a quotation is often three lines.
+        -->
+        <Textarea
+          v-model="typed"
+          class="flex-1"
+          :rows="1"
+          :placeholder="
+            on?.label ? __('Ask about {0}', [on.label]) : __('Ask about this workspace')
+          "
+          data-slot="chat-input"
+          :disabled="asking || (state.loaded && !state.available)"
+          @keydown.enter.exact.prevent="ask"
+        />
+        <Button
+          variant="solid"
+          icon-left="lucide-send"
+          :label="wide ? __('Send') : ''"
+          :tooltip="__('Send')"
+          data-slot="chat-send"
+          :loading="asking"
+          :disabled="!typed.trim()"
+          @click="ask"
+        />
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { nextTick, ref, watch } from 'vue'
+import { Alert, Button, Textarea } from '@/ui'
+import AiFace from '@/shared/components/AiFace.vue'
+import AiGlow from '@/shared/components/AiGlow.vue'
+import ChatTurn from '@/modules/onespace/components/chat/ChatTurn.vue'
+import { assistant as state, assistantName, loadAssistant } from '@/modules/onespace/lib/shell/assistant'
+import { workspace } from '@/shared/lib/workspace'
+import { __ } from '@/shared/lib/runtime/translate'
+
+const props = defineProps({
+  /**
+   * What the reader has open, or null. `{space, screen, docname, label}` — the
+   * label is for this component and the rest is for the server, which checks
+   * every part of it against what this person may actually reach.
+   */
+  on: { type: Object, default: null },
+  /** The page has room for a column of text; the panel does not. */
+  wide: { type: Boolean, default: false },
+})
+
+/** The open thread. Empty until the first question opens one. */
+const session = defineModel({ type: String, default: '' })
+
+const typed = ref('')
+const asking = ref(false)
+const turns = ref([])
+const scroller = ref(null)
+
+watch(session, async (name) => {
+  turns.value = name ? (await workspace.assistantMessages(name))?.messages || [] : []
+  toBottom()
+}, { immediate: true })
+
+async function ask() {
+  const question = typed.value.trim()
+  if (!question || asking.value) return
+
+  // Shown before the round trip, because the round trip can be a minute. The
+  // server writes its own row; this one is replaced by it when the answer
+  // lands, which is why its key is not an id from the server.
+  turns.value = [...turns.value, { name: 'asking', role: 'user', content: question }]
+  typed.value = ''
+  asking.value = true
+  toBottom()
+
+  try {
+    const answered = await workspace.askAssistant(question, session.value, props.on)
+    turns.value = answered?.messages || turns.value
+    if (answered?.session) session.value = answered.session
+    await loadAssistant({ reload: true })
+  } finally {
+    asking.value = false
+    toBottom()
+  }
+}
+
+/** After a change was applied or discarded, so the card says what it became. */
+async function reload() {
+  if (!session.value) return
+  turns.value = (await workspace.assistantMessages(session.value))?.messages || turns.value
+}
+
+function toBottom() {
+  nextTick(() => {
+    if (scroller.value) scroller.value.scrollTop = scroller.value.scrollHeight
+  })
+}
+</script>

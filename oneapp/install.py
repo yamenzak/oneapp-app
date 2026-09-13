@@ -1,0 +1,288 @@
+"""Post-install setup for a tenant site."""
+
+import frappe
+
+
+def after_install():
+	create_custom_fields()
+	setup_outgoing_email()
+	install_notification_types()
+	initial_sync()
+	frappe.db.commit()
+
+
+def install_notification_types():
+	"""Our own Notification Type, the way the framework seeds its five.
+
+	Also on `after_migrate`, because a site installed before the type existed
+	has to get it too — see hooks.
+	"""
+	from oneapp.onespace.notifications import install_types
+
+	install_types()
+
+
+def create_custom_fields():
+	"""Two things the framework does not store and this product needs.
+
+	**`File.r2_key`** — the R2 object key. Derivable from the document, but
+	storing it means a rename or a change to the key scheme cannot orphan
+	objects we can no longer find to delete.
+
+	**The four Drive columns.** A file manager needs to filter by what a file
+	is, hide what was thrown away, and order by what was opened — and none of
+	those is a question `File` can answer. See `onestorage.py`.
+
+	**The mail folder pair** — `Communication.custom_imap_folder` and
+	`Email Account.custom_folder_kinds`. Frappe syncs a mailbox folder by
+	folder and then throws the folder away: `InboundMail` is handed it and
+	nothing on the Communication records where the message was filed. So
+	somebody's Applicants folder arrives as part of one flat list and their
+	filing is gone. See `onemail/folders.py`, which fills both in.
+
+	**`Contact.custom_face_tried` and `Company`'s** — when this record was last
+	asked about, so a contact with no Gravatar and no website costs one look
+	rather than one per save for the rest of its life. A column and not a
+	cache, because the answer is about the record and has to survive a flush.
+	See `onemail/faces.py`.
+
+	**`Communication Link.custom_linked_by`** — how a link between a message and
+	a record was made: the thread it inherited from, an id somebody wrote, a
+	person, or later a model. The framework's link row
+	says only that a link exists. A link that cannot say where it came from
+	cannot be reviewed, and a link nobody reviews is one nobody will trust on an
+	invoice. See `onemail/linking.py`.
+
+	Also on `after_migrate`, because a site installed before these existed has
+	to get them too.
+	"""
+	from frappe.custom.doctype.custom_field.custom_field import create_custom_fields as make
+
+	from oneapp.onestorage import KIND_FIELD, OPENED_FIELD, STATUS_FIELD, TRASHED_FIELD
+	from oneapp.onedoc.text import SEQ_FIELD
+	from oneapp.onesheet import TEMPLATE_FIELD
+	from oneapp.onemail.faces import KINDS as FACE_KINDS, TRIED_FIELD
+	from oneapp.onemail.folders import FOLDER_FIELD
+	from oneapp.onemail.linking import LINK_BY
+	from oneapp.onemail.threading import THREAD_FIELD
+
+	make(
+		{
+			**{
+				# One line each, from the table that decides which doctypes
+				# carry a picture at all — so adding `Customer` there adds its
+				# column here too rather than in two places that can disagree.
+				#
+				# Only the ones this site actually has. `Company` is ERPNext's,
+				# and a site carrying only Frappe is a site where a custom
+				# field on it is a `LinkValidationError` — which `create_custom_fields`
+				# raises out of `after_migrate`, taking the whole migration
+				# with it. A doctype that is not installed has nothing to
+				# carry a column, and that is not an error.
+				doctype: [
+					{
+						"fieldname": TRIED_FIELD,
+						"label": "Picture Looked Up",
+						"fieldtype": "Datetime",
+						"read_only": 1,
+						"hidden": 1,
+						"no_copy": 1,
+					}
+				]
+				for doctype in FACE_KINDS
+				if frappe.db.exists("DocType", doctype)
+			},
+			"File": [
+				{
+					"fieldname": "r2_key",
+					"label": "R2 Key",
+					"fieldtype": "Data",
+					"read_only": 1,
+					"hidden": 1,
+					"no_copy": 1,
+				},
+				{
+					# What this file is, derived from its mime type once on
+					# insert. A column rather than a computation, for the
+					# reason every list in this product stores its grouping
+					# key: "show me the drawings" over four thousand files
+					# cannot be a Python walk over a mime map.
+					"fieldname": KIND_FIELD,
+					"label": "Kind",
+					"fieldtype": "Data",
+					"read_only": 1,
+					"no_copy": 1,
+					"search_index": 1,
+				},
+				{
+					# Thrown away, but not yet gone. Frappe deletes a File and
+					# its object together, so without this the only undo for a
+					# misplaced click is a backup.
+					"fieldname": STATUS_FIELD,
+					"label": "Status",
+					"fieldtype": "Select",
+					"options": "Active\nTrashed",
+					"default": "Active",
+					"read_only": 1,
+					"no_copy": 1,
+					"search_index": 1,
+				},
+				{
+					"fieldname": TRASHED_FIELD,
+					"label": "Trashed On",
+					"fieldtype": "Datetime",
+					"read_only": 1,
+					"no_copy": 1,
+				},
+				{
+					# Recents, without a row per person per file. A workspace's
+					# file list does not need per-person recency badly enough
+					# to pay for a doctype that grows with every open.
+					"fieldname": OPENED_FIELD,
+					"label": "Last Opened",
+					"fieldtype": "Datetime",
+					"read_only": 1,
+					"no_copy": 1,
+				},
+				{
+					# How many times this file's bytes have been written. What
+					# `Doc Body.head_seq` and `Sheet Book.head_seq` are for the
+					# two stores that have a row of their own — and a text file
+					# has none, because its body *is* the object. So the counter
+					# lives here, and `versions.py` reads the same number from
+					# all three.
+					"fieldname": SEQ_FIELD,
+					"label": "Body Saves",
+					# `Int` and not `Long Int`: a Custom Field's fieldtype list
+					# is shorter than a doctype's and does not carry it. Two
+					# billion saves of one file is not a number to plan for.
+					"fieldtype": "Int",
+					"default": "0",
+					"read_only": 1,
+					"no_copy": 1,
+				},
+				{
+					# A sheet somebody starts from. On `File` and not on a
+					# doctype of its own, because a template is a sheet and a
+					# sheet is a File — so a workspace's templates are a folder
+					# in the Drive, managed by managing files.
+					"fieldname": TEMPLATE_FIELD,
+					"label": "Is Template",
+					"fieldtype": "Check",
+					"default": "0",
+				},
+			],
+			"Communication": [
+				{
+					# Which conversation a message belongs to.
+					#
+					# The subject with its `Re:` stripped is what mail clients
+					# threaded on for twenty years, and it is wrong twice: two
+					# people who both write "Invoice" are one conversation, and
+					# a reply somebody renamed is a new one. This inherits the
+					# parent's key through `in_reply_to` instead, so the chain
+					# holds however the subject drifts — see
+					# `onemail/threading.py`.
+					"fieldname": THREAD_FIELD,
+					"label": "Conversation",
+					"fieldtype": "Data",
+					"read_only": 1,
+					"no_copy": 1,
+					"search_index": 1,
+				},
+				{
+					"fieldname": FOLDER_FIELD,
+					"label": "IMAP Folder",
+					"fieldtype": "Data",
+					"read_only": 1,
+					"no_copy": 1,
+					# Indexed, because it is the filter behind every folder in
+					# the rail — a mail list is "this address, this folder,
+					# newest first" and without the index that is a scan of the
+					# whole correspondence table on every click.
+					"search_index": 1,
+				}
+			],
+			# A rule this workspace wrote, as against one an app shipped or one
+			# the framework ships itself — Frappe has two non-standard
+			# Notifications of its own on every site, and a customer's settings
+			# page is not where the platform's error alerts belong. See
+			# `onespace/alerts.py`.
+			"Notification": [
+				{
+					"fieldname": "custom_onespace",
+					"label": "Made in OneSpace",
+					"fieldtype": "Check",
+					"read_only": 1,
+					"no_copy": 1,
+					"search_index": 1,
+				}
+			],
+			# A message template this workspace wrote. ERPNext and HRMS ship six
+			# between them on every site — "Exit Questionnaire Notification",
+			# "Interview Reminder" — and a workspace's own list is not where
+			# those belong. Same field and same argument as the Notification
+			# above. See `onemail/templates.py`.
+			"Email Template": [
+				{
+					"fieldname": "custom_onespace",
+					"label": "Made in OneSpace",
+					"fieldtype": "Check",
+					"read_only": 1,
+					"no_copy": 1,
+					"search_index": 1,
+				}
+			],
+			"Communication Link": [
+				{
+					"fieldname": LINK_BY,
+					"label": "Linked By",
+					"fieldtype": "Data",
+					"read_only": 1,
+					"no_copy": 1,
+				}
+			],
+			"Email Account": [
+				{
+					# The day an out-of-office stops. Frappe has the reply and
+					# the switch and no end date, which is the part that
+					# matters: one somebody forgot to turn off answers their
+					# mail for a month, telling everybody they are away when
+					# they are back. `rules.expire_away` acts on this daily.
+					"fieldname": "custom_away_until",
+					"label": "Away Until",
+					"fieldtype": "Date",
+					"no_copy": 1,
+				},
+				{
+					"fieldname": "custom_folder_kinds",
+					"label": "Folder Kinds",
+					"fieldtype": "Small Text",
+					"read_only": 1,
+					"hidden": 1,
+					"no_copy": 1,
+				}
+			],
+		},
+		ignore_validate=True,
+	)
+
+
+def setup_outgoing_email():
+	"""Point Frappe's Email Queue at Cloudflare's SMTP endpoint.
+
+	No-ops when the token is absent, so a site without mail configured installs
+	cleanly rather than failing.
+	"""
+	from oneapp.onemail import outbound
+
+	outbound.ensure_email_account()
+
+
+def initial_sync():
+	"""Pull entitlements immediately so the site is usable the moment provisioning
+	finishes, rather than waiting for the first scheduled sync."""
+	from oneapp.onespace import control_client, sync
+
+	if control_client.is_provisioned():
+		sync.sync_from_control_plane()

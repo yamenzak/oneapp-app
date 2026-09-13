@@ -1,0 +1,154 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import { session, sessionReady } from '@/modules/onespace/lib/shell/session'
+
+const routes = [
+  { path: '/', name: 'Launcher', component: () => import('@/modules/onespace/pages/Launcher.vue') },
+  {
+    path: '/space/:spaceCode',
+    name: 'Screen',
+    component: () => import('@/modules/onespace/pages/ScreenHost.vue'),
+    props: true,
+    // The app host is a pane, not a page: its list is a fixed-height grid that
+    // owns both scrollbars, so the horizontal one sits at the bottom of the
+    // screen. `pane` turns the shell's own page scroll off for this route.
+    //
+    // `bare` turns the shell's frame off as well, because this route draws its
+    // own: the list is one panel and an open record is a second beside it, and
+    // two panels inside a third is a card in a card. Every other route is one
+    // thing and takes the frame the shell gives it.
+    meta: { pane: true, bare: true },
+  },
+  { path: '/account', name: 'Account', component: () => import('@/modules/onespace/pages/Account.vue') },
+  {
+    // What this workspace could add. A page rather than a dialog because it is
+    // a place you browse and come back to, and because a card that starts a
+    // several-minute install wants a URL somebody can return to.
+    path: '/add',
+    name: 'Marketplace',
+    component: () => import('@/modules/onespace/pages/Marketplace.vue'),
+  },
+  {
+    // Mail belongs to the workspace rather than to any one space — the
+    // addresses a person holds do not change when they switch space.
+    path: '/mail',
+    name: 'Mail',
+    component: () => import('@/modules/onemail/pages/Mail.vue'),
+    // Two columns and a reading pane, each with its own scroller — and `bare`
+    // for the same reason the screen host is: they are two panels, and the
+    // shell drawing a third around them is a card in a card.
+    meta: { pane: true, bare: true },
+  },
+  {
+    // Files belong to the workspace too: an attachment on a project and a
+    // drawing nobody has filed are the same row in the same table.
+    path: '/files',
+    name: 'Drive',
+    component: () => import('@/modules/onestorage/pages/Drive.vue'),
+    // A rail, a list and its own scroller, same as the screen host — and, like
+    // the screen host, it draws its own panels: a file opens in a pane beside
+    // the list, and the two are two islands rather than a split inside one.
+    meta: { pane: true, bare: true },
+  },
+  {
+    // The diary: everything the reader has with a date on it, from every
+    // calendar this workspace has. The merge is the server's, in
+    // `onecalendar/diary.py`.
+    path: '/calendar',
+    name: 'Calendar',
+    component: () => import('@/modules/onecalendar/pages/Diary.vue'),
+    // A rail, a grid and its own scroller: the shell must not add a second.
+    meta: { pane: true },
+  },
+  {
+    // The assistant belongs to the workspace, like Mail and Files: what it can
+    // read follows the reader's roles across every space, not one of them.
+    // The open thread is `?chat=`, so a conversation can be linked to.
+    path: '/chat',
+    name: 'Chat',
+    component: () => import('@/modules/onespace/pages/Chat.vue'),
+    // A rail, a transcript with its own scroller and a composer pinned under
+    // it: a page scroll on top would move the composer off screen.
+    meta: { pane: true },
+  },
+  {
+    // A sheet is a File, so this is not a second kind of thing with a second
+    // kind of address: `:name` is the File row.
+    path: '/sheets/:name',
+    name: 'Sheet',
+    component: () => import('@/modules/onesheet/pages/Sheet.vue'),
+    props: true,
+    // A grid owns both its scrollbars, and it gets the window: see `chrome` on
+    // `AppShell` for why an editor draws no rail and no sidebar.
+    meta: { pane: true, focused: true },
+  },
+  {
+    // A document is a File too, so this is the same kind of address a sheet
+    // has. What opens behind it — the prose editor or the plain-text one — is
+    // what the file is, which only the server knows.
+    path: '/docs/:name',
+    name: 'Doc',
+    component: () => import('@/modules/onedoc/pages/Doc.vue'),
+    props: true,
+    // The editor owns its own scroller, and a page scroll under it would put
+    // the toolbar off screen the moment anybody typed past the fold. It gets
+    // the window too — same reason a sheet does.
+    meta: { pane: true, focused: true },
+  },
+  {
+    // A file somebody was sent a link to, and may edit through it.
+    //
+    // The secret is the whole of the credential — there is no account behind
+    // this page — so it is in the path rather than the query: a query string
+    // is dropped by more things that pass a URL around than a path is, and a
+    // link that arrives without its secret is a link that does not work.
+    //
+    // `public`, which no other route is: the guard below lets it through
+    // without a session and `App.vue` draws it outside the shell, because
+    // every part of the shell needs a session this reader does not have.
+    path: '/link/:secret',
+    name: 'Linked',
+    component: () => import('@/modules/onestorage/pages/Linked.vue'),
+    props: true,
+    meta: { pane: true, focused: true, public: true },
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('@/shared/pages/NotFound.vue'),
+  },
+]
+
+const router = createRouter({
+  // Matches website_route_rules in hooks.py — the Vue router owns /one.
+  history: createWebHistory('/one'),
+  routes,
+})
+
+router.beforeEach(async (to) => {
+  // The resource fires on setup; wait for the first response before deciding.
+  // `sessionReady` rather than the resource's own promise, which is renewed
+  // after every response and would hang every navigation after the first.
+  await sessionReady
+
+  // A link is its own credential. Sending its holder to a login form would
+  // ask them for an account they do not have and were never meant to need.
+  if (to.meta.public) return true
+
+  if (!session.isLoggedIn) {
+    // Hand back to Frappe's own login, which knows how to return here.
+    window.location.href = `/login?redirect-to=${encodeURIComponent(
+      window.location.pathname,
+    )}`
+    return false
+  }
+
+  // Entitlement is enforced server-side by role. This only avoids rendering a
+  // shell for something the user will be refused anyway.
+  if (to.name === 'Screen' && !session.hasSpace(to.params.spaceCode)) {
+    return { name: 'Launcher' }
+  }
+
+  return true
+})
+
+export default router
