@@ -130,8 +130,7 @@ def _visible() -> dict:
 
 
 def _place_filters(place: str, folder: str = "", kind: str = "",
-                   attached_to: tuple[str, str] = ("", ""),
-                   owner: str = "") -> tuple[dict, list]:
+                   attached_to: tuple[str, str] = ("", "")) -> tuple[dict, list]:
     """One place, as `(filters, or_filters)`.
 
     Both halves come back together and a caller may not take one: `or_filters`
@@ -202,13 +201,6 @@ def _place_filters(place: str, folder: str = "", kind: str = "",
 
     if kind:
         filters[KIND_FIELD] = kind
-
-    # Who put it here. Refused on Shared, where `owner` is already the clause
-    # that *makes* the place — "not mine" — and setting it would turn "shared
-    # with me" into "everything this person owns, mine included". A narrowing
-    # that widens is the one thing a narrowing must not do.
-    if owner and place != SHARED:
-        filters["owner"] = owner
 
     return filters, or_filters
 

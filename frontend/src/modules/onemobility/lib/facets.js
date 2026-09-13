@@ -20,7 +20,7 @@
  */
 import { ref } from 'vue'
 
-import { useNarrowing } from '@/shared/lib/url/narrowing'
+import { useAddress } from '@/shared/composables/useAddress'
 
 import { network } from './api'
 
@@ -33,6 +33,26 @@ const chosen = ref({})
 //: not change between two clicks of the sub-nav.
 const offered = ref([])
 let asked = null
+
+/** `{line: 'U6', stop: 'Alex'}` → `line:U6;stop:Alex`, each half escaped. */
+function written(what) {
+  return Object.entries(what || {})
+    .filter(([, value]) => value !== '' && value !== null && value !== undefined)
+    .map(([key, value]) => `${encodeURIComponent(key)}:${encodeURIComponent(value)}`)
+    .join(';')
+}
+
+/** And back. A pair with no colon in it is dropped rather than guessed at. */
+function read(text) {
+  const found = {}
+  for (const pair of (text || '').split(';')) {
+    if (!pair) continue
+    const at = pair.indexOf(':')
+    if (at < 1) continue
+    found[decodeURIComponent(pair.slice(0, at))] = decodeURIComponent(pair.slice(at + 1))
+  }
+  return found
+}
 
 /**
  * The shared narrowing, for one screen.
@@ -48,10 +68,10 @@ export function useFacets() {
       .catch(() => { offered.value = [] })
   }
 
-  // The spelling of the set in the address bar is `shared/lib/url/narrowing`
-  // since the Drive became its second caller; what stays here is the module's
-  // own `chosen`, which is what makes four screens agree.
-  useNarrowing(chosen)
+  useAddress('narrow', {
+    read: () => written(chosen.value),
+    write: (value) => { chosen.value = read(value) },
+  })
 
   return {
     facets: chosen,

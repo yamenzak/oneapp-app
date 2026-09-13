@@ -846,55 +846,6 @@ test('a file dragged onto a folder ends up inside it', async ({ page }) => {
     .toContainText(`mover-${stamp}.txt`, { timeout: 20_000 })
 })
 
-test('the Drive narrows by kind, and the narrowing is in the link', async ({ page }) => {
-  const errors = collectConsoleErrors(page)
-  await page.goto('/one/files')
-  await page.locator('[data-slot="drive-file"]').first().waitFor({ timeout: 20_000 })
-
-  // The same bar a space screen draws, over the fields a file place declares
-  // — §B2's "a declared list for a file place", which nothing declared until
-  // the Drive stopped being the odd one out.
-  const bar = page.locator('[data-slot="narrow"]')
-  await expect(bar).toBeVisible()
-
-  // By the button's own name, as `dashboard.spec.js` and `mobility.spec.js`
-  // do: `Narrow` puts a `data-slot` on each `Combobox` and frappe-ui does not
-  // forward it to an element, so the chip is found the way a person finds it.
-  await bar.getByRole('button', { name: 'Kind' }).click()
-  await page.getByRole('option', { name: 'Code' }).click()
-
-  // The server does the narrowing: `listing(kind=)` has taken this since
-  // `kinds.py` was written, and no surface ever asked it.
-  //
-  // Waited on by what the narrowing *removes* rather than by the first row
-  // being visible: the rows on screen while the new page is in flight are the
-  // old ones, so a list that is merely non-empty is a list that may not have
-  // been read yet — which is how this passed on the retry and failed on the
-  // first run. A folder is the row the kind chip always drops, and home puts
-  // them first.
-  const rows = page.locator('[data-slot="drive-file"]')
-  await expect(rows.filter({ hasText: 'Folder \u00b7' })).toHaveCount(0, {
-    timeout: 20_000,
-  })
-  await expect(rows.first()).toBeVisible({ timeout: 20_000 })
-  const names = await rows.allInnerTexts()
-  expect(names.length).toBeGreaterThan(0)
-  for (const name of names) {
-    expect(name, 'a row the kind filter should have dropped').toMatch(/\.(py|js|ts|json|ya?ml|sql|sh|css|html|vue|go|rs|java|php|rb|c|cpp|toml|ini)\b/)
-  }
-
-  // And it is in the address, which is the test §C4 states: a folder filtered
-  // to one kind is something you can send to somebody.
-  await expect(page).toHaveURL(/[?&]narrow=kind(%3A|:)Code/)
-
-  await page.reload()
-  await expect(bar.getByRole('button', { name: 'Code' })).toBeVisible({
-    timeout: 20_000,
-  })
-
-  expectNoRealErrors(errors)
-})
-
 test('a place can be put in an order, and it is the server that orders it', async ({ page }) => {
   await page.goto('/one/files')
   await page.locator('[data-slot="drive-file"]').first().waitFor({ timeout: 20_000 })
