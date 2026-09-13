@@ -14,6 +14,22 @@
     <ScrollArea class="min-h-0 flex-1" viewport-class="px-2 pb-6">
       <nav data-slot="space-nav" class="space-y-0.5">
         <template v-for="item in nav" :key="item.label">
+          <!--
+            A heading, on the first screen of a run that shares one. Not a
+            component and not clickable: it is a label over a group, and a
+            heading that navigates is a destination competing with the items
+            under it.
+
+            Hidden when the rail is collapsed, where there is no room for a
+            word and the icons are the whole of it.
+          -->
+          <p
+            v-if="item.heading && !collapsed"
+            data-slot="nav-heading"
+            class="px-2 pb-1 pt-4 text-p-xs font-medium uppercase tracking-wide text-ink-muted first:pt-1"
+          >
+            {{ __(item.heading) }}
+          </p>
           <SidebarItem :icon="item.icon" :to="item.to" :active="item.active">
             <span class="flex-1 truncate text-sm">{{ item.label }}</span>
             <!--
@@ -97,6 +113,7 @@ import ShellFoot from '@/modules/onespace/components/shell/ShellFoot.vue'
 import SidebarResizer from '@/modules/onespace/components/SidebarResizer.vue'
 import { useNav } from '@/modules/onespace/lib/shell/nav'
 import { useSidebar } from '@/modules/onespace/lib/shell/sidebar'
+import { __ } from '@/shared/lib/runtime/translate'
 
 // The destinations live in `lib/shell/nav.js`: the phone's bottom bar renders
 // the same list, and two declarations of it drift into two names for one page.
@@ -105,7 +122,7 @@ const { nav } = useNav()
 // A sub-item says it is active by weight, not by a filled pill — the fill
 // belongs to the screen above it. `:active="false"` and not simply omitting it:
 // absence falls through to frappe-ui's route inference, which would fill it.
-const SUB_ACTIVE = ['text-ink-gray-6', 'font-medium text-ink-gray-8']
+const SUB_ACTIVE = ['text-ink-secondary', 'font-medium text-ink-primary']
 
 // Shut or open, and how wide when it is open — shared with every other rail
 // that fills this slot, in `lib/shell/sidebar.js`. On a laptop running a data

@@ -9,7 +9,7 @@
       Inventing a staging area would be a lot of machinery for the create
       dialog, and a place for a file to be orphaned if the dialog is closed.
     -->
-    <p v-if="!docname" class="text-p-sm text-ink-gray-5">
+    <p v-if="!docname" class="text-p-sm text-ink-muted">
       {{ __('Save this first, and you can attach files to it.') }}
     </p>
 
@@ -41,7 +41,7 @@
               class="h-28 w-40 rounded-6 border border-outline-gray-1 object-cover"
               loading="lazy"
             />
-            <span class="mt-1 block truncate text-p-xs text-ink-gray-6">
+            <span class="mt-1 block truncate text-xs text-ink-secondary">
               {{ file.file_name || file.file_url }}
             </span>
           </a>
@@ -73,36 +73,42 @@
            drawing a grey rectangle where a thumbnail would go says less than
            the file's own name does. -->
       <ul v-if="others.length" class="flex flex-col gap-1">
-        <li
+        <Row
           v-for="file in others"
           :key="file.name"
-          class="flex items-center gap-2 rounded-4 px-2 py-1.5 hover:bg-surface-gray-2"
+          as="li"
+          edge="rounded"
+          pad="tight"
         >
-          <Icon :name="iconFor(file)" class="size-4 shrink-0 text-ink-gray-5" />
+          <template #lead>
+            <Icon :name="iconFor(file)" class="size-4 text-ink-muted" />
+          </template>
           <a
             :href="file.file_url"
             target="_blank"
             rel="noopener"
-            class="min-w-0 flex-1 truncate text-p-sm text-ink-gray-8 hover:underline"
+            class="block truncate text-sm text-ink-primary hover:underline"
           >
             {{ file.file_name || file.file_url }}
           </a>
-          <span class="shrink-0 text-p-xs tabular-nums text-ink-gray-5">
-            {{ humanSize(file) }}
-          </span>
-          <Button
-            v-if="!disabled"
-            icon="lucide-trash-2"
-            variant="ghost"
-            theme="red"
-            :label="__('Remove {0}', [file.file_name || __('this file')])"
-            :tooltip="__('Remove {0}', [file.file_name || __('this file')])"
-            @click="remove(file)"
-          />
-        </li>
+          <template #trail>
+            <span class="text-p-xs tabular-nums text-ink-muted">
+              {{ humanSize(file) }}
+            </span>
+            <Button
+              v-if="!disabled"
+              icon="lucide-trash-2"
+              variant="ghost"
+              theme="red"
+              :label="__('Remove {0}', [file.file_name || __('this file')])"
+              :tooltip="__('Remove {0}', [file.file_name || __('this file')])"
+              @click="remove(file)"
+            />
+          </template>
+        </Row>
       </ul>
 
-      <p v-if="!loading && !files.length" class="text-p-sm text-ink-gray-5">
+      <p v-if="!loading && !files.length" class="text-p-sm text-ink-muted">
         {{ __('Nothing here yet.') }}
       </p>
 
@@ -127,13 +133,14 @@
       />
     </template>
 
-    <p v-if="note" class="text-p-xs text-ink-gray-5">{{ note }}</p>
+    <p v-if="note" class="text-p-xs text-ink-muted">{{ note }}</p>
   </div>
 </template>
 
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { Button, FormLabel, Icon, LoadingText } from '@/ui'
+import Row from '@/shared/components/Row.vue'
 import FilePicker from '@/modules/onestorage/components/FilePicker.vue'
 import { workspace } from '@/shared/lib/workspace'
 import { humanSize, iconFor, isImage } from '@/modules/onestorage/lib/files'

@@ -34,8 +34,8 @@
     v-else-if="doc.language"
     :name="name"
     :doc="doc"
+    :hosted="hosted"
     @renamed="onRenamed"
-    @close="leave"
   />
 
   <!--
@@ -46,12 +46,19 @@
     file, and re-pointing it would leave both behind — the second document
     would be typed into the first one's room.
   -->
-  <DocEditor v-else :key="name" :name="name" :doc="doc" @renamed="onRenamed" @reload="load" />
+  <DocEditor
+    v-else
+    :key="name"
+    :name="name"
+    :doc="doc"
+    :hosted="hosted"
+    @renamed="onRenamed"
+    @reload="load"
+  />
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, watch } from 'vue'
 
 import { Skeleton } from '@/ui'
 import DocEditor from '@/modules/onedoc/components/DocEditor.vue'
@@ -59,20 +66,20 @@ import EmptyState from '@/shared/components/EmptyState.vue'
 import CodeFile from '@/modules/onecode/components/CodeFile.vue'
 import { errorText } from '@/shared/lib/runtime/errors'
 import { __ } from '@/shared/lib/runtime/translate'
-import { cameFrom } from '@/modules/onespace/lib/screen/returnTo'
 import { workspace } from '@/shared/lib/workspace'
 
 const props = defineProps({
   name: { type: String, required: true },
+  /**
+   * Whether something else is holding this — the Drive's pane, today.
+   *
+   * It reaches both editors and means one thing in each: `EditorChrome` draws
+   * a plain `<header>` rather than the shell's teleported one, because a
+   * teleport inside the pane would put the file's title above the file list
+   * beside it.
+   */
+  hosted: { type: Boolean, default: false },
 })
-
-const route = useRoute()
-const router = useRouter()
-
-// Where "out" goes, which the editor asks and does not answer: the record it
-// was opened from when there was one, and the Drive otherwise.
-const back = computed(() => cameFrom(route))
-const leave = () => router.push(back.value ? back.value.path : { name: 'Drive' })
 
 const doc = ref(null)
 const failed = ref('')

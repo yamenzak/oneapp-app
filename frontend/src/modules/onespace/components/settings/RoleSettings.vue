@@ -17,7 +17,7 @@
   />
 
   <SettingsBody :class="PANEL_BODY">
-    <LoadingIndicator v-if="loading && !data" class="size-5 text-ink-gray-5" />
+    <LoadingIndicator v-if="loading && !data" class="size-5 text-ink-muted" />
 
     <Alert v-else-if="unreachable" theme="amber" :title="__('Cannot reach your account')">
       <template #description>
@@ -27,10 +27,10 @@
 
     <div v-else-if="data" class="flex flex-col gap-6">
       <section v-if="shipped.length" class="flex flex-col gap-2">
-        <h3 class="text-base-medium text-ink-gray-8">{{ __('What your apps ship') }}</h3>
+        <h3 class="text-base-medium text-ink-primary">{{ __('What your apps ship') }}</h3>
         <!-- Shown and not editable, and worth showing: "why can they see that?"
              has no answer on a page that lists only what you built. -->
-        <p class="text-p-xs text-ink-gray-5">
+        <p class="text-p-xs text-ink-muted">
           {{ __('These come with the apps this workspace has. They cannot be changed here.') }}
         </p>
         <div class="flex flex-wrap gap-1.5">
@@ -40,7 +40,7 @@
 
       <section class="flex flex-col gap-3">
         <div class="flex items-center justify-between gap-3">
-          <h3 class="text-base-medium text-ink-gray-8">{{ __('Roles you made') }}</h3>
+          <h3 class="text-base-medium text-ink-primary">{{ __('Roles you made') }}</h3>
           <Button
             variant="subtle"
             icon-left="lucide-plus"
@@ -49,23 +49,16 @@
           />
         </div>
 
-        <EmptyState
-          v-if="!data.custom.length"
-          icon="lucide-user-round"
-          :title="__('No roles of your own yet')"
-          :description="__('Build one where the shipped roles are the wrong shape — somebody who should read the whole workspace and change one part of it.')"
-        />
-
-        <ul v-else class="flex flex-col">
-          <li
-            v-for="role in data.custom"
-            :key="role.name"
+        <!-- The frame is `DataList` — §B1. -->
+        <DataList :source="source" :skeleton="2" skeleton-class="h-11 w-full">
+          <template #row="{ row: role }">
+          <div
             data-slot="workspace-role"
             class="flex items-center gap-3 border-b border-outline-gray-1 py-2.5"
           >
             <span class="flex min-w-0 flex-1 flex-col">
-              <span class="truncate text-p-sm text-ink-gray-8">{{ role.role_label }}</span>
-              <span class="truncate text-p-xs text-ink-gray-5">{{ reach(role) }}</span>
+              <span class="truncate text-sm text-ink-primary">{{ role.role_label }}</span>
+              <span class="truncate text-xs text-ink-muted">{{ reach(role) }}</span>
             </span>
             <Button
               icon="lucide-pencil"
@@ -78,13 +71,14 @@
               icon="lucide-trash-2"
               variant="ghost"
               theme="red"
-              :label="__('Delete {0}', [role.role_label])"
-              :tooltip="__('Delete {0}', [role.role_label])"
+              :label="__('Delete {0} for ever', [role.role_label])"
+              :tooltip="__('Delete {0} for ever', [role.role_label])"
               :loading="saving === role.name"
               @click="remove(role)"
             />
-          </li>
-        </ul>
+          </div>
+          </template>
+        </DataList>
       </section>
 
       <ErrorMessage v-if="error" :message="error" />
@@ -106,7 +100,8 @@ import {
   Alert, Badge, Button, ErrorMessage, LoadingIndicator,
   SettingsHeader, SettingsBody,
 } from '@/ui'
-import EmptyState from '@/shared/components/EmptyState.vue'
+import DataList from '@/shared/components/DataList.vue'
+import { staticSource } from '@/shared/lib/list/source'
 import RoleBuilder from '@/modules/onespace/components/settings/RoleBuilder.vue'
 import { PANEL_BODY, PANEL_HEADER } from '@/modules/onespace/components/settings/geometry'
 import { workspace } from '@/shared/lib/workspace'
@@ -116,6 +111,22 @@ import { errorText } from '@/shared/lib/runtime/errors'
 const data = ref(null)
 const loading = ref(false)
 const saving = ref('')
+
+/**
+ * The workspace's own roles, and what this panel can do with them — §B1.
+ *
+ * Nothing but draw them: a workspace has a handful, and a search box over
+ * four rows is a control that costs a line and answers nothing.
+ */
+const source = computed(() => staticSource({
+  rows: data.value?.custom || [],
+  key: (role) => role.name,
+  empty: {
+    icon: 'lucide-user-round',
+    title: __('No roles of your own yet'),
+    description: __('For where the shipped roles are the wrong shape — read everything, change one part of it.'),
+  },
+}))
 const unreachable = ref(false)
 const error = ref('')
 const building = ref(false)

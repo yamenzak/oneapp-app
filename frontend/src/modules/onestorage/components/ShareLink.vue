@@ -13,7 +13,7 @@
   <Dialog v-model="open" :title="__('Share a link')" size="lg">
     <template #default>
       <div class="flex flex-col gap-4 py-2">
-        <p class="text-p-sm text-ink-gray-6">
+        <p class="text-p-sm text-ink-secondary">
           {{
             __('Anybody with the link can open {0} until it expires. They do not need an account here.', [
               file?.file_name,
@@ -54,7 +54,7 @@
           v-if="level === 'write'"
           theme="amber"
           :title="__('Anybody with this link can edit')"
-          :description="__('Their changes go straight into the file and are attributed to the link, not to a person. Take it back when the work is done.')"
+          :description="__('Changes go into the file, attributed to the link rather than a person.')"
         />
 
         <ErrorMessage :message="error" />
@@ -69,8 +69,8 @@
             class="flex items-center gap-2 rounded-6 border border-outline-gray-1 px-3 py-2"
           >
             <div class="min-w-0 flex-1">
-              <p class="truncate text-p-xs text-ink-gray-7">{{ absolute(row) }}</p>
-              <p class="text-p-xs text-ink-gray-5">
+              <p class="truncate text-xs text-ink-secondary">{{ absolute(row) }}</p>
+              <p class="text-p-xs text-ink-muted">
                 {{ row.level === 'write' ? __('Can edit') : __('Read only') }}
                 ·
                 {{ row.revoked ? __('Revoked') : __('Until {0}', [until(row)]) }}
@@ -114,10 +114,11 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { Alert, Button, Dialog, Divider, ErrorMessage, FormControl, toast } from '@/ui'
+import { Alert, Button, Dialog, Divider, ErrorMessage, FormControl } from '@/ui'
 import { workspace } from '@/shared/lib/workspace'
 import { __ } from '@/shared/lib/runtime/translate'
 import { errorText } from '@/shared/lib/runtime/errors'
+import { notifySuccess } from '@/shared/lib/runtime/notify'
 
 // The server's own bound is ninety days; these are the answers people give.
 const dayOptions = computed(() => [
@@ -184,11 +185,11 @@ async function make() {
 async function copy(row) {
   try {
     await navigator.clipboard?.writeText(absolute(row))
-    toast.success(__('Link copied'))
+    notifySuccess(__('Link copied'))
   } catch {
     // A browser that refuses the clipboard is not a failed share — the link is
     // on screen and can be selected.
-    toast.success(__('Link made'))
+    notifySuccess(__('Link made'))
   }
 }
 

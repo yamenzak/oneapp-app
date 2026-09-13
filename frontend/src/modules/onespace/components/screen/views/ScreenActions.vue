@@ -62,7 +62,7 @@
     confirmation exactly when the action carries the sentence to put in it.
   -->
   <Dialog v-model="confirming" :title="pending?.label || ''">
-    <p class="text-p-base text-ink-gray-7">{{ pending?.confirm }}</p>
+    <p class="text-p-base text-ink-secondary">{{ pending?.confirm }}</p>
     <template #actions>
       <Button
         variant="solid"
@@ -79,6 +79,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button, Dialog, Dropdown } from '@/ui'
 import { putFile } from '@/modules/onestorage/lib/attach'
+import { withinCeiling } from '@/shared/lib/files/limits'
 import { callMethod } from '@/shared/lib/runtime/resource'
 import { notifyError, notifySuccess } from '@/shared/lib/runtime/notify'
 import { __ } from '@/shared/lib/runtime/translate'
@@ -154,6 +155,15 @@ async function chosenFile(event) {
   awaiting.value = null
   if (!file || !action) return
 
+  // Before a byte is sent — §D3. This one is awaited rather than queued: the
+  // file is an *argument* to the action, so there is nothing to do with it
+  // until it has arrived and nothing for a tray to report about it.
+  const { why } = withinCeiling([file])
+  if (why) {
+    notifyError(why)
+    return
+  }
+
   running.value = action.key
   try {
     // Private, and not attached to the record: `load_feed` re-files it against
@@ -175,15 +185,21 @@ async function run(action, fileUrl = '') {
 
   try {
     if (action.screen) {
-      // A screen action is navigation, not a call. The record travels as a
-      // query parameter the target screen reads, so the result is a link
-      // somebody can send rather than a state only clicking reaches.
+      // A screen action is navigation, not a call. The record travels in the
+      // URL, so the result is a link somebody can send rather than a state
+      // only clicking reaches.
+      //
+      // Through `narrow` — §C4. `param` names a *facet* on the target screen,
+      // which is what `onemobility/actions.py` means by it, and writing it as
+      // its own query key put a parameter in the URL that nothing declared and
+      // no reader could place. One declared key, one shared vocabulary, and
+      // the target screen's bar arrives with that one thing chosen.
       confirming.value = false
       // Same space, different screen: the path names the space and the query
       // names the screen, so this is a query change and not a route change.
-      await router.push({
-        query: { screen: action.screen, [action.param || 'record']: props.names[0] },
-      })
+      const query = { screen: action.screen }
+      if (action.param) query.narrow = `${action.param}:${props.names[0]}`
+      await router.push({ query })
       return
     }
 

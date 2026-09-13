@@ -34,7 +34,7 @@ test('a grid draws one card per record', async ({ page }) => {
   // A card is a link to its record, and clicking one opens it.
   await card.click()
   await expect(
-    page.locator('[data-slot="record-pane"]').getByText('Book the van for Thursday').first(),
+    page.locator('[data-slot="object-pane"]').getByText('Book the van for Thursday').first(),
   ).toBeVisible()
   expectNoRealErrors(errors)
 })
@@ -61,7 +61,7 @@ test('a card is three bands, and the last one is a control', async ({ page }) =>
   // And it is a real control rather than a picture of one: pressing it
   // favourites the record without opening it.
   await heart.click()
-  await expect(page.locator('[data-slot="record-pane"]')).toHaveCount(0)
+  await expect(page.locator('[data-slot="object-pane"]')).toHaveCount(0)
   const off = card.getByRole('button', { name: 'Remove from favourites' })
   await expect(off).toBeVisible()
 
@@ -81,7 +81,7 @@ test('the title is the keyboard way into a card', async ({ page }) => {
   const card = page.locator(CARD, { hasText: 'Book the van for Thursday' })
   await card.getByRole('button', { name: 'Book the van for Thursday' }).click()
   await expect(
-    page.locator('[data-slot="record-pane"]').getByText('Book the van for Thursday').first(),
+    page.locator('[data-slot="object-pane"]').getByText('Book the van for Thursday').first(),
   ).toBeVisible()
 })
 
@@ -149,7 +149,6 @@ test('a grid over records with no picture is not a gallery', async ({ page }) =>
 })
 
 test('the gear over a grid asks what is on a card', async ({ page }, info) => {
-  test.skip(info.project.name === 'mobile', 'the settings gear is desktop chrome')
   const errors = collectConsoleErrors(page)
   await openGrid(page)
 
@@ -166,7 +165,6 @@ test('the gear over a grid asks what is on a card', async ({ page }, info) => {
 test('a field chosen for a card is fetched even where no column shows it', async ({
   page,
 }, info) => {
-  test.skip(info.project.name === 'mobile', 'the settings gear is desktop chrome')
   await openGrid(page)
 
   const card = page.locator(CARD, { hasText: 'Book the van for Thursday' })
@@ -179,7 +177,11 @@ test('a field chosen for a card is fetched even where no column shows it', async
   await page.keyboard.press('Escape')
 
   // The one field chosen, and only it — not whatever the list happens to show.
-  await expect(card).toContainText('Aug')
+  // A date reads in *this workspace's* format, which is why the assertion is
+  // the shape rather than a month name: the site's `date_format` decides, and
+  // a workspace that has set `dd-mm-yyyy` is not wrong. See
+  // `docs/UNIFICATION.md` §D1.
+  await expect(card).toContainText(/\d{4}-\d{2}-\d{2}/)
   await expect(card).not.toContainText('Medium')
 
   // And the board keeps its own card: the two are separate answers, because a

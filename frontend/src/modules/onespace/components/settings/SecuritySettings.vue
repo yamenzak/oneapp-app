@@ -15,12 +15,12 @@
 
   <SettingsBody :class="PANEL_BODY">
     <div v-if="!data" class="grid place-items-center py-16">
-      <LoadingIndicator class="size-5 text-ink-gray-5" />
+      <LoadingIndicator class="size-5 text-ink-muted" />
     </div>
 
     <div v-else class="flex flex-col gap-8 pt-6">
       <section class="flex flex-col gap-3">
-        <h3 class="text-base-medium text-ink-gray-8">{{ __('Change your password') }}</h3>
+        <h3 class="text-base-medium text-ink-primary">{{ __('Change your password') }}</h3>
         <!-- The current one is asked for rather than assumed from the session:
              being signed in is not proof that the person at the keyboard is the
              account holder, which is why every product asks. -->
@@ -47,13 +47,13 @@
             @click="change"
           />
         </div>
-        <p v-if="data.two_factor" class="text-p-sm text-ink-gray-5">
+        <p v-if="data.two_factor" class="text-p-sm text-ink-muted">
           {{ __('This workspace also asks for a second factor when you sign in.') }}
         </p>
       </section>
 
       <section class="flex flex-col gap-3">
-        <h3 class="text-base-medium text-ink-gray-8">{{ __('Where you are signed in') }}</h3>
+        <h3 class="text-base-medium text-ink-primary">{{ __('Where you are signed in') }}</h3>
         <!-- Scrolls inside its own box. Every sign-in is a row and they are
              kept until they expire, so a person who signs in daily pushes the
              one control on this panel — sign out everywhere else — off the
@@ -71,10 +71,10 @@
                  two rows — and a column of five identical "Unknown address"
                  lines is a list that tells you nothing. -->
             <div class="min-w-0">
-              <p class="truncate text-p-base text-ink-gray-8">
+              <p class="truncate text-base text-ink-primary">
                 {{ __('Last used {0}', [when(one.last_seen)]) }}
               </p>
-              <p v-if="one.from" class="truncate text-p-xs text-ink-gray-5">
+              <p v-if="one.from" class="truncate text-xs text-ink-muted">
                 {{ __('From {0}', [one.from]) }}
               </p>
             </div>
@@ -82,7 +82,7 @@
           </div>
           <p
             v-if="!data.sessions.length"
-            class="px-3 py-2 text-p-sm text-ink-gray-5"
+            class="px-3 py-2 text-p-sm text-ink-muted"
           >
             {{ __('Only here.') }}
           </p>
@@ -109,13 +109,14 @@
 <script setup>
 import { ref } from 'vue'
 import {
-  Badge, Button, dayjsLocal, ErrorMessage, FormControl, LoadingIndicator,
+  Badge, Button, ErrorMessage, FormControl, LoadingIndicator,
   SettingsBody, SettingsHeader,
 } from '@/ui'
 import { PANEL_BODY, PANEL_HEADER } from '@/modules/onespace/components/settings/geometry'
 import { workspace } from '@/shared/lib/workspace'
 import { errorText } from '@/shared/lib/runtime/errors'
 import { __ } from '@/shared/lib/runtime/translate'
+import { ago } from '@/shared/lib/runtime/format'
 
 const data = ref(null)
 const current = ref('')
@@ -125,7 +126,7 @@ const changing = ref(false)
 const ending = ref(false)
 
 /** The same relative time the record header and the timeline use. */
-const when = (value) => (value ? dayjsLocal(value).fromNow() : __('just now'))
+const when = (value) => (value ? ago(value) : __('just now'))
 
 async function load() {
   data.value = await workspace.security()

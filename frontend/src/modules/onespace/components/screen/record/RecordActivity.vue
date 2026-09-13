@@ -36,7 +36,7 @@
 
     <!-- The page is capped, and a list that silently stops at fifty reads as
          "that is all of them". -->
-    <p v-if="more && kind !== 'change'" class="text-p-xs text-ink-gray-5">
+    <p v-if="more && kind !== 'change'" class="text-p-xs text-ink-muted">
       {{ __('Showing the {0} most recent comments of {1}.', [comments.length, count]) }}
     </p>
 
@@ -57,7 +57,7 @@
           <span
             class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-gray-2"
           >
-            <Icon :name="activityIcon(entry.kind)" class="size-3.5 text-ink-gray-6" />
+            <Icon :name="activityIcon(entry.kind)" class="size-3.5 text-ink-secondary" />
           </span>
           <!-- A 1px rule drawn as a border, not a background: the theme's
                `outline-*` tokens are border colours and `bg-outline-gray-1`
@@ -70,8 +70,8 @@
 
         <div class="min-w-0 flex-1 pb-5">
           <div class="flex items-baseline gap-2">
-            <span class="truncate text-p-sm font-medium text-ink-gray-8">{{ entry.by }}</span>
-            <span class="shrink-0 text-p-xs text-ink-gray-5">{{ when(entry.on) }}</span>
+            <span class="truncate text-sm font-medium text-ink-primary">{{ entry.by }}</span>
+            <span class="shrink-0 text-p-xs text-ink-muted">{{ when(entry.on) }}</span>
           </div>
 
           <!-- eslint-disable vue/multiline-html-element-content-newline --
@@ -79,7 +79,7 @@
                break on screen. -->
           <p
             v-if="entry.kind === 'comment'"
-            class="whitespace-pre-wrap text-p-sm text-ink-gray-7"
+            class="whitespace-pre-wrap text-p-sm text-ink-secondary"
           >{{ entry.content }}</p>
           <!-- eslint-enable vue/multiline-html-element-content-newline -->
 
@@ -91,14 +91,14 @@
           <p
             v-for="(change, i) in entry.entries || []"
             :key="i"
-            class="text-p-sm text-ink-gray-6"
+            class="text-p-sm text-ink-secondary"
           >
-            <span class="text-ink-gray-8">{{ change.label }}</span>
+            <span class="text-ink-primary">{{ change.label }}</span>
             <span class="text-ink-gray-4">: {{ change.from || '—' }} → </span>
-            <span class="text-ink-gray-8">{{ change.to || '—' }}</span>
+            <span class="text-ink-primary">{{ change.to || '—' }}</span>
           </p>
 
-          <p v-if="entry.kind === 'created'" class="text-p-sm text-ink-gray-6">
+          <p v-if="entry.kind === 'created'" class="text-p-sm text-ink-secondary">
             {{ __('Created this record.') }}
           </p>
         </div>
@@ -109,11 +109,12 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { Button, Icon, LoadingText, TabButtons, Textarea, dayjsLocal } from '@/ui'
+import { Button, Icon, LoadingText, TabButtons, Textarea } from '@/ui'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { activityIcon } from '@/modules/onespace/lib/screen/fields'
 import { workspace } from '@/shared/lib/workspace'
 import { __ } from '@/shared/lib/runtime/translate'
+import { ago } from '@/shared/lib/runtime/format'
 
 const props = defineProps({
   spaceCode: { type: String, required: true },
@@ -140,7 +141,7 @@ const filters = [
   { label: __('Changes'), value: 'change' },
 ]
 
-const when = (value) => (value ? dayjsLocal(value).fromNow() : '')
+const when = (value) => (value ? ago(value) : '')
 
 // One list, newest first. Sorted here rather than asked for sorted: the two
 // halves come back from two queries, and merging them on the server would mean

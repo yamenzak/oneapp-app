@@ -9,7 +9,7 @@ const openRecord = async (page) => {
   await page.goto('/one/space/zzmock')
   await expect(page.locator('[data-slot="list-row"]').first()).toBeVisible()
   await page.getByText('Chase the Halloway invoice').first().click()
-  await expect(page.locator('[data-slot="record-pane"]')).toBeVisible()
+  await expect(page.locator('[data-slot="object-pane"]')).toBeVisible()
 }
 
 test('the list is still there beside the record', async ({ page }, info) => {
@@ -30,7 +30,7 @@ test('the list is still there beside the record', async ({ page }, info) => {
   // shell insets that area by 8px, so a record that ran to 1280 would be one
   // that had escaped its own panel.
   const list = await rows.first().boundingBox()
-  const pane = await page.locator('[data-slot="record-pane"]').boundingBox()
+  const pane = await page.locator('[data-slot="object-pane"]').boundingBox()
   const inset = await page.locator('[data-slot="shell-inset"]').boundingBox()
   expect(list.x).toBeLessThan(pane.x)
   expect(Math.round(pane.x + pane.width)).toBe(Math.round(inset.x + inset.width))
@@ -47,7 +47,7 @@ test('the pane can be resized, and it stays that way', async ({ page }, info) =>
   const errors = collectConsoleErrors(page)
   await openRecord(page)
 
-  const pane = page.locator('[data-slot="record-pane"]')
+  const pane = page.locator('[data-slot="object-pane"]')
   const before = (await pane.boundingBox()).width
 
   // The keyboard, not a drag: the same handle, and the half of it that a
@@ -74,7 +74,7 @@ test('on a phone the record is the page', async ({ page }, info) => {
 
   // No room to keep both, so it does not pretend to: full width, its own
   // header, and the way back at the top of it.
-  const pane = await page.locator('[data-slot="record-pane"]').boundingBox()
+  const pane = await page.locator('[data-slot="object-pane"]').boundingBox()
   const view = page.viewportSize()
   expect(pane.width).toBe(view.width)
   await expect(page.locator('[data-slot="record-resizer"]')).toHaveCount(0)
@@ -86,7 +86,7 @@ test('on a phone the record is the page', async ({ page }, info) => {
   // record's identity in the pane header, and once inside the Text Editor that
   // is the field it comes from.
   await expect(
-    page.locator('[data-slot="record-pane"]').getByText('Chase the Halloway invoice').first(),
+    page.locator('[data-slot="object-pane"]').getByText('Chase the Halloway invoice').first(),
   ).toBeVisible()
 
   await info.attach(`record-page-${info.project.name}`, {
@@ -95,7 +95,7 @@ test('on a phone the record is the page', async ({ page }, info) => {
   })
 
   await page.getByRole('button', { name: 'Close the record' }).click()
-  await expect(page.locator('[data-slot="record-pane"]')).toHaveCount(0)
+  await expect(page.locator('[data-slot="object-pane"]')).toHaveCount(0)
   expectNoRealErrors(errors)
 })
 
@@ -119,13 +119,13 @@ test('a record is made in a dialog and opens into the pane', async ({ page }) =>
   // And it opens into the record, because the point of making one is to be in
   // it — a dialog that closes onto a list leaves you hunting for the row.
   await expect(dialog).toHaveCount(0)
-  const pane = page.locator('[data-slot="record-pane"]')
+  const pane = page.locator('[data-slot="object-pane"]')
   await expect(pane).toBeVisible()
   // `toContainText`, not `toHaveValue`: a Text Editor field is a
   // contenteditable rather than an input, so it has no value to read — and the
   // text it holds is wrapped in whatever markup the editor produced.
   await expect(pane.getByLabel('Description')).toContainText(made)
-  await expect(page).toHaveURL(/record=/)
+  await expect(page).toHaveURL(/at=record:/)
 
   // Put the fixture back.
   await page.getByRole('button', { name: 'Close the record' }).click()
@@ -136,7 +136,7 @@ test('a record is made in a dialog and opens into the pane', async ({ page }) =>
 test('a record says who made it and what is filed against it', async ({ page }, info) => {
   const errors = collectConsoleErrors(page)
   await openRecord(page)
-  const pane = page.locator('[data-slot="record-pane"]')
+  const pane = page.locator('[data-slot="object-pane"]')
 
   // Who made this and when it last changed: the question every desk sidebar
   // answers, and the one thing on a record that no field carries. On the Meta
@@ -164,7 +164,7 @@ test('a record says who made it and what is filed against it', async ({ page }, 
 test("the doctype's own rules decide what a form shows", async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openRecord(page)
-  const pane = page.locator('[data-slot="record-pane"]')
+  const pane = page.locator('[data-slot="object-pane"]')
 
   // `depends_on` — the fixture hides Sender until the task is closed, and the
   // rule is read against the record as it stands rather than as it was saved.
@@ -175,8 +175,8 @@ test("the doctype's own rules decide what a form shows", async ({ page }) => {
   // there as missing.
   const ruled = pane.getByLabel(/^Sender/)
   await expect(ruled).toBeHidden()
-  // `read_only_depends_on` the other way: the reference is editable while it
-  // is open.
+  // `read_only_depends_on` the other way: the reference is a control while the
+  // task is open, and becomes a value once it is closed.
   await expect(pane.getByLabel('Reference Type', { exact: true })).toBeEnabled()
 
   // The Select is frappe-ui's, not a native one: a trigger and a listbox.
@@ -188,7 +188,13 @@ test("the doctype's own rules decide what a form shows", async ({ page }) => {
   // And `mandatory_depends_on` marks it the way `reqd` would — the control
   // reads one flag, so the doctype's two answers become one here.
   await expect(ruled).toHaveAccessibleName('Sender (required)')
-  await expect(pane.getByLabel('Reference Type', { exact: true })).toBeDisabled()
+  // And a locked field is not a disabled control — §B5. It is the value, as
+  // text, with no box and no placeholder: there is nothing left to type into,
+  // which is what the rule means and what a greyed-out input never said.
+  await expect(pane.getByLabel('Reference Type', { exact: true })).toHaveCount(0)
+  await expect(
+    pane.locator('[data-slot="read-value"]').filter({ hasText: 'Reference Type' }),
+  ).toBeVisible()
 
   // Put it back without saving: closing the record throws the change away,
   // which is what not pressing Save means.

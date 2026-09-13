@@ -18,8 +18,8 @@ import { collectConsoleErrors, expectNoRealErrors, signIn } from './auth.js'
  * share — on Meta.
  */
 const openTask = async (page) => {
-  await page.goto('/one/space/zzmock?screen=tasks&record=zzmock-halloway')
-  await page.locator('[data-slot="record-pane"]').waitFor({ timeout: 15_000 })
+  await page.goto('/one/space/zzmock?screen=tasks&at=record:zzmock-halloway')
+  await page.locator('[data-slot="object-pane"]').waitFor({ timeout: 15_000 })
   await page.getByRole('tab', { name: 'Meta' }).click()
   await page.locator('[data-slot="assign"]').waitFor({ timeout: 15_000 })
 }
@@ -50,7 +50,7 @@ test('a record can be assigned, and says so in faces', async ({ page }, info) =>
   // this component.
   await page.keyboard.press('Escape')
   await page.reload()
-  await page.locator('[data-slot="record-pane"]').waitFor({ timeout: 15_000 })
+  await page.locator('[data-slot="object-pane"]').waitFor({ timeout: 15_000 })
   await page.getByRole('tab', { name: 'Meta' }).click()
   await page.locator('[data-slot="assign"]').waitFor({ timeout: 15_000 })
   await expect(

@@ -47,9 +47,9 @@
         data-slot="mail-template"
       >
         <div class="flex min-w-0 flex-col items-start gap-1">
-          <span class="truncate text-p-sm font-medium text-ink-gray-8">{{ row.name }}</span>
-          <span class="truncate text-p-xs text-ink-gray-6">{{ row.subject }}</span>
-          <span v-if="row.doctype" class="text-p-xs text-ink-gray-5">
+          <span class="truncate text-sm font-medium text-ink-primary">{{ row.name }}</span>
+          <span class="truncate text-xs text-ink-secondary">{{ row.subject }}</span>
+          <span v-if="row.doctype" class="text-p-xs text-ink-muted">
             {{ __('For {0}', [row.doctype]) }}
           </span>
           <!-- A template written for a record the workspace no longer has is
@@ -120,7 +120,7 @@
         be. `{{ doc.customer }}` fills in from the record it is sent from —
         which is the whole reason a template may name one.
       -->
-      <div class="rounded-6 border border-outline-gray-2 bg-surface-base px-3 py-2">
+      <Panel pad="bar">
         <Editor
           v-model="draft.body"
           :extensions="EXTENSIONS"
@@ -141,7 +141,7 @@
             />
           </template>
         </Editor>
-      </div>
+      </Panel>
 
       <ErrorMessage v-if="saveError" :message="saveError" />
     </div>
@@ -175,6 +175,7 @@ import { PANEL_BODY, PANEL_HEADER } from '@/modules/onespace/components/settings
 import { workspace } from '@/shared/lib/workspace'
 import { errorText } from '@/shared/lib/runtime/errors'
 import { __ } from '@/shared/lib/runtime/translate'
+import Panel from '@/shared/components/Panel.vue'
 
 const EXTENSIONS = [RichTextKit]
 

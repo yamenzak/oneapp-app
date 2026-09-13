@@ -5,27 +5,28 @@
     same ones an attachment is, so nothing here is a second store.
   -->
   <PageHeader>
-    <nav data-slot="breadcrumb" aria-label="Breadcrumb" class="flex min-w-0 items-center gap-1">
+    <Trail :items="crumbs">
       <!-- The rail, on a phone: the shell draws a sidebar only on a desktop.
            The same list, from the same module, so the two cannot drift. -->
-      <Dropdown v-if="isMobile" :options="placeOptions">
-        <Button
-          data-slot="drive-places"
-          icon-right="lucide-chevron-down"
-          variant="ghost"
-          :label="placeName"
-        />
-      </Dropdown>
-      <Breadcrumbs :items="crumbs" />
-    </nav>
+      <template v-if="isMobile" #before>
+        <Dropdown :options="placeOptions">
+          <Button
+            data-slot="drive-places"
+            icon-right="lucide-chevron-down"
+            variant="ghost"
+            :label="placeName"
+          />
+        </Dropdown>
+      </template>
+    </Trail>
 
     <div class="flex shrink-0 items-center gap-2">
-      <FormControl
-        v-model="drive.search.value"
-        type="text"
+      <!-- The frame's search, drawn here: the box belongs beside Upload and
+           New rather than over the rows — §B1, `v-model:searched`. -->
+      <ListSearch
+        v-model="searched"
         :placeholder="__('Search files')"
-        class="w-28 sm:w-48"
-        @input="onSearch"
+        @changed="list?.read()"
       />
       <!-- List or grid, remembered: a person who wants thumbnails wants them
            on every folder, not once. -->
@@ -51,6 +52,34 @@
         :disabled="!drive.files.value.length || drive.busy.value"
         @click="emptying = true"
       />
+      <!--
+        Inside a mount there is nothing to upload into and nothing to make:
+        the Drive browses a host and does not write to one. What is useful
+        instead is asking the host again, because the commonest question about
+        a drop folder is whether today's delivery has landed.
+      -->
+      <template v-else-if="inRemote">
+        <Button
+          icon-left="lucide-refresh-cw"
+          :label="__('Check again')"
+          :tooltip="__('Ask the host again')"
+          :loading="loading"
+          @click="drive.load()"
+        />
+        <!-- The mount itself, managed where it is used. A connection that can
+             only be paused from the desk is a connection nobody pauses: the
+             moment you want to is the moment the host is misbehaving, and the
+             person looking at the red dot is here. -->
+        <Dropdown :options="mountOptions">
+          <Button
+            data-slot="drive-mount-menu"
+            icon="lucide-ellipsis-vertical"
+            variant="ghost"
+            :label="__('This connection')"
+            :tooltip="__('This connection')"
+          />
+        </Dropdown>
+      </template>
       <template v-else>
         <!--
           Upload. A plain input rather than `FileUploader`: the queue is
@@ -68,11 +97,16 @@
           class="hidden"
           @change="chosenFiles"
         >
+        <!-- Drawn and refused rather than dropped where there is nowhere to
+             put a file — §F1's middle state. In the Records place a directory
+             is a query, so the reason is on the control instead of the
+             control being missing. -->
         <Button
           :icon="isMobile ? 'lucide-upload' : undefined"
           :icon-left="isMobile ? undefined : 'lucide-upload'"
           :label="__('Upload')"
-          :tooltip="__('Upload files')"
+          :disabled="!can.can(CAN.CREATE)"
+          :tooltip="can.why(CAN.CREATE) || __('Upload files')"
           @click="chooser?.click()"
         />
         <!--
@@ -90,7 +124,8 @@
             :icon-right="isMobile ? undefined : 'lucide-chevron-down'"
             variant="solid"
             :label="__('New')"
-            :tooltip="__('New file')"
+            :disabled="!can.can(CAN.CREATE)"
+            :tooltip="can.why(CAN.CREATE) || __('New file')"
             :loading="making"
           />
         </Dropdown>
@@ -105,17 +140,15 @@
       Drop anywhere in the pane, not only on the list: a person dragging four
       files at an empty folder aims at the empty state.
 
-      `dragenter`/`dragleave` are counted rather than paired — both fire for
-      every child the pointer crosses.
+      The counting, the treatment, the folder that arrives as a zero-byte file
+      and the size ceiling are all `v-drop-files` — §D3. What is left here is
+      the only part that is the Drive's: where the bytes go, and the two
+      places they may not.
     -->
     <div
       class="flex min-w-0 flex-1 flex-col rounded-6 bg-surface-base p-5"
       data-slot="drive-dropzone"
-      :class="dragging ? 'rounded-6 ring-2 ring-inset ring-outline-gray-3' : ''"
-      @dragenter.prevent="onDragEnter"
-      @dragover.prevent
-      @dragleave="onDragLeave"
-      @drop.prevent="onDrop"
+      v-drop-files="{ onFiles: dropped, disabled: place === 'trash' || inRemote }"
     >
       <!-- What the bin is, said where somebody deciding whether to empty it is
            looking: thirty days is the promise the sweep keeps. -->
@@ -130,22 +163,25 @@
         </template>
       </Alert>
 
-      <div v-if="drive.loading.value && !drive.files.value.length" class="flex flex-col gap-2">
-        <Skeleton v-for="n in 8" :key="n" class="h-11 w-full" />
-      </div>
-
-      <Alert v-else-if="drive.error.value" theme="red" :title="__('Your files did not load')">
-        <template #description>{{ drive.error.value }}</template>
-      </Alert>
-
-      <EmptyState
-        v-else-if="!drive.files.value.length"
-        :icon="place === 'trash' ? 'lucide-trash-2' : 'lucide-folder-open'"
-        :title="EMPTY[place].title"
-        :description="EMPTY[place].description"
-      />
-
-      <div v-else class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+      <!--
+        The frame is `DataList` over `fileSource` — §B1. The skeleton, the
+        empty state, the failed read and the next page are all its; what is
+        passed in is the header this list happens to want and the row it
+        happens to draw.
+      -->
+      <ContextMenu :options="rowMenu">
+      <DataList
+        ref="list"
+        v-model:searched="searched"
+        :source="source"
+        :skeleton="8"
+        :page-length="PAGE"
+        class="min-h-0 flex-1 overflow-y-auto"
+        :body-class="grid
+          ? 'grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3'
+          : 'flex flex-col'"
+      >
+        <template #header="{ allPicked, toggleAll }">
         <!--
           The header, which is a row of its own rather than a set of column
           cells: a file's name is a column and everything after it — who,
@@ -158,49 +194,69 @@
           a control that disappears when you switch view is a control you stop
           trusting.
         -->
-        <div class="flex items-center gap-2 pb-1 text-p-xs text-ink-gray-5">
-          <template v-if="!grid">
+        <div class="flex items-center gap-2 pb-1 text-p-xs text-ink-muted">
+          <!-- No select-all where the source cannot act in bulk: over a
+               mount the rows have no checkbox either, because there is
+               nothing this list can do to them. -->
+          <template v-if="!grid && can.can(CAN.BULK)">
             <Checkbox
-              :model-value="drive.allSelected.value"
+              :model-value="allPicked"
               :aria-label="__('Select everything here')"
               class="ms-2.5"
-              @update:model-value="drive.toggleAll"
+              @update:model-value="toggleAll"
             />
             <span>{{ counted }}</span>
+          </template>
+          <!-- Said where the tick would have been, rather than a row of rows
+               with no checkboxes and no explanation — §F1. -->
+          <template v-else-if="!grid && can.why(CAN.BULK)">
+            <span>{{ counted }}</span>
+            <span class="text-ink-muted">· {{ can.why(CAN.BULK) }}</span>
           </template>
           <span v-else>{{ counted }}</span>
 
           <!-- Wrapped, because `Dropdown`'s root is reka's provider and a class
                on it has no element to land on. -->
           <div class="ms-auto">
+          <!-- Drawn and disabled on a mount rather than dropped, with the
+               reason on it: a control that vanishes is a control somebody
+               keeps looking for. §F1. -->
           <Dropdown :options="orderOptions">
             <Button
               variant="ghost"
               size="sm"
               data-slot="drive-order"
+              :disabled="!can.can(CAN.SORT)"
               :icon-left="drive.descending.value
                 ? 'lucide-arrow-down-narrow-wide'
                 : 'lucide-arrow-up-narrow-wide'"
               icon-right="lucide-chevron-down"
               :label="orderName"
-              :tooltip="__('How these are ordered')"
+              :tooltip="can.why(CAN.SORT) || __('How these are ordered')"
             />
           </Dropdown>
           </div>
         </div>
+        </template>
 
-        <ContextMenu :options="rowMenu">
-        <div
-          :class="
-            grid
-              ? 'grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6'
-              : 'flex flex-col'
-          "
-        >
+        <!--
+          The grid fits the column, not the window — which is why it is a
+          `body-class` rather than a wrapper here.
+
+          `md:grid-cols-4 xl:grid-cols-6` counts from the viewport, and the
+          list does not have the viewport — it has whatever the pane left it.
+          So opening a file on a 1440 screen kept six columns in a 500-pixel
+          column and the cards ran into each other, and dragging the resizer
+          narrower only made it worse.
+
+          `auto-fill` with a floor asks the question the right way round: how
+          many 9rem cards fit *here*. Nothing to recalculate on resize and no
+          breakpoint to keep in step with the pane's width.
+        -->
+        <template #row="{ row: file, picked, toggle }">
           <FileRow
-            v-for="file in drive.files.value"
-            :key="file.name"
             :file="file"
+            :place="place"
             :link="routeFor(file)"
             :inline="isMobile ? [] : INLINE"
             :dense="editing && previewing && !isMobile"
@@ -208,31 +264,24 @@
             selectable
             actions
             movable
-            :selected="drive.picked.value.has(file.name)"
+            :selected="picked"
             :trashed="place === 'trash'"
             @menu="(options) => (rowMenu = options)"
             @move-into="moveInto"
             @open="open"
-            @select="drive.toggle"
+            @select="toggle"
             @favourite="drive.favourite"
             @share="startShare"
+            @copy="copyHere"
             @rename="startRename"
             @move="(one) => startMove([one])"
             @trash="(one) => drive.trash(one)"
             @restore="(one) => drive.restore(one)"
             @destroy="(one) => drive.destroy(one)"
           />
-        </div>
-        </ContextMenu>
-
-        <Button
-          v-if="drive.more.value"
-          variant="ghost"
-          :label="__('Load more')"
-          :loading="drive.loading.value"
-          @click="drive.load({ append: true })"
-        />
-      </div>
+        </template>
+      </DataList>
+      </ContextMenu>
     </div>
 
     <!--
@@ -241,169 +290,148 @@
       A dialog was the wrong shape for a file manager: looking at a photograph
       is how you decide which photograph, and a modal makes that a sequence of
       open-look-close-open rather than a walk down the list. The same pane a
-      record opens in, for the same reason and with the same resizer — and on a
-      phone `RecordPane` draws itself as a full overlay, which is what a
-      dialog was doing there anyway.
+      record opens in, for the same reason and with the same resizer, and the
+      same one a mail attachment and a record's Files tab open in since §C2 —
+      `FilePane` is where the header and the two verbs live now.
 
-      Only for what has no editor of its own. A sheet, a document and a folder
-      are places with addresses, and clicking one goes there; a `.zip` is not,
-      and this is where it opens.
+      More of the window than a record pane takes when it holds an editor: a
+      record is fields beside a list, and a spreadsheet is the thing you came
+      to work in, where 45% of a laptop is four columns.
     -->
-    <!--
-      More of the window than a record pane takes, when it holds an editor.
-      A record is fields beside a list; a spreadsheet is the thing you came to
-      work in, and 45% of a laptop is four columns.
-    -->
-    <RecordPane
-      v-if="looking && previewing"
+    <FilePane
+      v-model="previewing"
+      :file="looking"
       :max-share="editing ? 0.72 : 0.45"
       :min="editing ? editorFloor() : undefined"
+      :shareable="!lookingRemote && !editing"
+      :downloadable="!editing"
     >
-      <template #body>
-        <div class="flex h-full min-h-0 flex-col overflow-hidden rounded-6 bg-surface-base">
-          <!--
-            No header of ours over an editor. Both editors bring their own
-            identity bar — the name, a way back, and their own File menu — and
-            a second one above it is the file's name said twice with a rule
-            between. What this header offers that theirs does not (a link, a
-            download) a sheet offers under File and a document under its own
-            menu.
-          -->
-          <header
-            v-if="!editing"
-            class="flex shrink-0 items-center gap-2 border-b border-outline-gray-1 p-3"
-          >
-            <h2 class="flex min-w-0 flex-1 items-center gap-1.5">
-              <span class="truncate text-base text-ink-gray-8">{{ looking.file_name }}</span>
-              <AiMark v-if="looking._ai" :mark="looking._ai" />
-            </h2>
-            <!--
-              A link, not `FileShare`. Two different things wear the word
-              share: `FileShare` is a `DocShare` row and needs the other person
-              to have a login here, and this is the one for the consultant who
-              does not. The row's menu offers the first; a file you are looking
-              at is usually a file you are about to send somebody.
-            -->
-            <Button
-              icon="lucide-link"
-              variant="ghost"
-              :label="__('Share a link')"
-              :tooltip="__('Share a link')"
-              @click="linking = true"
-            />
-            <Button
-              icon="lucide-download"
-              variant="ghost"
-              :label="__('Download')"
-              :tooltip="__('Download')"
-              @click="downloadLooking"
-            />
-            <Button
-              icon="lucide-x"
-              variant="ghost"
-              :label="__('Close')"
-              :tooltip="__('Close')"
-              data-slot="drive-pane-close"
-              @click="previewing = false"
-            />
-          </header>
-
-          <!--
-            A sheet and a document open here rather than on a page of their
-            own, and they open editable: the point of a file manager is to work
-            in a file without losing the folder you found it in. Cmd-click
-            still opens either on its own page, because the row is still a
-            link — see `FileRow`.
-
-            `:key` on the name, because both editors load their document once
-            on mount: without it, clicking a second sheet would keep the first
-            one on screen.
-          -->
-          <SheetEditor
-            v-if="mounts === 'sheet'"
-            :key="looking.name"
-            :id="looking.name"
-            :host-menu="[]"
-            @close="previewing = false"
-          />
-
-          <Doc v-else-if="mounts" :key="looking.name" :name="looking.name" />
-
-          <div v-else class="min-h-0 flex-1 overflow-auto p-3">
-            <FileSurface :file="looking" :live="previewing" :tall="false" />
-          </div>
-        </div>
+      <!-- A remote file has no row, so there is nothing to make a link to.
+           Copy is the thing that changes that. -->
+      <template v-if="lookingRemote" #actions>
+        <Button
+          icon="lucide-download"
+          variant="ghost"
+          :label="__('Copy into the Drive')"
+          :tooltip="__('Copy into the Drive')"
+          :loading="copying"
+          @click="copyHere(looking)"
+        />
       </template>
-    </RecordPane>
+
+      <!--
+        A sheet and a document open here rather than on a page of their own,
+        and they open editable: the point of a file manager is to work in a
+        file without losing the folder you found it in. Cmd-click still opens
+        either on its own page, because the row is still a link — see
+        `FileRow`.
+
+        `:key` on the name, because both editors load their document once on
+        mount: without it, clicking a second sheet would keep the first one on
+        screen.
+      -->
+      <template v-if="mounts">
+        <SheetEditor
+          v-if="mounts === 'sheet'"
+          :key="looking.name"
+          :id="looking.name"
+          :host-menu="[]"
+          hosted
+          @close="previewing = false"
+        />
+        <!--
+          `hosted`, so the editor draws a bar of its own rather than teleporting
+          its title into the shell's header, above the list it is sitting
+          beside. The way out is this pane's own Close; neither editor draws
+          one, which is what stopped a `.py` pushing `/one/files` and taking
+          the list with it.
+        -->
+        <Doc
+          v-else
+          :key="looking.name"
+          :name="looking.name"
+          hosted
+        />
+      </template>
+    </FilePane>
   </div>
 
-  <!-- What you can do with what you have chosen, over the list rather than in
-       the header: a bar at the top means looking away from the thing you are
-       acting on. -->
-  <div
-    v-if="drive.anySelected.value"
-    data-slot="drive-selection"
-    class="pointer-events-none fixed inset-x-0 bottom-24 z-10 flex justify-center px-4 sm:bottom-6"
+  <!--
+    What you can do with what you have chosen, over the list rather than in the
+    header: a bar at the top means looking away from the thing you are acting
+    on.
+
+    The same `SelectionBar` a record list and a mailbox draw. It used to be a
+    `Panel` written out here — a third spelling of a bar that already existed
+    twice — and the differences were all accidents: a different count sentence,
+    a different gap, a different way of saying "clear". `anchor="screen"`
+    is the one real difference, and it is real: this list *is* the scroller, so
+    a bar absolute inside it would scroll away with the rows.
+  -->
+  <SelectionBar
+    v-if="chosenCount"
+    anchor="screen"
+    :count="chosenCount"
+    :total="drive.files.value.length"
+    @clear="list?.clearChosen()"
+    @all="list?.toggleAll()"
   >
-    <div
-      class="pointer-events-auto flex max-w-full flex-wrap items-center justify-center gap-2 rounded-6 border border-outline-gray-2 bg-surface-elevation-2 px-3 py-2 shadow-lg"
-    >
-      <!-- Not on a phone: the row above already says "2 of 50 chosen", and
-           repeating it pushes the buttons onto a second line. -->
-      <span v-if="!isMobile" class="px-1 text-p-sm text-ink-gray-7">{{ chosen }}</span>
-      <template v-if="place === 'trash'">
-        <Button
-          icon-left="lucide-rotate-ccw"
-          :label="__('Put back')"
-          :tooltip="__('Put back')"
-          :loading="drive.busy.value"
-          @click="drive.restore(drive.selected.value)"
-        />
-        <Button
-          icon-left="lucide-trash-2"
-          theme="red"
-          :label="isMobile ? __('Delete') : __('Delete for good')"
-          :tooltip="__('Delete for good')"
-          :loading="drive.busy.value"
-          @click="drive.destroy(drive.selected.value)"
-        />
-      </template>
-      <template v-else>
-        <Button
-          icon-left="lucide-folder-input"
-          :label="__('Move')"
-          :loading="drive.busy.value"
-          @click="startMove(drive.selected.value)"
-        />
-        <Button
-          icon-left="lucide-trash-2"
-          theme="red"
-          :label="isMobile ? __('Bin') : __('Move to the bin')"
-          :tooltip="__('Move to the bin')"
-          :loading="drive.busy.value"
-          @click="drive.trash(drive.selected.value)"
-        />
-      </template>
+    <template v-if="place === 'trash'">
       <Button
-        icon="lucide-x"
-        variant="ghost"
-        :label="__('Clear the selection')"
-        :tooltip="__('Clear the selection')"
-        @click="drive.clear"
+        icon-left="lucide-rotate-ccw"
+        :label="__('Put it back')"
+        :tooltip="__('Put it back')"
+        :loading="drive.busy.value"
+        @click="drive.restore(picked)"
       />
-    </div>
-  </div>
-
-  <UploadTray />
+      <!--
+        Icon-only on a phone rather than a shorter word. There are two
+        destructive verbs in this product and they are "Move to the bin"
+        and "Delete for ever"; abbreviating one of them to "Delete" on a
+        narrow screen is how a reader comes to think there are three.
+        `icon` and not `icon-left` is what makes a Button icon-only, and
+        the label is still the accessible name.
+      -->
+      <Button
+        :icon="isMobile ? 'lucide-trash-2' : undefined"
+        :icon-left="isMobile ? undefined : 'lucide-trash-2'"
+        theme="red"
+        :label="__('Delete for ever')"
+        :tooltip="__('Delete for ever')"
+        :loading="drive.busy.value"
+        @click="drive.destroy(picked)"
+      />
+    </template>
+    <template v-else>
+      <Button
+        icon-left="lucide-folder-input"
+        :label="__('Move')"
+        :loading="drive.busy.value"
+        @click="startMove(picked)"
+      />
+      <Button
+        :icon="isMobile ? 'lucide-trash-2' : undefined"
+        :icon-left="isMobile ? undefined : 'lucide-trash-2'"
+        theme="red"
+        :label="__('Move to the bin')"
+        :tooltip="__('Move to the bin')"
+        :loading="drive.busy.value"
+        @click="drive.trash(picked)"
+      />
+    </template>
+  </SelectionBar>
 
   <FileShare v-model="sharing" :file="looking" />
 
-  <ShareLink v-model="linking" :file="looking" />
   <!-- Which language, for `New > Code`. One dialog per surface that draws the
        New menu, because the menu is where the question is asked. -->
   <LanguagePicker v-model="choosingLanguage" @pick="newText($event.key)" />
   <ImportSheet v-model="importing" :folder="folder" />
-
+  <ShareOverDav
+    v-model="sharingOverDav"
+    :folder="folder"
+    :folder-label="folderLabel"
+  />
   <FolderPicker v-model="moving" :moving="toMove" @chosen="intoFolder" />
 
   <Dialog v-model="naming" :title="__('New folder')">
@@ -437,7 +465,7 @@
   <!-- The one that does not come back gets a question in front of it. -->
   <Dialog v-model="emptying" :title="__('Empty the bin')">
     <template #default>
-      <p class="text-p-base text-ink-gray-7">
+      <p class="text-p-base text-ink-secondary">
         {{ __('Everything in the bin is deleted for good. This cannot be undone.') }}
       </p>
     </template>
@@ -445,7 +473,7 @@
       <Button
         variant="solid"
         theme="red"
-        :label="__('Delete it all')"
+        :label="__('Delete for ever')"
         :loading="drive.busy.value"
         @click="finishEmpty"
       />
@@ -455,10 +483,9 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Alert,
-  Breadcrumbs,
   Button,
   Checkbox,
   ContextMenu,
@@ -466,37 +493,43 @@ import {
   Dropdown,
   FormControl,
   PageHeader,
-  Skeleton,
 } from '@/ui'
-import AiMark from '@/modules/onespace/components/AiMark.vue'
-import EmptyState from '@/shared/components/EmptyState.vue'
+import Trail from '@/shared/components/Trail.vue'
+import { useCrumbs } from '@/shared/composables/useCrumbs'
+import { CAN, offers } from '@/shared/lib/capability'
+import DataList from '@/shared/components/DataList.vue'
+import SelectionBar from '@/modules/onespace/components/screen/bodies/SelectionBar.vue'
+import { PAGE, fileSource } from '@/shared/lib/list/files'
 import FileSurface from '@/modules/onestorage/components/FileSurface.vue'
+import ListSearch from '@/modules/onespace/components/screen/views/ListSearch.vue'
 import FileRow from '@/modules/onestorage/components/FileRow.vue'
 import FileShare from '@/modules/onestorage/components/FileShare.vue'
-import ShareLink from '@/modules/onestorage/components/ShareLink.vue'
 import FolderPicker from '@/modules/onestorage/components/FolderPicker.vue'
-import UploadTray from '@/modules/onestorage/components/UploadTray.vue'
-import RecordPane from '@/modules/onespace/components/screen/record/RecordPane.vue'
+import FilePane from '@/modules/onestorage/components/FilePane.vue'
 import SheetEditor from '@/modules/onesheet/components/editor/index.vue'
 import Doc from '@/modules/onedoc/pages/Doc.vue'
 import ImportSheet from '@/modules/onesheet/components/ImportSheet.vue'
+import ShareOverDav from '@/modules/onestorage/components/ShareOverDav.vue'
+import { openSettings } from '@/modules/onespace/lib/shell/settings'
+import { workspace } from '@/shared/lib/workspace'
 import { useDrive } from '@/shared/composables/useDrive'
 import { useNewFile } from '@/shared/composables/useNewFile'
 import LanguagePicker from '@/modules/onecode/components/LanguagePicker.vue'
 import { useUploads } from '@/shared/composables/useUploads'
-import { downloadUrl, editorFor, routeFor } from '@/modules/onestorage/lib/files'
+import {
+  editorFor, isRemote, mountOf, routeFor,
+} from '@/modules/onestorage/lib/files'
 import { useIsMobile } from '@/modules/onespace/lib/shell/breakpoint'
 import { __ } from '@/shared/lib/runtime/translate'
 import { PLACES, labelOf } from '@/modules/onestorage/components/places'
-
-const GRID_KEY = 'onespace:drive:grid'
+import { recall, remember } from '@/shared/lib/url/remember'
 
 // What an empty place means, which is different in each: an empty bin is good
 // news and an empty folder is an invitation.
 const EMPTY = {
   home: {
     title: __('Nothing here yet'),
-    description: __('Upload a file, or make a folder to put files in.'),
+    description: __('Upload a file, or make a folder.'),
   },
   recents: {
     title: __('Nothing opened yet'),
@@ -508,11 +541,31 @@ const EMPTY = {
   },
   shared: {
     title: __('Nothing shared with you'),
-    description: __('Files other people share with you appear here.'),
+    description: __('Files people share with you appear here.'),
   },
   trash: {
     title: __('The bin is empty'),
-    description: __('Deleted files wait here for thirty days.'),
+    description: __('Deleted files wait thirty days.'),
+  },
+  records: {
+    title: __('No files on any record'),
+    description: __('Files attached to records appear here.'),
+  },
+  documents: {
+    title: __('No documents yet'),
+    description: __('Make one with New.'),
+  },
+  workbooks: {
+    title: __('No workbooks yet'),
+    description: __('Make one with New.'),
+  },
+  code: {
+    title: __('No code yet'),
+    description: __('Make one with New.'),
+  },
+  templates: {
+    title: __('No templates yet'),
+    description: __('Mark a file as a template.'),
   },
   // Not in the rail. `?place=all` is the flat view of everything this person
   // can see — what the file picker asks for.
@@ -520,6 +573,7 @@ const EMPTY = {
 }
 
 const route = useRoute()
+const router = useRouter()
 // The header is a breadcrumb, a search box and two buttons. On a phone that is
 // more than 412px holds, so the buttons lose their words and keep their
 // tooltips.
@@ -528,12 +582,76 @@ const isMobile = useIsMobile()
 // The place and the folder are in the URL, so a folder is somewhere you can
 // send a colleague. A place that is not one of these is a typo, and a typo must
 // not be a blank page: `EMPTY[place]` is read unconditionally by the template.
+//
+// Which makes this list the *gate*, not just the copy — and that is how
+// Templates spent several stages quietly showing All files. It is in the rail,
+// it highlights when you click it, the crumb says "Files" and the rows are
+// everybody's: no error, no empty state, nothing to notice except that the
+// answer is wrong. A guard reads `places.js` back against this now.
 const place = computed(() =>
   Object.hasOwn(EMPTY, route.query.place) ? route.query.place : 'home',
 )
 const folder = computed(() => route.query.folder || '')
 
-const drive = useDrive({ place, folder })
+/**
+ * Looking at a folder on somebody else's server.
+ *
+ * Not a sixth place: the rail's places are `where` clauses on one table and a
+ * mount is a socket, so it arrives as a `?folder=` like any other folder and
+ * the server decides. What changes here is only the chrome — nothing on a
+ * mount can be uploaded to, moved, binned, hearted or shared, because there
+ * is no row to do any of it to. See `onestorage/remote.py`.
+ */
+const inRemote = computed(() => isRemote(folder.value))
+
+// The frame, and what it is looking at. `rows` is the frame's accumulated
+// list — every page it has read — which is the set a selection is over and the
+// set a drag moves.
+const list = ref(null)
+const searched = ref('')
+const rows = computed(() => list.value?.rows || [])
+const loading = computed(() => !!list.value?.loading)
+
+// What is ticked is the frame's — §B1. Read back here because the bar and the
+// count sentence are drawn on this page rather than inside it: this list is
+// the scroller, so the bar has to be fixed to the window.
+const picked = computed(() => list.value?.picked || [])
+const chosenCount = computed(() => list.value?.chosen?.size || 0)
+
+const drive = useDrive({
+  rows,
+  reread: () => list.value?.read(),
+  folder,
+  route,
+  router,
+})
+
+/**
+ * Where the rows come from — §B1.
+ *
+ * `fileSource` over `listing`, which is the same query a record's Files tab
+ * and the attach picker read. The sort is handed in rather than asked for by
+ * the frame: until `DoctypeSource` brings a sort control, the order is this
+ * page's own dropdown and its own URL key — §C4.
+ *
+ * What it cannot do on a mount it *refuses*, with the reason, which is what
+ * the header above prints beside the count and on the disabled order button.
+ */
+const source = computed(() => fileSource({
+  place: place.value,
+  folder: folder.value,
+  // The refs and not their values, deliberately. A new source is a fresh
+  // list, and the frame empties the search box when it gets one — so a source
+  // that was rebuilt every time somebody sorted would clear what they had
+  // typed. Place and folder *are* a fresh list; an order is not.
+  sort: drive.sort,
+  descending: drive.descending,
+  can: can.value.declared(),
+  empty: emptyFace.value,
+  // The breadcrumb is not a row, so it comes off the answer rather than out
+  // of the list.
+  onAnswer: drive.walked,
+}))
 
 // --------------------------------------------------------------------------
 // Getting files in
@@ -550,33 +668,21 @@ uploads.onFinished((one) => {
 })
 
 function chosenFiles(event) {
-  uploads.add([...(event.target.files || [])], folder.value || 'Home')
+  uploads.add([...(event.target.files || [])], { folder: folder.value || 'Home' })
   // Reset, so choosing the same file twice fires twice.
   event.target.value = ''
 }
 
-// Counted, not paired: `dragenter` and `dragleave` both fire for every child
-// the pointer crosses.
-const dragDepth = ref(0)
-const dragging = computed(() => dragDepth.value > 0)
-
-function onDragEnter(event) {
-  if (!event.dataTransfer?.types?.includes('Files')) return
-  dragDepth.value += 1
-}
-
-function onDragLeave() {
-  dragDepth.value = Math.max(0, dragDepth.value - 1)
-}
-
-function onDrop(event) {
-  dragDepth.value = 0
-  const files = [...(event.dataTransfer?.files || [])]
-  // A row dragged onto empty space, not a file from the desktop. The row's own
-  // drop handler covers the case that means something.
-  if (!files.length) return
-  if (place.value === 'trash') return
-  uploads.add(files, folder.value || 'Home')
+/**
+ * Files from the desktop, into whatever folder is open.
+ *
+ * The two places they may not go are declared on the directive rather than
+ * checked here: the bin, and a mount — which is read-only through the Drive,
+ * and used to upload into whatever folder the URL happened to name, which
+ * there is not a folder.
+ */
+function dropped(files) {
+  uploads.add(files, { folder: folder.value || 'Home' })
 }
 
 /** A row dropped on a folder row. */
@@ -598,17 +704,17 @@ const placeOptions = computed(() =>
   })),
 )
 
-const crumbs = computed(() => [
-  // On a phone the dropdown beside this already names the place, and a trail
-  // reading "Files / Files / Drawings" is one crumb too many in 412px.
-  ...(isMobile.value
-    ? []
-    : [{ label: __('Files'), route: { name: 'Drive', query: { place: place.value } } }]),
-  ...drive.path.value.map((one) => ({
+// One root, then the place, then the folders — §C1. The phone case that used
+// to drop the "Files" crumb is gone: frappe-ui collapses the trail to its
+// last two with an ellipsis menu when it runs out of room, which is a better
+// answer than a surface deciding for itself which of its crumbs is expendable.
+const crumbs = useCrumbs(
+  () => ({ label: __('Files'), route: { name: 'Drive', query: { place: place.value } } }),
+  () => drive.path.value.map((one) => ({
     label: one.label,
     route: { name: 'Drive', query: { place: 'home', folder: one.name } },
   })),
-])
+)
 
 /*
  * What a place can be put in order by, and what each is called.
@@ -647,11 +753,11 @@ const orderOptions = computed(() => ORDERS.map((one) => ({
 
 const counted = computed(() => {
   const shown = drive.files.value.length
-  const chosenNow = drive.picked.value.size
+  const chosenNow = chosenCount.value
   if (chosenNow) return __('{0} of {1} chosen', [chosenNow, shown])
   // Whole sentences rather than a number glued to a word: the plural and the
   // "and there is more" are one phrase in some languages and two in others.
-  if (drive.more.value) {
+  if (list.value?.more) {
     return shown === 1
       ? __('1 thing, more below')
       : __('{0} things, more below', [shown])
@@ -659,31 +765,89 @@ const counted = computed(() => {
   return shown === 1 ? __('1 thing') : __('{0} things', [shown])
 })
 
-const chosen = computed(() => {
-  const count = drive.picked.value.size
-  return count === 1 ? __('1 thing chosen') : __('{0} things chosen', [count])
+// What the folder somebody is in is called, for the share dialog's sentence
+// about what a key reaches. The breadcrumb already knows.
+const folderLabel = computed(
+  () => drive.path.value[drive.path.value.length - 1]?.label || __('the whole Drive'),
+)
+
+/**
+ * What this place can do, and why not where it cannot — §F1.
+ *
+ * A mount was four `inRemote` checks scattered through the template, each
+ * one an omission with its reason in a code comment rather than on screen.
+ * Declared here instead, once, in the vocabulary every list surface will use
+ * when §B1 lands: a reason means the control is drawn and disabled and says
+ * why, which is the difference between "the Drive has no sorting" and "this
+ * host answers in its own order".
+ */
+const can = computed(() => offers(inRemote.value
+  ? {
+    [CAN.SEARCH]: true,
+    [CAN.SORT]: __('This host answers in its own order.'),
+    [CAN.BULK]: __('The Drive reads a host, it does not write to one.'),
+    // Not refused, absent: the toolbar offers Check again in New's place,
+    // which is a better answer than a disabled button — §F1's third state.
+  }
+  : place.value === 'records'
+    ? {
+      [CAN.SEARCH]: true,
+      // A directory made out of a query has nothing to make in it and no
+      // order but the one the query came back in. Said rather than left
+      // absent — §F1's middle state — because a control that vanishes in one
+      // place is a control people stop trusting everywhere.
+      [CAN.SORT]: __('The record list\'s own order.'),
+      [CAN.BULK]: true,
+      [CAN.CREATE]: __('Attach a file to a record.'),
+    }
+    : {
+      [CAN.SEARCH]: true,
+      [CAN.SORT]: true,
+      [CAN.BULK]: true,
+      [CAN.CREATE]: true,
+    }))
+
+// What an empty list means here. A mount has its own answer — "nothing here
+// yet, upload a file" is advice you cannot take on somebody else's server.
+const emptyFace = computed(() => {
+  if (inRemote.value) {
+    return {
+      icon: 'lucide-server',
+      title: __('This folder is empty'),
+      description: __('Nothing on the host at this path right now.'),
+    }
+  }
+  const ICON = {
+    trash: 'lucide-trash-2',
+    records: 'lucide-boxes',
+    documents: 'lucide-file-text',
+    workbooks: 'lucide-table',
+  }
+  return {
+    icon: ICON[place.value] || 'lucide-folder-open',
+    ...EMPTY[place.value],
+  }
 })
 
-// Per-person and per-browser, like the theme: a view preference is not
-// something the workspace has an opinion about.
-const grid = ref(read(GRID_KEY) === '1')
+// The URL first, then the browser's memory — the same split the order has.
+// A link that says `?as=grid` arrives as a grid whoever opens it; a visit
+// that says nothing gets what this person last chose. Sending somebody a
+// folder of drawings and having it arrive as a list of filenames because
+// *their* browser prefers lists is the thing this fixes.
+// `docs/UNIFICATION.md` §C4.
+const grid = ref(
+  route.query.as ? route.query.as === 'grid' : recall('drive.grid') === '1',
+)
 function setGrid(wanted) {
   grid.value = wanted
-  try {
-    localStorage.setItem(GRID_KEY, wanted ? '1' : '0')
-  } catch {
-    // A browser with site data blocked still gets the toggle, just not the
-    // memory of it.
-  }
+  remember('drive.grid', wanted ? '1' : '0')
+  // `replace`: switching to thumbnails is not a place to go back to. And the
+  // list is the default, so it is an absent key rather than `as=list`.
+  const query = { ...route.query }
+  if (wanted) query.as = 'grid'
+  else delete query.as
+  router.replace({ query })
 }
-function read(key) {
-  try {
-    return localStorage.getItem(key)
-  } catch {
-    return null
-  }
-}
-
 // Which file the dialogs are about. One ref, because only one of them is open.
 const looking = ref(null)
 const previewing = ref(false)
@@ -745,13 +909,72 @@ const mounts = computed(() => {
 
 const editing = computed(() => !!mounts.value)
 
-const downloadLooking = () => window.open(downloadUrl(looking.value.name), '_blank')
+const lookingRemote = computed(() => isRemote(looking.value?.name))
+
+// Which mount the page is inside, and what can be done to it from here.
+// `connections` and not `mounts`: `mounts` above is which editor the pane
+// mounts, and two things called the same word in one file is one of them
+// getting read as the other.
+const here = computed(() => mountOf(folder.value))
+const connections = ref([])
+const loadConnections = async () => {
+  connections.value = (await workspace.driveMounts().catch(() => null)) || []
+}
+
+const mountOptions = computed(() => {
+  const paused = connections.value.find((one) => one.name === here.value)?.status === 'Paused'
+  return [
+    {
+      label: paused ? __('Start reading again') : __('Pause this connection'),
+      icon: paused ? 'lucide-play' : 'lucide-pause',
+      onClick: async () => {
+        await workspace.drivePauseMount(here.value, !paused)
+        await loadConnections()
+        drive.load()
+      },
+    },
+    {
+      // Into the settings dialog rather than a dialog of the Drive's own —
+      // §C2. Configuring a mount is the same act as configuring anything else
+      // in this workspace, and it now happens where the rest of it does.
+      label: __('Connection settings'),
+      icon: 'lucide-settings-2',
+      onClick: () => openSettings('connections'),
+    },
+    {
+      label: __('Disconnect'),
+      icon: 'lucide-unplug',
+      onClick: async () => {
+        await workspace.driveDisconnect(here.value)
+        router.push({ name: 'Drive', query: { place: 'home' } })
+      },
+    },
+  ]
+})
+
+/**
+ * Bring a file across, into the folder the person came from.
+ *
+ * `Home` and not the mount: the mount is where the file is, and where it is
+ * going is the Drive. Somewhere more specific would need a folder picker, and
+ * the file is a move away once it is here.
+ */
+async function copyHere(file) {
+  copying.value = true
+  try {
+    await workspace.driveCopyHere(file.name)
+  } finally {
+    copying.value = false
+  }
+}
+
 const sharing = ref(false)
-const linking = ref(false)
 const naming = ref(false)
 const renaming = ref(false)
 const moving = ref(false)
 const emptying = ref(false)
+const sharingOverDav = ref(false)
+const copying = ref(false)
 const folderName = ref('')
 const newName = ref('')
 const toMove = ref([])
@@ -795,6 +1018,27 @@ const makeOptions = computed(() => [
     onClick: () => { naming.value = true },
   },
   ...newOptions.value,
+  // Last, and deliberately in this menu rather than beside the rail's
+  // Connected heading: everything that brings files into the Drive is behind
+  // one button, and an FTP server is one more way of bringing them in.
+  {
+    group: __('Elsewhere'),
+    options: [
+      {
+        label: __('Connect a folder'),
+        icon: 'lucide-server',
+        onClick: () => openSettings('connections'),
+      },
+      // The mirror of it, in the same group and for the same reason: both are
+      // about this Drive and somewhere else, and a person looking for one
+      // finds the other.
+      {
+        label: __('Share over WebDAV'),
+        icon: 'lucide-share-2',
+        onClick: () => { sharingOverDav.value = true },
+      },
+    ],
+  },
 ])
 
 function startShare(file) {
@@ -815,7 +1059,7 @@ function startMove(what) {
 
 async function intoFolder(into) {
   await drive.move(toMove.value, into)
-  drive.clear()
+  list.value?.clearChosen()
 }
 
 async function makeFolder() {
@@ -840,18 +1084,9 @@ async function finishEmpty() {
   emptying.value = false
 }
 
-let typing = null
-function onSearch() {
-  clearTimeout(typing)
-  typing = setTimeout(() => drive.load(), 300)
-}
-
+// No first read here either: the frame does it when it gets its source.
 onMounted(() => {
-  drive.load()
   loadTemplates()
-})
-watch([place, folder], () => {
-  drive.clear()
-  drive.load()
+  loadConnections()
 })
 </script>

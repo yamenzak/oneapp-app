@@ -79,6 +79,28 @@ BY_EXTENSION = (
 #: sheet the first time anybody renamed one. A document is the same.
 DECLARED = (SHEET, DOC)
 
+#: Where each of those is listed, as a place in the Drive's rail.
+#:
+#: A person who wants to see *their documents* had no door: `custom_kind`
+#: already held `Doc` and `Sheet` as first-class kinds, every rail place is one
+#: `where`, and neither had one. Google Docs' home screen is four filters this
+#: product already computes — `docs/UNIFICATION.md` §E2+E3 calls it the
+#: cheapest large improvement in section E, and this is the whole of it.
+#:
+#: Declared here, beside the kinds, so the rule is mechanical rather than
+#: remembered: a kind somebody *makes* here has a place, and a guard reads this
+#: back. The words differ from the kinds on purpose — `Doc` is a column value
+#: and `Documents` is what a person calls the list of them, and "Workbooks"
+#: rather than "Sheets" because a sheet is a tab inside one.
+#:
+#: `Code` is the one that is derived from a filename and still has a place, and
+#: `docs/UNIFICATION.md` §E9 is why: a project is a *folder* of code files, so
+#: somebody looking for the thing they are building is looking for a folder and
+#: not for a kind. The place is where they find it — every `.py` and `.js` they
+#: made, whichever folder it ended up in — and it is the door OneCode needs
+#: before it needs anything else.
+PLACE_FOR = {DOC: "documents", SHEET: "workbooks", CODE: "code"}
+
 
 def kind_of(file_name: str, is_folder=False, current: str = "") -> str:
     """The kind of one file, from its name — unless it was declared.

@@ -18,8 +18,8 @@
     </template>
 
     <template #default>
-      <div class="flex flex-col gap-3 sm:flex-row">
-        <div class="flex w-full shrink-0 flex-col gap-3 sm:w-64">
+      <div class="flex flex-col gap-3 md:flex-row">
+        <div class="flex w-full shrink-0 flex-col gap-3 md:w-64">
           <FormControl
             v-model="options.which"
             type="select"
@@ -96,7 +96,7 @@
             because scripts are still refused. `allow-modals`, because the
             browser's print dialog is a modal.
           -->
-          <div class="h-[62vh] overflow-hidden rounded-6 border border-outline-gray-2 bg-white">
+          <div class="h-overlay overflow-hidden rounded-6 border border-outline-gray-2 bg-white">
             <LoadingText v-if="loading" class="p-6" :text="__('Rendering')" />
             <iframe
               v-show="!loading"

@@ -7,11 +7,11 @@
     is the same thing in both — a different frame around it is a different
     product depending on which device you opened it on.
   -->
-  <div class="flex max-h-[70vh] w-full flex-col">
+  <div class="flex max-h-overlay w-full flex-col">
     <header
       class="flex shrink-0 items-center gap-2 border-b border-outline-gray-1 px-3 py-2"
     >
-      <span class="text-p-base font-medium text-ink-gray-8">{{ __('Notifications') }}</span>
+      <span class="text-p-base font-medium text-ink-primary">{{ __('Notifications') }}</span>
       <Badge
         v-if="notifications.unread"
         :label="String(notifications.unread)"
@@ -30,36 +30,31 @@
       />
     </header>
 
-    <div class="min-h-0 flex-1 overflow-y-auto">
-      <div v-if="notifications.loading && !notifications.rows.length" class="flex flex-col gap-2 p-3">
-        <Skeleton v-for="n in 3" :key="n" class="h-12 w-full" />
-      </div>
-
-      <!--
-        Nothing here, said the way this product says it. Not "you have no
-        notifications" — a person who has just arrived has none and that is not
-        a state worth explaining twice.
-      -->
-      <EmptyState
-        v-else-if="!notifications.rows.length"
-        icon="lucide-bell"
-        :title="__('Nothing yet')"
-        :description="__('Assignments, mentions and alerts turn up here.')"
-      />
-
+    <!--
+      The frame is `DataList` — §B1. The skeleton, the empty state and the
+      identity of a row are the same three things every list needs and each
+      surface used to write for itself; what is left below is this feed's own
+      row, which is the only part that is.
+    -->
+    <DataList
+      :source="source"
+      :skeleton="3"
+      skeleton-class="h-12 w-full"
+      class="min-h-0 flex-1 overflow-y-auto"
+    >
+      <template #row="{ row }">
       <!--
         A whole row is the control: a face, a sentence, a time and an unread
-        dot, all of it clickable. `Button` lays its slot out as one line of
-        label with optional icons, so this would have to fight it on every one
-        of those. The rule is right, and this is the case it does not cover — a
-        `<button>` wrapping content rather than a word.
+        dot, all of it clickable. `<Row>` with a click is a `<button>`, which
+        is what this has to be and what `Button` cannot be — `Button` lays its
+        slot out as one line of label with optional icons, and this is three
+        lines and a face.
+
+        `align="start"` because the body is up to three lines and the face
+        belongs beside the first of them, not beside the middle of all three.
       -->
-      <!-- eslint-disable-next-line vue/no-restricted-html-elements -->
-      <button
-        v-for="row in notifications.rows"
-        :key="row.name"
-        type="button"
-        class="flex w-full items-start gap-3 border-b border-outline-gray-1 px-3 py-2.5 text-start last:border-0 hover:bg-surface-gray-1"
+      <Row
+        align="start"
         :class="row.read ? '' : 'bg-surface-blue-1'"
         @click="open(row)"
       >
@@ -68,65 +63,96 @@
           An Alert has no sender at all, which is why the type icon is the one
           that is always there and the face is the one that is sometimes.
         -->
-        <span class="relative mt-0.5 shrink-0">
-          <Avatar
-            v-if="row.from"
-            :label="row.from.label"
-            :image="row.from.image"
-            size="md"
-          />
-          <span
-            v-else
-            class="flex size-6 items-center justify-center rounded-full bg-surface-gray-3"
-          >
-            <Icon :name="icon(row)" class="size-3.5 text-ink-gray-6" />
+        <template #lead>
+          <span class="relative mt-0.5">
+            <Avatar
+              v-if="row.from"
+              :label="row.from.label"
+              :image="row.from.image"
+              size="md"
+            />
+            <span
+              v-else
+              class="flex size-6 items-center justify-center rounded-full bg-surface-gray-3"
+            >
+              <Icon :name="icon(row)" class="size-3.5 text-ink-secondary" />
+            </span>
+            <span
+              v-if="row.from"
+              class="absolute -bottom-1 -end-1 flex size-3.5 items-center justify-center rounded-full bg-surface-base"
+            >
+              <Icon :name="icon(row)" class="size-3 text-ink-secondary" />
+            </span>
           </span>
-          <span
-            v-if="row.from"
-            class="absolute -bottom-1 -end-1 flex size-3.5 items-center justify-center rounded-full bg-surface-base"
-          >
-            <Icon :name="icon(row)" class="size-3 text-ink-gray-6" />
-          </span>
-        </span>
+        </template>
 
-        <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span class="text-p-sm text-ink-gray-8">{{ row.said }}</span>
-          <span v-if="row.body" class="line-clamp-2 text-p-xs text-ink-gray-6">
+        <span class="flex flex-col gap-0.5">
+          <span class="text-p-sm text-ink-primary">{{ row.said }}</span>
+          <span v-if="row.body" class="line-clamp-2 text-p-xs text-ink-secondary">
             {{ row.body }}
           </span>
-          <span class="text-p-xs text-ink-gray-5">{{ when(row) }}</span>
+          <span class="text-p-xs text-ink-muted">{{ when(row) }}</span>
         </span>
 
         <!-- Unread, as a dot rather than as a word. The row is already tinted;
              this is what makes a tinted row scannable in a column of them. -->
-        <span
-          v-if="!row.read"
-          class="mt-1.5 size-2 shrink-0 rounded-full bg-surface-blue-3"
-          :aria-label="__('Unread')"
-        />
-      </button>
-    </div>
+        <template #trail>
+          <span
+            v-if="!row.read"
+            class="mt-1.5 size-2 rounded-full bg-surface-blue-3"
+            :aria-label="__('Unread')"
+          />
+        </template>
+      </Row>
+      </template>
+    </DataList>
   </div>
 </template>
 
 <script setup>
+import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { Avatar, Badge, Button, Icon, Skeleton, dayjsLocal } from '@/ui'
+import { Avatar, Badge, Button, Icon } from '@/ui'
 
-import EmptyState from '@/shared/components/EmptyState.vue'
+import DataList from '@/shared/components/DataList.vue'
+import { staticSource } from '@/shared/lib/list/source'
+import Row from '@/shared/components/Row.vue'
 
 import { notificationIcon } from '@/modules/onespace/lib/screen/fields'
 import { markRead, notifications } from '@/modules/onespace/lib/shell/notifications'
 import { __ } from '@/shared/lib/runtime/translate'
+import { ago } from '@/shared/lib/runtime/format'
+import { KIND, writeAt } from '@/shared/lib/url/at'
 
 const emit = defineEmits(['opened'])
 const router = useRouter()
 
 const icon = (row) => notificationIcon(row.type)
 
+/**
+ * Where the rows come from, and what this feed can do with them — §B1.
+ *
+ * Nothing but draw them. The feed is the last fifty things that happened to
+ * you, newest first, and every control a list could offer over that is one
+ * nobody would use: you do not search a feed, you read the top of it and
+ * close it. Declaring nothing is the decision, not an omission.
+ */
+const source = computed(() => staticSource({
+  rows: notifications.rows,
+  key: (row) => row.name,
+  // Nothing here, said the way this product says it. Not "you have no
+  // notifications" — a person who has just arrived has none, and that is not
+  // a state worth explaining twice.
+  empty: {
+    icon: 'lucide-bell',
+    title: __('Nothing yet'),
+    description: __('Assignments, mentions and alerts turn up here.'),
+  },
+}))
+
 // The same relative age the list rows show, and for the same reason: "2 days"
 // is an age, and "2 days ago" repeated down a column is a sentence repeated.
-const when = (row) => (row.when ? dayjsLocal(row.when).fromNow(true) : '')
+const when = (row) => (row.when ? ago(row.when, true) : '')
 
 /**
  * Open what the notification is about.
@@ -143,7 +169,7 @@ const open = (row) => {
     router.push({
       name: 'Screen',
       params: { spaceCode: row.route.space },
-      query: { screen: row.route.screen, record: row.record || undefined },
+      query: { screen: row.route.screen, at: writeAt(KIND.RECORD, row.record) },
     })
   } else if (row.link) {
     // A producer's own link. Inside this site, so a route push rather than a

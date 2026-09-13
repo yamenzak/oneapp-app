@@ -37,7 +37,7 @@
   </span>
 
   <span class="min-w-0 flex-1">
-    <span class="flex min-w-0 items-center gap-1.5 text-p-sm font-normal text-ink-gray-8">
+    <span class="flex min-w-0 items-center gap-1.5 text-p-sm font-normal text-ink-primary">
       <span data-slot="file-name" class="truncate">{{ file.file_name }}</span>
       <!-- Where a model made this. Here rather than on the row, because this
            is the one component that draws a file's identity — the list, the
@@ -46,8 +46,12 @@
            `components/AiMark.vue`. -->
       <AiMark v-if="file._ai" :mark="file._ai" />
     </span>
-    <span class="block truncate text-p-xs font-normal text-ink-gray-5">
-      {{ file.is_folder ? labelForKind('Folder') : size }}<template v-if="!grid"> · {{ when }}</template>
+    <span class="block truncate text-xs font-normal text-ink-muted">
+      <!-- The separator belongs to the date, not to the line: a directory made
+           out of a query has no date of its own, and a bare "Folder ·" reads
+           as something that failed to load. -->
+      {{ file.is_folder ? labelForKind('Folder') : size
+      }}<template v-if="!grid && when"> · {{ when }}</template>
     </span>
   </span>
   </span>
@@ -55,9 +59,11 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Icon, dayjsLocal } from '@/ui'
+import { Icon } from '@/ui'
 import { iconForKind, labelForKind } from '@/modules/onestorage/lib/files'
 import AiMark from '@/modules/onespace/components/AiMark.vue'
+import { ago } from '@/shared/lib/runtime/format'
+import { sizeText } from '@/shared/lib/files/size'
 
 const props = defineProps({
   file: { type: Object, required: true },
@@ -70,20 +76,9 @@ const thumbnail = computed(() =>
   props.grid && props.file.custom_kind === 'Image' ? props.file.file_url : '',
 )
 
-const size = computed(() => {
-  const bytes = props.file.file_size || 0
-  if (!bytes) return '—'
-  const units = ['B', 'KB', 'MB', 'GB']
-  let value = bytes
-  let unit = 0
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit += 1
-  }
-  return `${value < 10 && unit ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
-})
+const size = computed(() => sizeText(props.file.file_size, { blank: '—' }))
 
 const when = computed(() =>
-  props.file.modified ? dayjsLocal(props.file.modified).fromNow() : '',
+  props.file.modified ? ago(props.file.modified) : '',
 )
 </script>

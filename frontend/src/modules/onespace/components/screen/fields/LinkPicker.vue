@@ -63,8 +63,8 @@
               variant="ghost"
               size="sm"
               icon="lucide-arrow-up-right"
-              :label="__('Open {0}', [named])"
-              :tooltip="__('Open {0}', [named])"
+              :label="openLabel"
+              :tooltip="openLabel"
               data-slot="link-open"
               @click="open"
             />
@@ -93,7 +93,7 @@
           shape="square"
           size="sm"
         />
-        <Icon v-else-if="item.icon" :name="item.icon" class="size-4 text-ink-gray-6" />
+        <Icon v-else-if="item.icon" :name="item.icon" class="size-4 text-ink-secondary" />
       </template>
 
       <!-- A name, and the id and searchable detail beneath it — the same three
@@ -103,7 +103,7 @@
           <span class="truncate">{{ item.record ? item.record.label : item.label }}</span>
           <span
             v-if="item.record && detail(item.record)"
-            class="truncate text-p-sm text-ink-gray-5"
+            class="truncate text-sm text-ink-muted"
           >
             {{ detail(item.record) }}
           </span>
@@ -142,11 +142,14 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, inject, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Combobox, Avatar, Icon, Dialog, Button, ErrorMessage } from '@/ui'
 import { workspace } from '@/shared/lib/workspace'
+import { KIND, pushAt, writeAt } from '@/shared/lib/url/at'
+import { recall, remember } from '@/shared/lib/url/remember'
 import { screenFor } from '@/modules/onespace/lib/shell/nav'
+import { LEAVING } from '@/modules/onespace/lib/screen/leaving'
 import { __ } from '@/shared/lib/runtime/translate'
 import { errorText } from '@/shared/lib/runtime/errors'
 
@@ -198,6 +201,11 @@ const emit = defineEmits(['update:modelValue'])
 const route = useRoute()
 const router = useRouter()
 
+// What this control's surface would lose by navigating away, if it is the kind
+// of surface that can lose anything. Null in a list's filter bar and in a
+// saved record, which lose nothing.
+const leaving = inject(LEAVING, null)
+
 /**
  * The screen this link's target lives on in this space, or nothing.
  *
@@ -223,18 +231,42 @@ const named = computed(() => chosen.value?.label || props.modelValue || __('this
 const peek = () => {
   if (!destination.value) return
   router.push({
-    query: { ...route.query, peek: String(props.modelValue), peekScreen: destination.value },
+    query: pushAt(route.query, KIND.PEEK, String(props.modelValue), destination.value),
   })
 }
+
+/**
+ * What the second button says, which depends on what pressing it costs.
+ *
+ * Inside a create dialog it costs the record being made, and a button that
+ * throws something away says so before it is pressed rather than after. See
+ * `leaving.js`; outside such a surface this is just "Open X".
+ */
+const openLabel = computed(() =>
+  leaving?.losing?.value
+    ? __('Discard {0} and open {1}', [leaving.losing.value, named.value])
+    : __('Open {0}', [named.value]),
+)
 
 /**
  * Go to it, on its own screen. The view type and any saved view are dropped:
  * they belong to the screen being left, and `layout=my-overdue` on a different
  * screen is a view that is not its.
+ *
+ * The surface this sits in is closed first. A create dialog is not in the URL,
+ * so navigating out from under it left it floating over the screen it had been
+ * left for — still holding a form for the doctype it *used* to be filling in,
+ * which then refused to save.
  */
 const open = () => {
   if (!destination.value) return
-  router.push({ query: { screen: destination.value, record: String(props.modelValue) } })
+  leaving?.leave()
+  router.push({
+    query: {
+      screen: destination.value,
+      at: writeAt(KIND.RECORD, String(props.modelValue)),
+    },
+  })
 }
 
 const query = ref('')
@@ -260,29 +292,21 @@ const prompt = computed(() => (props.disabled ? '' : props.placeholder || __('Se
  * fieldname rather than by doctype — the same doctype behind two screens is two
  * different habits.
  */
-const REMEMBERED = 'onespace.link'
-const memoryKey = computed(() => `${REMEMBERED}.${props.spaceCode}.${props.screen}.${props.fieldname}`)
+const LAST = 'field.last'
+const whose = () => [props.spaceCode, props.screen, props.fieldname]
 
-function remember(value) {
+function keep(value) {
   if (!props.field?.remember_last_selected_value || !value) return
-  try {
-    window.localStorage.setItem(memoryKey.value, String(value))
-  } catch {
-    // A private window, or storage that is full. Forgetting is the whole cost.
-  }
+  remember(LAST, value, ...whose())
 }
 
 function remembered() {
   if (!props.field?.remember_last_selected_value) return ''
-  try {
-    return window.localStorage.getItem(memoryKey.value) || ''
-  } catch {
-    return ''
-  }
+  return recall(LAST, ...whose()) || ''
 }
 
 function pick(value) {
-  remember(value)
+  keep(value)
   emit('update:modelValue', value)
 }
 

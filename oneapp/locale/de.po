@@ -15,6 +15,9 @@ msgstr " Min"
 msgid " of {0}"
 msgstr " von {0}"
 
+msgid "\"{0}\" is a template now."
+msgstr "„{0}“ ist jetzt eine Vorlage."
+
 msgid "%"
 msgstr "%"
 
@@ -59,8 +62,18 @@ msgstr ""
 "Ein Auswahlfeld wird zu seinen eigenen Optionen; ein Verknüpfungsfeld "
 "wird zu den Personen auf der Seite."
 
+msgid ""
+"A URL, or a socket address. Empty for a folder, which carries its own "
+"host."
+msgstr ""
+"Eine URL oder eine Socket-Adresse. Bei einem Ordner leer, denn der "
+"bringt seinen Host selbst mit."
+
 msgid "A backup was taken in the last few minutes. Give it a moment."
 msgstr "Vor wenigen Minuten wurde eine Sicherung erstellt. Einen Moment Geduld."
+
+msgid "A base path cannot walk upwards."
+msgstr "Ein Basispfad darf nicht nach oben führen."
 
 msgid "A camera needs a secure connection. Use the phone's camera instead."
 msgstr ""
@@ -117,11 +130,29 @@ msgid "A feed may not carry an inline entity definition."
 msgstr "Ein Feed darf keine eingebettete Entitätsdefinition tragen."
 
 msgid ""
+"A file on another server cannot be a favourite — there is no row here to "
+"keep the heart on."
+msgstr ""
+"Eine Datei auf einem anderen Server kann kein Favorit sein — es gibt "
+"hier keinen Datensatz, an dem das Herz hängen könnte."
+
+msgid ""
+"A file on another server cannot be shared from here. Copy it into the "
+"Drive, or share the mount itself."
+msgstr ""
+"Eine Datei auf einem anderen Server kann von hier nicht geteilt werden. "
+"Kopieren Sie sie in die Ablage oder teilen Sie den verbundenen Ordner "
+"selbst."
+
+msgid ""
 "A file path or URL. Referenced from the header above, or used on its "
 "own."
 msgstr ""
 "Ein Dateipfad oder eine URL. Wird aus der Kopfzeile oben referenziert "
 "oder eigenständig verwendet."
+
+msgid "A file, in a folder"
+msgstr "Eine Datei, in einem Ordner"
 
 msgid "A filter on {0} may only narrow {0}."
 msgstr "Ein Filter auf {0} darf {0} nur einschränken."
@@ -150,6 +181,18 @@ msgstr "Ein Ordnername darf keinen Schrägstrich enthalten."
 msgid "A folder needs a name."
 msgstr "Ein Ordner braucht einen Namen."
 
+msgid "A folder on another server cannot be served from here."
+msgstr ""
+"Ein Ordner auf einem anderen Server kann von hier nicht bereitgestellt "
+"werden."
+
+msgid ""
+"A folder on another server, browsed here. Nothing is copied and nothing "
+"counts against your storage."
+msgstr ""
+"Ein Ordner auf einem anderen Server, hier durchsucht. Nichts wird "
+"kopiert und nichts zählt auf Ihren Speicher."
+
 msgid "A format called {0} already exists."
 msgstr "Ein Format namens {0} existiert bereits."
 
@@ -167,6 +210,14 @@ msgid ""
 msgstr ""
 "Ein Hash des eingebetteten Textes. Ein Speichern, das den Text nicht "
 "ändert, kostet einen Hash statt eines Aufrufs."
+
+msgid ""
+"A hostname. For WebDAV it may carry a scheme — https is assumed, so "
+"write http:// for a box on the local network that has no certificate."
+msgstr ""
+"Ein Hostname. Bei WebDAV darf er ein Schema tragen — https wird "
+"angenommen, schreiben Sie also http:// für ein Gerät im lokalen Netz "
+"ohne Zertifikat."
 
 msgid ""
 "A letter and a form are numbered in separate sequences, because that is "
@@ -194,6 +245,11 @@ msgstr ""
 msgid "A link can last between 1 and {0} days."
 msgstr "Ein Link kann zwischen 1 und {0} Tagen gültig sein."
 
+msgid "A link can only be made to a file the Drive holds."
+msgstr ""
+"Ein Link lässt sich nur zu einer Datei erstellen, die die Ablage selbst "
+"hält."
+
 msgid ""
 "A lucide name from the offered set, or an emoji. Anything else is "
 "dropped on the way in — a lucide name reaches the DOM as a class."
@@ -204,6 +260,9 @@ msgstr ""
 
 msgid "A mailbox the team shares"
 msgstr "Ein Postfach, das das Team gemeinsam nutzt"
+
+msgid "A mount's name cannot contain a slash."
+msgstr "Der Name eines verbundenen Ordners darf keinen Schrägstrich enthalten."
 
 msgid "A name cannot be empty."
 msgstr "Ein Name darf nicht leer sein."
@@ -226,6 +285,9 @@ msgstr "Ein seitenweise gesetztes Dokument ist so breit wie seine Seite."
 
 msgid "A percentile needs a column to rank."
 msgstr "Ein Perzentil braucht eine Spalte zum Ordnen."
+
+msgid "A private key is only used over SFTP."
+msgstr "Ein privater Schlüssel wird nur über SFTP verwendet."
 
 msgid "A record can be shared with {0} people. Use a role beyond that."
 msgstr ""
@@ -260,12 +322,11 @@ msgid "A source has to be https. Credentials travel to it."
 msgstr "Eine Quelle muss https sein. Zugangsdaten werden dorthin übertragen."
 
 msgid ""
-"A source has to deliver a plan before what ran can be compared with it. "
-"GTFS carries one in stop_times, VDV 452 in its travel times."
+"A source has to deliver a plan first — GTFS in stop_times, VDV 452 in "
+"its travel times."
 msgstr ""
-"Eine Quelle muss einen Plan liefern, bevor das Gefahrene damit "
-"verglichen werden kann. GTFS führt ihn in stop_times, VDV 452 in seinen "
-"Fahrzeiten."
+"Eine Quelle muss zuerst einen Plan liefern – GTFS in stop_times, VDV 452 "
+"in seinen Fahrzeiten."
 
 msgid "A source is a host and nothing else, like https://old.example.com."
 msgstr ""
@@ -282,6 +343,9 @@ msgstr ""
 "Eine Ausgangsstruktur für Ihr Land. Konten können später hinzugefügt "
 "werden; die Struktur lässt sich kaum noch ändern, sobald Buchungen "
 "bestehen."
+
+msgid "A subscription"
+msgstr "Ein Abonnement"
 
 msgid "A tag needs a name."
 msgstr "Ein Schlagwort braucht einen Namen."
@@ -339,6 +403,9 @@ msgstr "Bezugs-Name"
 msgid "Across the whole window"
 msgstr "Über das ganze Fenster"
 
+msgid "Across {0} of them, {1} to {2}"
+msgstr "Über {0} davon, {1} bis {2}"
+
 msgid ""
 "Add a Total column that multiplies quantity by rate, and format it as "
 "currency."
@@ -389,6 +456,9 @@ msgstr "Bild hinzufügen"
 
 msgid "Add filter"
 msgstr "Filter hinzufügen"
+
+msgid "Add one above and it appears here."
+msgstr "Fügen Sie oben eine hinzu, und sie erscheint hier."
 
 msgid "Add one on {0} and mail to it arrives here."
 msgstr "Legen Sie eine auf {0} an, dann kommt E-Mail an diese Adresse hier an."
@@ -535,8 +605,19 @@ msgstr "Geändert"
 msgid "An HTTP source needs a URL as its endpoint."
 msgstr "Eine HTTP-Quelle braucht eine URL als Endpunkt."
 
-msgid "An SFTP source needs a host as its endpoint."
-msgstr "Eine SFTP-Quelle braucht einen Host als Endpunkt."
+msgid ""
+"An OpenSSH or PEM private key, for a host that takes one instead of a "
+"password. SFTP only."
+msgstr ""
+"Ein privater OpenSSH- oder PEM-Schlüssel für einen Host, der ihn statt "
+"eines Passworts akzeptiert. Nur für SFTP."
+
+msgid ""
+"An SMB folder starts with the share: /drawings, or /drawings/2026 for a "
+"folder inside it."
+msgstr ""
+"Ein SMB-Ordner beginnt mit der Freigabe: /drawings oder /drawings/2026 "
+"für einen Ordner darin."
 
 msgid ""
 "An add-on goes on the same invoice as your plan, so there has to be a "
@@ -574,6 +655,9 @@ msgstr "Ein App-Passwort, wenn der Anbieter eines verlangt."
 msgid "An earlier version"
 msgstr "Eine frühere Version"
 
+msgid "An event has to name the vehicle it happened on."
+msgstr "Ein Ereignis muss das Fahrzeug nennen, auf dem es passiert ist."
+
 msgid "An out-of-office reply needs something to say."
 msgstr "Eine Abwesenheitsnotiz braucht einen Inhalt."
 
@@ -582,6 +666,9 @@ msgstr "Und für die Regeln, die Dinge ablegen, die jemand ansehen muss."
 
 msgid "Answer this message"
 msgstr "Auf diese Nachricht antworten"
+
+msgid "Any file can be made one from its own menu."
+msgstr "Jede Datei lässt sich über ihr eigenes Menü dazu machen."
 
 msgid "Any record"
 msgstr "Jeder Datensatz"
@@ -673,19 +760,12 @@ msgstr "Als Hash"
 msgid "As shown"
 msgstr "Wie angezeigt"
 
-msgid "Ask AI"
-msgstr "KI fragen"
-
-msgid "Ask AI…"
-msgstr "KI fragen…"
-
 msgid ""
-"Ask about anything in this workspace — the records on your screens, your "
-"files, what a document says. Only what you can already open."
+"Ask about anything you can already open — records, files, what a "
+"document says."
 msgstr ""
-"Fragen Sie nach allem in diesem Arbeitsbereich — den Datensätzen auf "
-"Ihren Ansichten, Ihren Dateien, dem Inhalt eines Dokuments. Nur nach "
-"dem, was Sie ohnehin öffnen können."
+"Fragen Sie nach allem, was Sie ohnehin öffnen können – Datensätze, "
+"Dateien, den Inhalt eines Dokuments."
 
 msgid "Ask about this workspace"
 msgstr "Diesen Arbeitsbereich befragen"
@@ -695,6 +775,15 @@ msgstr "{0} befragen"
 
 msgid "Ask something first."
 msgstr "Stellen Sie zuerst eine Frage."
+
+msgid "Ask the host again"
+msgstr "Host erneut abfragen"
+
+msgid "Ask {0}"
+msgstr "{0} fragen"
+
+msgid "Ask {0}…"
+msgstr "{0} fragen…"
 
 msgid "Asked By"
 msgstr "Angefragt von"
@@ -710,6 +799,9 @@ msgstr "{0} Datensätze zuweisen"
 
 msgid "Assigned to"
 msgstr "Zugewiesen an"
+
+msgid "Assigned {0}"
+msgstr "{0} zugewiesen"
 
 msgid "Assignments, mentions and alerts turn up here."
 msgstr "Zuweisungen, Erwähnungen und Hinweise erscheinen hier."
@@ -736,6 +828,9 @@ msgstr "Ton des Assistenten"
 
 msgid "At Seq"
 msgstr "Bei Sequenz"
+
+msgid "At the doors"
+msgstr "An den Türen"
 
 msgid "At the limit for {0}"
 msgstr "Limit für {0} erreicht"
@@ -826,6 +921,9 @@ msgstr ""
 
 msgid "Basemap"
 msgstr "Basiskarte"
+
+msgid "Basic auth, for an endpoint that wants it."
+msgstr "Basic Auth, für einen Endpunkt, der sie verlangt."
 
 msgid "Bcc"
 msgstr "Blindkopie"
@@ -929,14 +1027,6 @@ msgstr ""
 "Dieser Tag wird zurückgeholt. Er erscheint auf der Karte, sobald er da "
 "ist."
 
-msgid ""
-"Build one where the shipped roles are the wrong shape — somebody who "
-"should read the whole workspace and change one part of it."
-msgstr ""
-"Erstellen Sie eine, wenn die mitgelieferten Rollen nicht passen — für "
-"jemanden, der den ganzen Arbeitsbereich lesen und einen Teil davon "
-"ändern soll."
-
 msgid "Bus"
 msgstr "Bus"
 
@@ -986,6 +1076,9 @@ msgstr "Geplante Halte"
 msgid "Came"
 msgstr "Kam"
 
+msgid "Came from"
+msgstr "Kam aus"
+
 msgid "Can edit"
 msgstr "Kann bearbeiten"
 
@@ -1012,6 +1105,9 @@ msgstr "{0} Datensätze stornieren?"
 
 msgid "Cancellation Reason"
 msgstr "Kündigungsgrund"
+
+msgid "Cancelled {0}"
+msgstr "{0} storniert"
 
 msgid "Cancelled. Nothing was charged."
 msgstr "Abgebrochen. Es wurde nichts berechnet."
@@ -1144,6 +1240,14 @@ msgstr "{0} Datensatz ändern"
 msgid "Change {0} records"
 msgstr "{0} Datensätze ändern"
 
+msgid "Changed {0}"
+msgstr "{0} geändert"
+
+msgid "Changes go into the file, attributed to the link rather than a person."
+msgstr ""
+"Änderungen gehen in die Datei, zugeordnet zum Link statt zu einer "
+"Person."
+
 msgid "Changes to a record you are following."
 msgstr "Änderungen an einem Datensatz, dem du folgst."
 
@@ -1155,6 +1259,9 @@ msgstr "Diagramme, Pivots und benannte Bereiche wurden nicht übernommen."
 
 msgid "Check DNS"
 msgstr "DNS prüfen"
+
+msgid "Check again"
+msgstr "Erneut prüfen"
 
 msgid "Check your connection, then try again."
 msgstr "Prüfen Sie Ihre Verbindung und versuchen Sie es erneut."
@@ -1204,8 +1311,8 @@ msgstr "Auswahl aufheben"
 msgid "Clear the selection, or close the conversation"
 msgstr "Auswahl aufheben oder Unterhaltung schließen"
 
-msgid "Clear this filter"
-msgstr "Diesen Filter löschen"
+msgid "Clear {0}"
+msgstr "{0} zurücksetzen"
 
 msgid "Close and go back"
 msgstr "Schließen und zurück"
@@ -1222,11 +1329,11 @@ msgstr "Datensätze schließen"
 msgid "Close settings"
 msgstr "Einstellungen schließen"
 
-msgid "Close the assistant"
-msgstr "Assistent schließen"
-
 msgid "Close the record"
 msgstr "Datensatz schließen"
+
+msgid "Close {0}"
+msgstr "{0} schließen"
 
 msgid "Coach"
 msgstr "Reisebus"
@@ -1260,6 +1367,9 @@ msgstr ""
 msgid "Connect"
 msgstr "Verbinden"
 
+msgid "Connect a folder"
+msgstr "Ordner verbinden"
+
 msgid "Connect a source and let a day go by, and this fills in."
 msgstr ""
 "Verbinden Sie eine Quelle und lassen Sie einen Tag vergehen, dann füllt "
@@ -1271,19 +1381,20 @@ msgstr ""
 "die Linien hier."
 
 msgid ""
-"Connect one the company already has, then grant it below like any other "
-"address. Everyone who holds it reads the same inbox — and the same sent "
-"mail."
+"Connect one the company already has. Everyone who holds it reads the "
+"same inbox and sent mail."
 msgstr ""
-"Verbinden Sie eines, das die Firma bereits hat, und vergeben Sie es "
-"unten wie jede andere Adresse. Alle, die es haben, lesen denselben "
-"Posteingang — und dieselbe gesendete E-Mail."
+"Verbinden Sie eines, das die Firma bereits hat. Alle, die es haben, "
+"lesen denselben Posteingang und dieselben gesendeten Nachrichten."
 
 msgid "Connected"
 msgstr "Verbunden"
 
 msgid "Connected mailbox"
 msgstr "Verbundenes Postfach"
+
+msgid "Connection settings"
+msgstr "Verbindungseinstellungen"
 
 msgid "Contains"
 msgstr "Enthält"
@@ -1294,17 +1405,40 @@ msgstr "Enthält…"
 msgid "Contested"
 msgstr "Umstritten"
 
+msgid "Copied into the Drive"
+msgstr "In die Ablage kopiert"
+
 msgid "Copies of this workspace, and going back to one of them."
 msgstr "Kopien dieses Arbeitsbereichs, und die Rückkehr zu einer davon."
+
+msgid "Copy"
+msgstr "Kopieren"
 
 msgid "Copy as Markdown"
 msgstr "Als Markdown kopieren"
 
+msgid "Copy into the Drive"
+msgstr "In die Ablage kopieren"
+
 msgid "Copy link"
 msgstr "Link kopieren"
 
+msgid ""
+"Copy that file into the Drive before attaching it — a record's "
+"attachment has to be a file this workspace holds."
+msgstr ""
+"Kopieren Sie die Datei in die Ablage, bevor Sie sie anhängen — der "
+"Anhang eines Datensatzes muss eine Datei sein, die dieser Arbeitsbereich "
+"hält."
+
 msgid "Copy the link"
 msgstr "Link kopieren"
+
+msgid "Copy this now — the password is not shown again."
+msgstr "Kopieren Sie dies jetzt — das Passwort wird nicht erneut angezeigt."
+
+msgid "Copy {0}"
+msgstr "{0} kopieren"
 
 msgid "Correspondence"
 msgstr "Korrespondenz"
@@ -1409,35 +1543,26 @@ msgstr "Standard festgelegt"
 msgid "Default — {0}"
 msgstr "Standard — {0}"
 
-msgid "Delete for good"
+msgid "Delete for ever"
 msgstr "Endgültig löschen"
 
-msgid "Delete it"
-msgstr "Löschen"
+msgid "Delete this alert for ever"
+msgstr "Diese Meldung endgültig löschen"
 
-msgid "Delete it all"
-msgstr "Alles löschen"
+msgid "Delete this format for ever"
+msgstr "Dieses Format endgültig löschen"
 
-msgid "Delete this alert"
-msgstr "Diese Benachrichtigung löschen"
+msgid "Delete this letter head for ever"
+msgstr "Diesen Briefkopf endgültig löschen"
 
-msgid "Delete this conversation"
-msgstr "Diese Unterhaltung löschen"
+msgid "Delete this record for ever?"
+msgstr "Diesen Datensatz endgültig löschen?"
 
-msgid "Delete this format"
-msgstr "Dieses Format löschen"
+msgid "Delete {0} for ever"
+msgstr "{0} endgültig löschen"
 
-msgid "Delete this letter head"
-msgstr "Diesen Briefkopf löschen"
-
-msgid "Delete this record?"
-msgstr "Diesen Datensatz löschen?"
-
-msgid "Delete {0}"
-msgstr "{0} löschen"
-
-msgid "Delete {0} records?"
-msgstr "{0} Datensätze löschen?"
+msgid "Delete {0} records for ever?"
+msgstr "{0} Datensätze endgültig löschen?"
 
 msgid "Deleted files wait here for thirty days."
 msgstr "Gelöschte Dateien bleiben hier dreißig Tage lang."
@@ -1445,14 +1570,17 @@ msgstr "Gelöschte Dateien bleiben hier dreißig Tage lang."
 msgid "Deleted for good"
 msgstr "Endgültig gelöscht"
 
+msgid "Deleted {0}"
+msgstr "{0} gelöscht"
+
 msgid "Delivery update"
 msgstr "Zustellungsmeldung"
 
 msgid "Depot"
 msgstr "Depot"
 
-msgid "Detect"
-msgstr "Automatisch erkennen"
+msgid "Dialect"
+msgstr "Dialekt"
 
 msgid "Did not finish"
 msgstr "Nicht abgeschlossen"
@@ -1469,8 +1597,17 @@ msgstr "Widerspricht bei"
 msgid "Discard and close"
 msgstr "Verwerfen und schließen"
 
+msgid "Discard {0} and open {1}"
+msgstr "{0} verwerfen und {1} öffnen"
+
+msgid "Disconnect"
+msgstr "Trennen"
+
 msgid "Disconnect this mailbox"
 msgstr "Dieses Postfach trennen"
+
+msgid "Disconnected"
+msgstr "Getrennt"
 
 msgid "Dismiss uploads"
 msgstr "Uploads ausblenden"
@@ -1496,6 +1633,11 @@ msgstr "Domain verifiziert"
 msgid "Done."
 msgstr "Fertig."
 
+msgid "Door states, faults and trip states arrive from a bridge on the vehicle."
+msgstr ""
+"Türzustände, Störungen und Fahrtzustände kommen von einer "
+"Bordschnittstelle im Fahrzeug."
+
 msgid "Download as HTML"
 msgstr "Als HTML herunterladen"
 
@@ -1520,6 +1662,9 @@ msgid ""
 msgstr ""
 "„Gezeichnet“ ist, was jeder Bildschirm zeigt. „Überstimmt“ unterlag "
 "einer Quelle mit niedrigerer Priorität und bleibt erhalten."
+
+msgid "Drive Access"
+msgstr "Ablagezugang"
 
 msgid ""
 "Drop a file here, or choose one from this device. It goes into your "
@@ -1577,11 +1722,21 @@ msgstr "Diesen Briefkopf bearbeiten"
 msgid "Elements"
 msgstr "Elemente"
 
+msgid "Elsewhere"
+msgstr "Anderswo"
+
 msgid "Email me as well"
 msgstr "Mich auch per E-Mail benachrichtigen"
 
 msgid "Emoji"
 msgstr "Emoji"
+
+msgid ""
+"Empty for the top of the mount. A subfolder where one authority drops "
+"several feeds."
+msgstr ""
+"Leer für die oberste Ebene. Ein Unterordner, wenn eine Stelle mehrere "
+"Feeds ablegt."
 
 msgid ""
 "Empty is a document that does not expire — an academic certificate, a "
@@ -1598,6 +1753,13 @@ msgstr ""
 "Leer bedeutet, was die Plattform für diese Fähigkeit empfiehlt — und das "
 "folgt auch einem besseren Modell, ohne dass jemand eine Einstellung "
 "ändert."
+
+msgid ""
+"Empty never expires, which is right for a folder a colleague keeps "
+"mounted and wrong for a contractor."
+msgstr ""
+"Leer läuft nie ab — richtig für einen Ordner, den ein Kollege dauerhaft "
+"eingebunden hat, und falsch für einen Auftragnehmer."
 
 msgid ""
 "Empty on a template: the slot is declared and the record is asked for "
@@ -1638,24 +1800,27 @@ msgid "Enter to send"
 msgstr "Enter zum Senden"
 
 msgid ""
-"Entries have been posted, so the chart of accounts can no longer be "
-"replaced here. Ask support if it needs to change."
+"Entries have been posted, so this can no longer be replaced here. Ask "
+"support."
 msgstr ""
-"Es wurden bereits Buchungen erfasst, daher kann der Kontenplan hier "
-"nicht mehr ersetzt werden. Wenden Sie sich an den Support, wenn er "
-"geändert werden muss."
+"Es wurden Buchungen erfasst, daher lässt sich das hier nicht mehr "
+"ersetzen. Wenden Sie sich an den Support."
 
 msgid "Entry"
 msgstr "Eintrag"
 
+msgid "Events must be a list."
+msgstr "Ereignisse müssen eine Liste sein."
+
+msgid "Every VDV part this reads, and every one it does not yet."
+msgstr "Jeder VDV-Teil, den dies liest, und jeder, den es noch nicht liest."
+
 msgid ""
-"Every app here is already part of your workspace. Plans differ in how "
-"much you can store and how many people you can invite, never in which "
-"apps you get."
+"Every app here is already yours. Plans differ in storage and people, "
+"never in which apps you get."
 msgstr ""
-"Jede App hier gehört bereits zu Ihrem Arbeitsbereich. Tarife "
-"unterscheiden sich darin, wie viel Sie speichern und wie viele Personen "
-"Sie einladen können, nie darin, welche Apps Sie erhalten."
+"Jede App hier gehört Ihnen bereits. Tarife unterscheiden sich in "
+"Speicher und Personen, nie in den Apps."
 
 msgid ""
 "Every claim was written down the night before, then checked against what "
@@ -1663,6 +1828,15 @@ msgid ""
 msgstr ""
 "Jede Angabe wurde am Abend zuvor notiert und danach mit dem Geschehenen "
 "abgeglichen."
+
+msgid ""
+"Every file under it is read and identified on its own. Upload into it, "
+"or connect it to an SFTP, FTP, SMB or WebDAV host first — it makes no "
+"difference here."
+msgstr ""
+"Jede Datei darunter wird gelesen und für sich bestimmt. Laden Sie hinein "
+"hoch, oder verbinden Sie ihn zuerst mit einem SFTP-, FTP-, SMB- oder "
+"WebDAV-Host — hier macht das keinen Unterschied."
 
 msgid ""
 "Every plan includes every app. They differ in how much you can store and "
@@ -1690,6 +1864,12 @@ msgstr ""
 "Alle Plätze sind vergeben. Wechseln Sie den Tarif, um weitere Personen "
 "einzuladen."
 
+msgid "Every state change, all kinds"
+msgstr "Jeder Zustandswechsel, alle Arten"
+
+msgid "Every state change, all kinds together"
+msgstr "Jeder Zustandswechsel, alle Arten zusammen"
+
 msgid "Every stop together, by hour"
 msgstr "Alle Haltestellen zusammen, nach Stunde"
 
@@ -1703,18 +1883,8 @@ msgstr ""
 "Alle Ausgewählten werden diesen Datensätzen hinzugefügt. Niemand, der "
 "bereits darauf steht, wird entfernt."
 
-msgid ""
-"Everyone gets the basics of each app this workspace has. Tick anything "
-"more this person needs."
-msgstr ""
-"Alle erhalten die Grundlagen jeder App dieses Arbeitsbereichs. Haken Sie "
-"an, was diese Person darüber hinaus braucht."
-
 msgid "Everyone here is invited"
 msgstr "Alle hier sind eingeladen"
-
-msgid "Everyone in this workspace has this"
-msgstr "Das haben alle in diesem Arbeitsbereich"
 
 msgid "Everyone on this workspace"
 msgstr "Alle in diesem Arbeitsbereich"
@@ -1759,6 +1929,9 @@ msgstr ""
 msgid "Expand uploads"
 msgstr "Uploads ausklappen"
 
+msgid "Expires after (days)"
+msgstr "Läuft ab nach (Tagen)"
+
 msgid "Expiring"
 msgstr "Läuft ab"
 
@@ -1776,14 +1949,20 @@ msgstr ""
 "Wartezeiten"
 
 msgid ""
-"Extra room, billed with your plan and charged from the day you add it. "
-"It is not paid for with AI credits."
+"Extra room, billed with your plan from the day you add it. Not paid for "
+"with credits."
 msgstr ""
-"Zusätzlicher Speicher, mit Ihrem Tarif abgerechnet und ab dem Tag der "
-"Buchung berechnet. Er wird nicht mit KI-Guthaben bezahlt."
+"Zusätzlicher Platz, ab dem Tag der Buchung mit Ihrem Tarif abgerechnet. "
+"Nicht mit Guthaben bezahlbar."
 
 msgid "Extra storage appears here when it is available."
 msgstr "Zusätzlicher Speicher erscheint hier, sobald er verfügbar ist."
+
+msgid "FTP"
+msgstr "FTP"
+
+msgid "FTPS"
+msgstr "FTPS"
 
 msgid "Failing"
 msgstr "Fehlschlagend"
@@ -1793,6 +1972,9 @@ msgstr "Auffächern"
 
 msgid "Fare zone"
 msgstr "Tarifzone"
+
+msgid "Faults in a day"
+msgstr "Störungen pro Tag"
 
 msgid "Favourites"
 msgstr "Favoriten"
@@ -1868,12 +2050,14 @@ msgid "Files Reconciled For"
 msgstr "Dateien abgeglichen für"
 
 msgid ""
-"Files are not in these copies. They are kept as they are, and a restore "
-"matches them back up with the records that own them."
+"Files are not in these copies. A restore matches the ones you have back "
+"to their records."
 msgstr ""
-"Dateien sind in diesen Kopien nicht enthalten. Sie bleiben unverändert, "
-"und eine Wiederherstellung ordnet sie den zugehörigen Datensätzen wieder "
-"zu."
+"Dateien sind in diesen Kopien nicht enthalten. Eine Wiederherstellung "
+"ordnet die vorhandenen wieder ihren Datensätzen zu."
+
+msgid "Files can only be copied into the Drive, not onto a host."
+msgstr "Dateien lassen sich nur in die Ablage kopieren, nicht auf einen Host."
 
 msgid "Files other people share with you appear here."
 msgstr "Dateien, die andere mit Ihnen teilen, erscheinen hier."
@@ -1955,8 +2139,14 @@ msgstr "Fünf Minuten"
 msgid "Fix the fields"
 msgstr "Felder festschreiben"
 
+msgid "Folder is"
+msgstr "Ordner ist"
+
 msgid "Folder made"
 msgstr "Ordner erstellt"
+
+msgid "Folder on the host"
+msgstr "Ordner auf dem Host"
 
 msgid "Folder removed"
 msgstr "Ordner entfernt"
@@ -2003,6 +2193,13 @@ msgstr "Für die Organisation · Version {0}"
 msgid "For the rules that file things nobody needs to look at."
 msgstr "Für die Regeln, die Dinge ablegen, die niemand ansehen muss."
 
+msgid ""
+"For where the shipped roles are the wrong shape — read everything, "
+"change one part of it."
+msgstr ""
+"Für Fälle, in denen die mitgelieferten Rollen nicht passen – alles "
+"lesen, einen Teil davon ändern."
+
 msgid "For you · version {0}"
 msgstr "Für Sie · Version {0}"
 
@@ -2020,6 +2217,11 @@ msgstr "Format gespeichert"
 
 msgid "Format: {0}"
 msgstr "Format: {0}"
+
+msgid "Four answers, and nothing can be invoiced or paid until they are given."
+msgstr ""
+"Vier Angaben, und bis sie vorliegen kann nichts fakturiert oder bezahlt "
+"werden."
 
 msgid ""
 "Frappe has no opinion here; these are the roles a provider accepts, and "
@@ -2044,6 +2246,16 @@ msgstr "Absenderadresse"
 
 msgid "From field"
 msgstr "Aus Feld"
+
+msgid "From positions"
+msgstr "Aus Positionen"
+
+msgid ""
+"From the nightly roll-up. A few days of positions and it can say what a "
+"Tuesday looks like."
+msgstr ""
+"Aus der nächtlichen Verdichtung. Ein paar Tage Positionen genügen, um zu "
+"sagen, wie ein Dienstag aussieht."
 
 msgid "From the source site's own user."
 msgstr "Vom eigenen Benutzer der Quellinstanz."
@@ -2071,9 +2283,6 @@ msgstr "Standseilbahn"
 
 msgid "Furthest from the plan"
 msgstr "Am weitesten vom Plan"
-
-msgid "GTFS"
-msgstr "GTFS"
 
 msgid "GTFS Realtime"
 msgstr "GTFS Realtime"
@@ -2170,8 +2379,8 @@ msgstr "Datensätze ausblenden"
 msgid "High-speed train"
 msgstr "Hochgeschwindigkeitszug"
 
-msgid "Host, URL or socket address. Empty for an upload."
-msgstr "Host, URL oder Socket-Adresse. Leer bei einem Upload."
+msgid "Host"
+msgstr "Host"
 
 msgid "Hours scored"
 msgstr "Bewertete Stunden"
@@ -2232,6 +2441,9 @@ msgid ""
 msgstr ""
 "Wie lange vor dem Ablauf darauf hingewiesen wird. Dreißig Tage sind ein "
 "Monat, um eine Lizenz zu erneuern; ein Visum braucht mehr."
+
+msgid "How long the doors are open"
+msgstr "Wie lange die Türen offen sind"
 
 msgid "How many"
 msgstr "Wie viele"
@@ -2361,6 +2573,9 @@ msgstr "Verbessern"
 msgid "In All files"
 msgstr "In Alle Dateien"
 
+msgid "In Files, or on a host connected there."
+msgstr "In den Dateien, oder auf einem dort verbundenen Host."
+
 msgid "In app"
 msgstr "In der App"
 
@@ -2423,6 +2638,9 @@ msgstr "Ungültige Signatur."
 msgid "Invite somebody"
 msgstr "Jemanden einladen"
 
+msgid "Invite somebody below and they appear here."
+msgstr "Laden Sie unten jemanden ein, und er erscheint hier."
+
 msgid "Invited — they can sign in shortly"
 msgstr "Eingeladen — die Anmeldung ist in Kürze möglich"
 
@@ -2431,15 +2649,6 @@ msgstr "Ausgestellt von"
 
 msgid "It already says that. Nothing to change."
 msgstr "Das steht dort bereits. Nichts zu ändern."
-
-msgid ""
-"It can also be removed, which frees the room {0} takes. That deletes "
-"everything those hold, and the only way back is the backup we take "
-"first."
-msgstr ""
-"Er kann auch entfernt werden, was den Platz freigibt, den {0} belegt. "
-"Dabei wird alles gelöscht, was darin liegt, und der einzige Weg zurück "
-"ist die Sicherung, die wir vorher anlegen."
 
 msgid "It cannot end before it starts."
 msgstr "Es kann nicht enden, bevor es beginnt."
@@ -2452,12 +2661,11 @@ msgstr ""
 "darauf gegeben. Ein Administrator kann das ändern."
 
 msgid ""
-"It leaves the rail and nobody can open it. Everything in it stays "
-"exactly as it is, and switching it back on brings it back unchanged."
+"It leaves the rail and nobody can open it. Everything in it stays, and "
+"comes back unchanged."
 msgstr ""
 "Er verschwindet aus der Leiste und niemand kann ihn öffnen. Alles darin "
-"bleibt genau so, wie es ist, und beim Wiedereinschalten kommt es "
-"unverändert zurück."
+"bleibt und kommt unverändert zurück."
 
 msgid ""
 "It may have expired, or been taken back. Ask whoever sent it for a new "
@@ -2496,11 +2704,10 @@ msgstr ""
 
 msgid ""
 "It writes under each of the {0} headings, from the records this document "
-"reads. What is here now is replaced — you can undo it."
+"reads. Undo brings it back."
 msgstr ""
 "Es schreibt unter jede der {0} Überschriften, aus den Datensätzen, die "
-"dieses Dokument liest. Der jetzige Inhalt wird ersetzt — Sie können das "
-"rückgängig machen."
+"dieses Dokument liest. Rückgängig stellt es wieder her."
 
 msgid "Its name and picture are used wherever it appears."
 msgstr "Name und Bild erscheinen überall, wo er auftritt."
@@ -2524,8 +2731,14 @@ msgstr "Nur das Netz"
 msgid "Keep this one"
 msgstr "Diese behalten"
 
+msgid "Key passphrase"
+msgstr "Schlüssel-Passphrase"
+
 msgid "Keyboard shortcuts"
 msgstr "Tastenkürzel"
+
+msgid "Keys you have made"
+msgstr "Von Ihnen erstellte Schlüssel"
 
 msgid "Kind"
 msgstr "Art"
@@ -2581,11 +2794,17 @@ msgstr "Zuletzt vergebene ID unter {0}"
 msgid "Last message"
 msgstr "Letzte Nachricht"
 
+msgid "Last proved"
+msgstr "Zuletzt bestätigt"
+
 msgid "Last run"
 msgstr "Letzter Lauf"
 
 msgid "Last seen"
 msgstr "Zuletzt gesehen"
+
+msgid "Last time it was tried"
+msgstr "Beim letzten Versuch"
 
 msgid "Last used"
 msgstr "Zuletzt vergeben"
@@ -2634,6 +2853,13 @@ msgstr "Briefkopf: {0}"
 
 msgid "Letter heads"
 msgstr "Briefköpfe"
+
+msgid ""
+"Letter heads are on, but none is the default — so nothing is added to "
+"the page."
+msgstr ""
+"Briefköpfe sind aktiv, aber keiner ist Standard – also wird der Seite "
+"nichts hinzugefügt."
 
 msgid "Liberty"
 msgstr "Freiheit"
@@ -2753,6 +2979,9 @@ msgstr "Postfach verbunden"
 msgid "Mailbox disconnected"
 msgstr "Postfach getrennt"
 
+msgid "Make a key"
+msgstr "Schlüssel erstellen"
+
 msgid "Make a link"
 msgstr "Link erstellen"
 
@@ -2856,6 +3085,9 @@ msgstr "Entspricht"
 msgid "Max Users"
 msgstr "Max. Benutzer"
 
+msgid "Median seconds by hour"
+msgstr "Median-Sekunden nach Stunde"
+
 msgid "Memo"
 msgstr "Notiz"
 
@@ -2934,9 +3166,6 @@ msgstr "Mehr Ordner"
 msgid "More for this record"
 msgstr "Mehr zu diesem Datensatz"
 
-msgid "More for {0}"
-msgstr "Mehr für {0}"
-
 msgid "More formal"
 msgstr "Förmlicher"
 
@@ -2966,9 +3195,6 @@ msgstr "Nach rechts verschieben"
 
 msgid "Move to"
 msgstr "Verschieben nach"
-
-msgid "Move to Trash"
-msgstr "In den Papierkorb verschieben"
 
 msgid "Move to a folder"
 msgstr "In einen Ordner verschieben"
@@ -3044,9 +3270,6 @@ msgstr ""
 "Schränken Sie ein, was übernommen wird, im Filterformat von Frappe. Wird "
 "auf der Quellinstanz angewendet, sodass Ausgeschlossenes nie abgerufen "
 "wird."
-
-msgid "NeTEx"
-msgstr "NeTEx"
 
 msgid "Nearly all runs"
 msgstr "Fast alle Fahrten"
@@ -3193,6 +3416,20 @@ msgstr "Keine Ordner"
 msgid "No further detail was returned."
 msgstr "Es wurden keine weiteren Angaben zurückgegeben."
 
+msgid ""
+"No headings yet, so say what it should say. Undo brings back what is "
+"here now."
+msgstr ""
+"Noch keine Überschriften – sagen Sie also, was darin stehen soll. "
+"Rückgängig stellt den jetzigen Stand wieder her."
+
+msgid ""
+"No history at this stop in this hour yet. An arrival here is the "
+"timetable plus the delay so far."
+msgstr ""
+"Für diese Haltestelle in dieser Stunde gibt es noch keine Historie. Eine "
+"Ankunft ist hier der Fahrplan plus die bisherige Verspätung."
+
 msgid "No icon"
 msgstr "Kein Symbol"
 
@@ -3253,6 +3490,9 @@ msgstr "Kein Fahrplan für diesen Tag"
 msgid "No vehicle has a history yet"
 msgstr "Noch kein Fahrzeug mit Verlauf"
 
+msgid "No vehicle has reported yet"
+msgstr "Noch hat kein Fahrzeug gemeldet"
+
 msgid "No {0} against this yet."
 msgstr "Noch keine {0} dazu."
 
@@ -3277,6 +3517,9 @@ msgstr "Niemand mit diesem Namen"
 msgid "Nobody declared this stop"
 msgstr "Niemand hat diese Haltestelle gemeldet"
 
+msgid "Nobody else yet"
+msgstr "Noch niemand sonst"
+
 msgid "Nobody has given you an address yet. An admin can add one in Settings."
 msgstr ""
 "Ihnen wurde noch keine Adresse zugewiesen. Ein Administrator kann in den "
@@ -3294,16 +3537,16 @@ msgstr "Keiner dieser Datensätze hat bislang eine Position."
 msgid "None of these records has both a start and an end."
 msgstr "Keiner dieser Datensätze hat sowohl einen Anfang als auch ein Ende."
 
-msgid ""
-"None yet. A letter head is the band above and below every printed page — "
-"a logo, an address, a footer — and one format can use another's."
+msgid "None yet. A letter head is the band above and below a printed page."
 msgstr ""
-"Noch keine. Ein Briefkopf ist das Band über und unter jeder gedruckten "
-"Seite — ein Logo, eine Adresse, eine Fußzeile — und ein Druckformat kann "
-"den eines anderen verwenden."
+"Noch keiner. Ein Briefkopf ist das Band über und unter einer gedruckten "
+"Seite."
 
 msgid "Not about this record"
 msgstr "Nicht zu diesem Datensatz"
+
+msgid "Not answering"
+msgstr "Antwortet nicht"
 
 msgid "Not available here"
 msgstr "Hier nicht verfügbar"
@@ -3322,6 +3565,9 @@ msgstr "Keine Verbindung"
 msgid "Not counted"
 msgstr "Nicht gezählt"
 
+msgid "Not established"
+msgstr "Noch nicht ermittelt"
+
 msgid "Not like itself"
 msgstr "Untypisch"
 
@@ -3333,6 +3579,9 @@ msgstr "Nicht erlaubt."
 
 msgid "Not pinned"
 msgstr "Nicht angeheftet"
+
+msgid "Not read"
+msgstr "Wird nicht gelesen"
 
 msgid "Not read yet"
 msgstr "Noch nicht gelesen"
@@ -3358,6 +3607,9 @@ msgstr "Notizen ({0})"
 msgid "Nothing"
 msgstr "Nichts"
 
+msgid "Nothing above this is reachable."
+msgstr "Nichts oberhalb davon ist erreichbar."
+
 msgid "Nothing at this address"
 msgstr "Nichts unter dieser Adresse"
 
@@ -3366,14 +3618,6 @@ msgstr "Nichts kam an"
 
 msgid "Nothing can be created for {0} here."
 msgstr "Für {0} kann hier nichts erstellt werden."
-
-msgid ""
-"Nothing can be invoiced or paid until this exists. It is four answers, "
-"and it runs the same setup the accounting app would have asked for."
-msgstr ""
-"Bis dies besteht, kann nichts fakturiert oder bezahlt werden. Es sind "
-"vier Angaben, und es führt dieselbe Einrichtung aus, nach der die "
-"Buchhaltungs-App gefragt hätte."
 
 msgid "Nothing else to show."
 msgstr "Nichts weiter zu zeigen."
@@ -3403,13 +3647,11 @@ msgstr ""
 "wird, und in der Nacht darauf überprüft."
 
 msgid ""
-"Nothing has been seen at this stop in this hour yet, so there is no "
-"history to read. Until there is, an arrival here is the timetable and "
-"the delay the vehicle is already carrying."
+"Nothing has been touched, and paying brings it back within a minute. "
+"Unpaid on {0}, it comes down."
 msgstr ""
-"An dieser Haltestelle wurde zu dieser Stunde noch nichts beobachtet, es "
-"gibt also keinen Verlauf. Bis dahin ist eine Ankunft hier der Fahrplan "
-"plus die Verspätung, die das Fahrzeug bereits mitbringt."
+"Nichts wurde angetastet, und eine Zahlung stellt alles binnen einer "
+"Minute wieder her. Bleibt sie am {0} aus, wird abgeschaltet."
 
 msgid ""
 "Nothing has been turned on for this workspace yet. Get in touch and we "
@@ -3475,13 +3717,11 @@ msgid "Nothing in this workspace looks like what this is about."
 msgstr "Nichts in diesem Arbeitsbereich sieht danach aus, worum es hier geht."
 
 msgid ""
-"Nothing is blocked and nothing has been deleted. Until {0} the workspace "
-"works normally, except that it cannot grow past where it is now. After "
-"that, new uploads stop until there is room."
+"Nothing is blocked. Until {0} the workspace works normally but cannot "
+"grow; after that, uploads stop."
 msgstr ""
-"Nichts ist gesperrt und nichts wurde gelöscht. Bis {0} funktioniert der "
-"Arbeitsbereich normal, nur über den jetzigen Stand hinaus wachsen kann "
-"er nicht. Danach stoppen neue Uploads, bis wieder Platz ist."
+"Nichts ist gesperrt. Bis {0} arbeitet der Arbeitsbereich normal, wächst "
+"aber nicht; danach stoppen Uploads."
 
 msgid "Nothing is filed against this one yet."
 msgstr "Zu diesem ist noch nichts abgelegt."
@@ -3491,6 +3731,9 @@ msgstr "Noch nichts aufbewahrt"
 
 msgid "Nothing matched"
 msgstr "Keine Treffer"
+
+msgid "Nothing matches"
+msgstr "Nichts passt"
 
 msgid "Nothing matches the filters. Clear one to widen the list."
 msgstr ""
@@ -3511,6 +3754,9 @@ msgstr "Nichts Neues."
 
 msgid "Nothing on offer yet"
 msgstr "Noch kein Angebot"
+
+msgid "Nothing on the host at this path right now."
+msgstr "Derzeit nichts auf dem Host unter diesem Pfad."
 
 msgid "Nothing on this record has changed since it was created."
 msgstr "An diesem Datensatz hat sich seit seiner Erstellung nichts geändert."
@@ -3616,6 +3862,9 @@ msgstr "Noch nichts"
 msgid "Nothing yet."
 msgstr "Noch nichts."
 
+msgid "Nothing you changed can be changed on this record."
+msgstr "Nichts, was Sie geändert haben, lässt sich an diesem Datensatz ändern."
+
 msgid "Nothing you have liked is on this screen."
 msgstr "Nichts, was Sie favorisiert haben, ist auf dieser Ansicht."
 
@@ -3665,11 +3914,28 @@ msgstr "Ältere Unterhaltungen"
 msgid "On"
 msgstr "Ein"
 
+msgid ""
+"On a Mac: Finder, Go, Connect to Server. On Windows: This PC, Map "
+"network drive."
+msgstr ""
+"Auf dem Mac: Finder, Gehe zu, Mit Server verbinden. Unter Windows: "
+"Dieser PC, Netzlaufwerk verbinden."
+
+msgid ""
+"On by default. A key that can write is a key that can empty a folder "
+"from a file manager."
+msgstr ""
+"Standardmäßig an. Ein Schlüssel, der schreiben darf, kann einen Ordner "
+"aus einem Dateimanager heraus leeren."
+
 msgid "On each card"
 msgstr "Auf jeder Karte"
 
 msgid "On the timetable"
 msgstr "Nach Fahrplan"
+
+msgid "On the vehicle"
+msgstr "Im Fahrzeug"
 
 msgid "On this list"
 msgstr "In dieser Liste"
@@ -3678,13 +3944,11 @@ msgid "On time"
 msgstr "Pünktlich"
 
 msgid ""
-"On {0} everything held for this workspace is deleted for good — the "
-"database, every file and every backup. Paying before then restores it in "
+"On {0} everything is deleted for good. Paying before then restores it in "
 "full."
 msgstr ""
-"Am {0} wird alles endgültig gelöscht, was für diesen Arbeitsbereich "
-"gespeichert ist — die Datenbank, jede Datei und jede Sicherung. Eine "
-"Zahlung davor stellt alles vollständig wieder her."
+"Am {0} wird alles endgültig gelöscht. Eine Zahlung davor stellt alles "
+"vollständig wieder her."
 
 msgid ""
 "One delivery from one source at one moment. Everything traces back to a "
@@ -3712,13 +3976,11 @@ msgstr ""
 "sagt, muss das sein, was die Zeile tut."
 
 msgid ""
-"One per line, and the first is what new records use. A run of # is where "
-"the number goes and .YYYY. is the year, so ACME-.YYYY.-.##### starts "
-"counting again each January."
+"One per line; the first is what new records use. `#` is the number, "
+"`.YYYY.` the year."
 msgstr ""
-"Eine pro Zeile, und die erste verwenden neue Datensätze. Eine Folge von "
-"# ist die Stelle für die Nummer und .YYYY. ist das Jahr, deshalb beginnt "
-"ACME-.YYYY.-.##### jeden Januar neu zu zählen."
+"Eins pro Zeile; das erste verwenden neue Datensätze. `#` ist die Nummer, "
+"`.YYYY.` das Jahr."
 
 msgid "One person"
 msgstr "Eine Person"
@@ -3734,6 +3996,9 @@ msgstr "Ein Platz"
 
 msgid "One sentence, for whoever hands it out next."
 msgstr "Ein Satz, für den, der sie als Nächstes vergibt."
+
+msgid "One thing needs attention"
+msgstr "Eine Sache braucht Aufmerksamkeit"
 
 msgid "One, two, three"
 msgstr "Eins, zwei, drei"
@@ -3772,6 +4037,9 @@ msgstr "OneSpace Website-Status"
 
 msgid "OneSpace Suggestion"
 msgstr "OneSpace-Vorschlag"
+
+msgid "Only a WebDAV host carries a scheme. Put the hostname on its own."
+msgstr "Nur ein WebDAV-Host trägt ein Schema. Geben Sie den Hostnamen allein an."
 
 msgid "Only a cancelled document can be amended."
 msgstr "Nur ein storniertes Dokument kann geändert werden."
@@ -3877,6 +4145,9 @@ msgstr "Nur wenn ein Feld etwas sagt"
 msgid "Only {0}"
 msgstr "Nur {0}"
 
+msgid "Only {0} of them so far, so this is still learning"
+msgstr "Bisher nur {0} davon, das lernt also noch"
+
 msgid "Open as a page"
 msgstr "Als Seite öffnen"
 
@@ -3925,6 +4196,9 @@ msgstr "Oder eine feste Bild-URL"
 
 msgid "Or an emoji"
 msgstr "Oder ein Emoji"
+
+msgid "Or the passphrase, where a private key is given."
+msgstr "Oder die Passphrase, wenn ein privater Schlüssel angegeben ist."
 
 msgid "Or whoever is in"
 msgstr "Oder wer in"
@@ -3997,8 +4271,21 @@ msgstr "Teil von"
 msgid "Password changed"
 msgstr "Passwort geändert"
 
-msgid "Password or key"
-msgstr "Passwort oder Schlüssel"
+msgid "Path inside it"
+msgstr "Pfad darin"
+
+msgid "Pause this connection"
+msgstr "Diese Verbindung pausieren"
+
+msgid "Paused by hand."
+msgstr "Von Hand pausiert."
+
+msgid ""
+"Paused stops every read, including the feeds that name this mount. "
+"Failing is written by whatever tried last."
+msgstr ""
+"„Pausiert“ stoppt jeden Lesezugriff, auch die Feeds, die diesen Ordner "
+"nennen. „Fehlerhaft“ schreibt, wer es zuletzt versucht hat."
 
 msgid "Payload"
 msgstr "Nutzdaten"
@@ -4075,6 +4362,13 @@ msgstr "Tarifcode"
 msgid "Plan changed"
 msgstr "Tarif gewechselt"
 
+msgid ""
+"Plan credits expire at the end of the month. Credits you buy roll over "
+"and are spent last."
+msgstr ""
+"Tarifguthaben verfällt am Monatsende. Gekauftes Guthaben wird übertragen "
+"und zuletzt verbraucht."
+
 msgid "Plan for"
 msgstr "Planen für"
 
@@ -4121,13 +4415,8 @@ msgstr "Druckformate"
 msgid "Print preview"
 msgstr "Druckvorschau"
 
-msgid ""
-"Printing with a letter head is on under Printing, but none of these is "
-"the default — so nothing is added to the page. Make one default."
-msgstr ""
-"Der Druck mit Briefkopf ist unter Drucken aktiviert, aber keines davon "
-"ist der Standard — also wird der Seite nichts hinzugefügt. Legen Sie "
-"eines als Standard fest."
+msgid "Private key"
+msgstr "Privater Schlüssel"
 
 msgid "Privately to"
 msgstr "Blindkopie an"
@@ -4143,6 +4432,9 @@ msgstr "Korrektur lesen"
 
 msgid "Proposed"
 msgstr "Vorgeschlagen"
+
+msgid "Protocol"
+msgstr "Protokoll"
 
 msgid "Published, and not run"
 msgstr "Veröffentlicht und nicht gefahren"
@@ -4195,6 +4487,12 @@ msgstr "Eisenbahn"
 msgid "Reaches nothing yet"
 msgstr "Erreicht noch nichts"
 
+msgid "Read and write"
+msgstr "Lesen und schreiben"
+
+msgid "Read as"
+msgstr "Gelesen als"
+
 msgid "Read at {0}"
 msgstr "Gelesen um {0}"
 
@@ -4216,6 +4514,9 @@ msgstr "{0} Linien, {1} Haltestellen und {2} Fahrten gelesen."
 msgid "Read {0} positions over {1} connections."
 msgstr "{0} Positionen über {1} Verbindungen gelesen."
 
+msgid "Reading again"
+msgstr "Liest wieder"
+
 msgid "Readings either side of the on-time window"
 msgstr "Messungen beiderseits des Pünktlichkeitsfensters"
 
@@ -4230,6 +4531,9 @@ msgstr "Bereit zum Anwenden."
 
 msgid "Recent"
 msgstr "Zuletzt verwendet"
+
+msgid "Recognised"
+msgstr "Erkannt"
 
 msgid "Recommended"
 msgstr "Empfohlen"
@@ -4266,6 +4570,9 @@ msgstr "Neu laden"
 
 msgid "Reminded On"
 msgstr "Erinnert am"
+
+msgid "Remote Folder"
+msgstr "Entfernter Ordner"
 
 msgid "Remove from favourites"
 msgstr "Aus Favoriten entfernen"
@@ -4305,6 +4612,13 @@ msgstr "{0} entfernen"
 
 msgid "Remove {0} from favourites"
 msgstr "{0} aus Favoriten entfernen"
+
+msgid ""
+"Removing it frees the room {0} takes and deletes what they hold. The "
+"backup we take first is the way back."
+msgstr ""
+"Das Entfernen gibt den Platz frei, den {0} belegt, und löscht dessen "
+"Inhalt. Die Sicherung, die wir vorher anlegen, ist der Weg zurück."
 
 msgid "Rename this record"
 msgstr "Diesen Datensatz umbenennen"
@@ -4354,6 +4668,9 @@ msgstr "Während meiner Abwesenheit automatisch antworten"
 
 msgid "Reply to all"
 msgstr "Allen antworten"
+
+msgid "Reports in a day"
+msgstr "Meldungen pro Tag"
 
 msgid "Request failed"
 msgstr "Anfrage fehlgeschlagen"
@@ -4433,11 +4750,36 @@ msgstr "SFTP"
 msgid "SFTP needs paramiko, which is not installed on this site."
 msgstr "SFTP benötigt paramiko, das auf dieser Site nicht installiert ist."
 
+msgid ""
+"SFTP unless the host cannot. SMB is the office share; WebDAV is "
+"Nextcloud, SharePoint and most NAS boxes. Plain FTP sends the password "
+"in the clear and is offered because some authorities still run nothing "
+"else."
+msgstr ""
+"SFTP, sofern der Host es kann. SMB ist die Büro-Freigabe; WebDAV sind "
+"Nextcloud, SharePoint und die meisten NAS-Geräte. Einfaches FTP "
+"überträgt das Passwort im Klartext und steht zur Verfügung, weil manche "
+"Stellen nichts anderes betreiben."
+
+msgid "SHA-256 of the key. The key itself is shown once and stored nowhere."
+msgstr ""
+"SHA-256 des Schlüssels. Der Schlüssel selbst wird einmal angezeigt und "
+"nirgends gespeichert."
+
 msgid "SIRI"
 msgstr "SIRI"
 
+msgid "SMB"
+msgstr "SMB"
+
+msgid "SMB needs smbprotocol, which is not installed on this site."
+msgstr "SMB benötigt smbprotocol, das auf dieser Site nicht installiert ist."
+
 msgid "Sailing boat"
 msgstr "Segelboot"
+
+msgid "Save and try it"
+msgstr "Speichern und testen"
 
 msgid "Save as a new view"
 msgstr "Als neue Ansicht speichern"
@@ -4542,6 +4884,15 @@ msgstr "Sprachen suchen"
 msgid "Search mail"
 msgstr "E-Mails durchsuchen"
 
+msgid "Search people"
+msgstr "Personen suchen"
+
+msgid "Search templates"
+msgstr "Vorlagen durchsuchen"
+
+msgid "Search what you could add"
+msgstr "Durchsuchen, was Sie hinzufügen können"
+
 msgid "Searching"
 msgstr "Suchen"
 
@@ -4570,6 +4921,9 @@ msgstr "Sekunden hinter dem Fahrplan, gewichtet nach Beobachtungsumfang"
 msgid "Secret"
 msgstr "Geheimnis"
 
+msgid "Secret digest"
+msgstr "Geheimnis-Prüfsumme"
+
 msgid "Section {0}"
 msgstr "Abschnitt {0}"
 
@@ -4592,13 +4946,11 @@ msgid "Selecting"
 msgstr "Auswählen"
 
 msgid ""
-"Send as you@yourcompany.com rather than on ours. Mail to that domain "
-"still goes wherever its MX points — connect those mailboxes under your "
-"own Mailbox tab to read them here."
+"Send as you@yourcompany.com rather than on ours. Incoming mail still "
+"follows your own MX."
 msgstr ""
-"Senden Sie als you@yourcompany.com statt über unsere Domain. E-Mail an "
-"diese Domain geht weiterhin dorthin, wohin ihr MX zeigt — verbinden Sie "
-"diese Postfächer im Tab Postfach, um sie hier zu lesen."
+"Senden Sie als you@ihrefirma.de statt über unsere Domain. Eingehende "
+"Mail folgt weiterhin Ihrem eigenen MX."
 
 msgid "Send it"
 msgstr "Senden"
@@ -4660,6 +5012,12 @@ msgstr "Form"
 
 msgid "Share a link"
 msgstr "Link teilen"
+
+msgid "Share of {0}s with something wrong at this hour"
+msgstr "Anteil der {0}e mit einer Störung in dieser Stunde"
+
+msgid "Share over WebDAV"
+msgstr "Über WebDAV freigeben"
 
 msgid "Share removed"
 msgstr "Freigabe entfernt"
@@ -4800,18 +5158,15 @@ msgstr "Website-Name"
 msgid "Site is not provisioned."
 msgstr "Die Website ist nicht bereitgestellt."
 
-msgid "Socket"
-msgstr "Socket"
-
 msgid "Solid button"
 msgstr "Gefüllte Schaltfläche"
 
 msgid ""
-"Some spaces are not listed. If you were given a code for one, it goes "
-"here and the space appears above."
+"Some spaces are unlisted. A code for one goes here, and the space "
+"appears above."
 msgstr ""
-"Manche Bereiche sind nicht aufgeführt. Wenn Sie für einen davon einen "
-"Code erhalten haben, gehört er hierher, und der Bereich erscheint oben."
+"Manche Bereiche sind nicht gelistet. Ein Code dafür kommt hierher, und "
+"der Bereich erscheint oben."
 
 msgid ""
 "Somebody asked for this version by name. Never pruned, and sorted above "
@@ -4868,14 +5223,16 @@ msgid "Stale"
 msgstr "Veraltet"
 
 msgid ""
-"Standard is the fallback: every field of the record, in the order the "
-"form declares them. A format written as a template rather than drawn "
-"still prints, and opens wherever it was written."
+"Stamped on every request, read or write. What decides whether a key can "
+"safely be revoked."
 msgstr ""
-"Standard ist der Rückfall: jedes Feld des Datensatzes, in der "
-"Reihenfolge, die das Formular vorgibt. Ein Format, das als Vorlage "
-"geschrieben und nicht gezeichnet wurde, druckt trotzdem und öffnet sich "
-"dort, wo es geschrieben wurde."
+"Bei jeder Anfrage gesetzt, ob Lesen oder Schreiben. Daran entscheidet "
+"sich, ob ein Schlüssel gefahrlos widerrufen werden kann."
+
+msgid ""
+"Standard is the fallback: every field, in the order the form declares "
+"them."
+msgstr "Standard ist der Rückfall: jedes Feld, in der Reihenfolge des Formulars."
 
 msgid "Standing"
 msgstr "Stehend"
@@ -4905,6 +5262,9 @@ msgstr ""
 msgid "Start over"
 msgstr "Neu beginnen"
 
+msgid "Start reading again"
+msgstr "Wieder lesen"
+
 msgid "Start writing…"
 msgstr "Beginnen Sie zu schreiben…"
 
@@ -4916,6 +5276,9 @@ msgstr "Beginn"
 
 msgid "Starts with"
 msgstr "Beginnt mit"
+
+msgid "States somebody has to act on"
+msgstr "Zustände, auf die jemand reagieren muss"
 
 msgid "Station"
 msgstr "Bahnhof"
@@ -4979,6 +5342,12 @@ msgstr ""
 "Speichergrenze erreicht. Diese Datei benötigt {0}, aber es sind nur noch "
 "{1} von {2} frei. Löschen Sie einige Dateien oder wechseln Sie auf einen "
 "höheren Tarif."
+
+msgid "Stream"
+msgstr "Stream"
+
+msgid "Submitted {0}"
+msgstr "{0} gebucht"
 
 msgid "Suggest a reply"
 msgstr "Antwort vorschlagen"
@@ -5133,11 +5502,17 @@ msgstr "Das konnte nicht ausgeführt werden."
 msgid "That date has already passed."
 msgstr "Dieses Datum liegt bereits in der Vergangenheit."
 
-msgid "That day could not be brought back."
-msgstr "Dieser Tag konnte nicht wiederhergestellt werden."
-
 msgid "That did not come back as a plan."
 msgstr "Das kam nicht als Plan zurück."
+
+msgid "That did not connect"
+msgstr "Das hat sich nicht verbunden"
+
+msgid "That did not connect, so nothing was changed: {0}"
+msgstr "Das hat sich nicht verbunden, daher wurde nichts geändert: {0}"
+
+msgid "That did not connect: {0}"
+msgstr "Das hat sich nicht verbunden: {0}"
 
 msgid "That did not work. Nothing was changed."
 msgstr "Das hat nicht geklappt. Es wurde nichts geändert."
@@ -5153,6 +5528,9 @@ msgstr "Diese Datei hat keinen Namen."
 
 msgid "That file is empty, or it is not here any more."
 msgstr "Diese Datei ist leer oder nicht mehr vorhanden."
+
+msgid "That file is larger than this can open in one go."
+msgstr "Diese Datei ist größer, als sich hier auf einmal öffnen lässt."
 
 msgid "That file is not a document."
 msgstr "Diese Datei ist kein Dokument."
@@ -5179,6 +5557,11 @@ msgid "That file is too big to open here. Download it instead."
 msgstr ""
 "Diese Datei ist zu groß, um hier geöffnet zu werden. Laden Sie sie "
 "stattdessen herunter."
+
+msgid "That folder is on another server. Copy the file into the Drive first."
+msgstr ""
+"Dieser Ordner liegt auf einem anderen Server. Kopieren Sie die Datei "
+"zuerst in die Ablage."
 
 msgid "That has already been answered."
 msgstr "Darauf wurde bereits geantwortet."
@@ -5212,6 +5595,12 @@ msgstr "Das ist kein Feld, das geprüft werden kann."
 
 msgid "That is not a moment."
 msgstr "Das ist kein Zeitpunkt."
+
+msgid "That is not a path inside this folder."
+msgstr "Das ist kein Pfad innerhalb dieses Ordners."
+
+msgid "That is not a protocol this can speak."
+msgstr "Dieses Protokoll wird hier nicht gesprochen."
 
 msgid "That is not a test this can make."
 msgstr "Das ist kein Test, der hier erstellt werden kann."
@@ -5249,6 +5638,9 @@ msgstr "Das gehört Ihnen nicht, Sie können es nicht widerrufen."
 msgid "That is too big to save through a link."
 msgstr "Das ist zu groß, um über einen Link gespeichert zu werden."
 
+msgid "That is too many events for one call."
+msgstr "Das sind zu viele Ereignisse für einen Aufruf."
+
 msgid "That is too many observations for one call."
 msgstr "Das sind zu viele Beobachtungen für einen Aufruf."
 
@@ -5256,6 +5648,15 @@ msgid "That is too much sheet to print. Export it instead, or print one tab."
 msgstr ""
 "Das ist zu viel Tabelle zum Drucken. Exportieren Sie sie stattdessen, "
 "oder drucken Sie einen Tab."
+
+msgid "That key is not yours."
+msgstr "Dieser Schlüssel gehört Ihnen nicht."
+
+msgid "That key no longer works"
+msgstr "Dieser Schlüssel funktioniert nicht mehr"
+
+msgid "That key was not made"
+msgstr "Dieser Schlüssel wurde nicht erstellt"
 
 msgid "That letter head is not one a document can be printed with."
 msgstr "Mit diesem Briefkopf kann kein Dokument gedruckt werden."
@@ -5287,6 +5688,9 @@ msgstr "Dieser Tarif ist abgeschaltet."
 
 msgid "That plan would write more cells than one sheet holds."
 msgstr "Dieser Plan würde mehr Zellen schreiben, als ein Blatt fasst."
+
+msgid "That private key could not be read: {0}"
+msgstr "Dieser private Schlüssel konnte nicht gelesen werden: {0}"
 
 msgid "That record is gone."
 msgstr "Dieser Datensatz ist nicht mehr vorhanden."
@@ -5320,6 +5724,9 @@ msgstr "Diese gespeicherte Ansicht gehört zu einer anderen Ansicht."
 
 msgid "That view is yours — delete it rather than hiding it."
 msgstr "Diese Ansicht gehört Ihnen — löschen Sie sie, statt sie auszublenden."
+
+msgid "The Drive reads a host, it does not write to one."
+msgstr "Das Ablagesystem liest von einem Host, es schreibt nicht darauf."
 
 msgid ""
 "The File this is a version of, by name. Data rather than a Link for the "
@@ -5388,9 +5795,6 @@ msgstr ""
 msgid "The assistant"
 msgstr "Der Assistent"
 
-msgid "The assistant is not switched on here"
-msgstr "Der Assistent ist hier nicht aktiviert"
-
 msgid "The authority that issued it."
 msgstr "Die Behörde, die es ausgestellt hat."
 
@@ -5414,35 +5818,18 @@ msgstr ""
 "Der Papierkorb enthält {0} in {1} Dateien, die weiterhin zählen. Jede "
 "wird {2} Tage nach dem Verschieben endgültig gelöscht."
 
-msgid ""
-"The breakdown below covers the one file you can see, which is {0}. The "
-"same file on two records is one file here, because it is stored once — "
-"and the meter above is the whole workspace, including files on records "
-"you cannot open."
-msgstr ""
-"Die Aufschlüsselung unten umfasst die eine Datei, die Sie sehen können, "
-"also {0}. Dieselbe Datei an zwei Datensätzen ist hier eine Datei, weil "
-"sie einmal gespeichert wird — und der Balken oben zeigt den gesamten "
-"Arbeitsbereich, einschließlich Dateien an Datensätzen, die Sie nicht "
-"öffnen können."
-
-msgid ""
-"The breakdown below covers the {0} files you can see, which is {1}. The "
-"same file on two records is one file here, because it is stored once — "
-"and the meter above is the whole workspace, including files on records "
-"you cannot open."
-msgstr ""
-"Die Aufschlüsselung unten umfasst die {0} Dateien, die Sie sehen können, "
-"also {1}. Dieselbe Datei an zwei Datensätzen ist hier eine Datei, weil "
-"sie einmal gespeichert wird — und der Balken oben zeigt den gesamten "
-"Arbeitsbereich, einschließlich Dateien an Datensätzen, die Sie nicht "
-"öffnen können."
-
 msgid "The camera could not be opened."
 msgstr "Die Kamera konnte nicht geöffnet werden."
 
 msgid "The camera is not ready yet."
 msgstr "Die Kamera ist noch nicht bereit."
+
+msgid ""
+"The catalogue is kept with your account, which is not answering. What "
+"you already have is unaffected."
+msgstr ""
+"Der Katalog liegt bei Ihrem Konto, das nicht antwortet. Was Sie bereits "
+"haben, ist nicht betroffen."
 
 msgid "The columns on the list"
 msgstr "Die Spalten in der Liste"
@@ -5519,6 +5906,13 @@ msgid "The document's key — terms, privacy, dpa."
 msgstr "Der Schlüssel des Dokuments — terms, privacy, dpa."
 
 msgid ""
+"The domain is kept with your account, which is not answering. The "
+"workspace is still reachable."
+msgstr ""
+"Die Domain liegt bei Ihrem Konto, das nicht antwortet. Der "
+"Arbeitsbereich ist weiterhin erreichbar."
+
+msgid ""
 "The drawn geometry, as a GeoJSON LineString. Written by the importer, "
 "never typed."
 msgstr ""
@@ -5590,6 +5984,21 @@ msgstr ""
 "Die Überschriften speisen den Datensatz. Arbeite darunter oder in einem "
 "anderen Blatt."
 
+msgid "The hour to staff"
+msgstr "Die Stunde, die Personal braucht"
+
+msgid ""
+"The largest a WebDAV upload can be here is {0}, because the framework "
+"reads the whole request body before this share sees it. Upload it "
+"through the Drive in a browser instead, which sends large files straight "
+"to storage in parts, or raise max_file_size in the site configuration."
+msgstr ""
+"Ein WebDAV-Upload darf hier höchstens {0} groß sein, weil das Framework "
+"den gesamten Anfragekörper liest, bevor diese Freigabe ihn sieht. Laden "
+"Sie die Datei stattdessen über die Ablage im Browser hoch, die große "
+"Dateien in Teilen direkt in den Speicher schickt, oder erhöhen Sie "
+"max_file_size in der Site-Konfiguration."
+
 msgid ""
 "The last stored turn when this was proposed. What the chat panel hangs "
 "the card under: everything a run proposes belongs to the answer that run "
@@ -5598,6 +6007,13 @@ msgstr ""
 "Der letzte gespeicherte Zug, als dies vorgeschlagen wurde. Darunter "
 "hängt das Chat-Panel die Karte: Alles, was ein Lauf vorschlägt, gehört "
 "zu der Antwort, die er gegeben hat."
+
+msgid ""
+"The list is kept with your account, which is not answering. Nobody has "
+"lost access."
+msgstr ""
+"Die Liste liegt bei Ihrem Konto, das nicht antwortet. Niemand hat den "
+"Zugang verloren."
 
 msgid "The mail did not load"
 msgstr "Die E-Mail wurde nicht geladen"
@@ -5630,11 +6046,11 @@ msgid "The map was changed for everyone here"
 msgstr "Die Karte wurde für alle hier geändert"
 
 msgid ""
-"The message will carry what this record says now. What you put in is "
-"text, so it does not change afterwards."
+"The message carries what the record says now, as text. It does not "
+"change afterwards."
 msgstr ""
-"Die Nachricht trägt, was dieser Datensatz jetzt sagt. Eingefügt wird "
-"Text, er ändert sich danach also nicht mehr."
+"Die Nachricht trägt als Text, was der Datensatz jetzt sagt. Sie ändert "
+"sich danach nicht mehr."
 
 msgid "The middle call, against its published time"
 msgstr "Die mittlere Fahrt, gegen ihre veröffentlichte Zeit"
@@ -5676,10 +6092,15 @@ msgstr ""
 
 msgid ""
 "The newest row this source has been read up to. What makes the next "
-"fetch incremental rather than whole."
+"fetch incremental rather than whole. A folder does not use it: what a "
+"folder has already taken is written on the feeds themselves, one per "
+"file, so a delivery arriving late is still taken."
 msgstr ""
-"Die neueste Zeile, bis zu der diese Quelle gelesen wurde. Sie macht den "
-"nächsten Abruf inkrementell statt vollständig."
+"Die neueste Zeile, bis zu der diese Quelle gelesen wurde. Das macht den "
+"nächsten Abruf inkrementell statt vollständig. Ein Ordner nutzt sie "
+"nicht: was ein Ordner bereits genommen hat, steht auf den Lieferungen "
+"selbst, eine je Datei, damit auch eine spät eintreffende Lieferung "
+"genommen wird."
 
 msgid ""
 "The nightly roll-up writes one row per vehicle per day. It fills in "
@@ -5699,11 +6120,21 @@ msgstr ""
 "angeboten: Ein Link auf einen Ordner ist ein Link auf alles, was jemand "
 "später hineinlegt."
 
+msgid ""
+"The one file you can see, counted once. The meter above covers files you "
+"cannot open too."
+msgstr ""
+"Die eine Datei, die Sie sehen, einmal gezählt. Die Anzeige oben umfasst "
+"auch Dateien, die Sie nicht öffnen können."
+
 msgid "The one that was actually sent, scanned back in."
 msgstr "Das tatsächlich versandte Exemplar, wieder eingescannt."
 
 msgid "The page"
 msgstr "Die Seite"
+
+msgid "The path inside the folder, as the host spells it."
+msgstr "Der Pfad im Ordner, so wie der Host ihn schreibt."
 
 msgid "The photograph could not be saved."
 msgstr "Das Foto konnte nicht gespeichert werden."
@@ -5761,6 +6192,11 @@ msgstr ""
 "Die Kurzkennung der Ansicht, damit zwei Ansichten über einem DocType "
 "ihre eigenen Antworten behalten."
 
+msgid "The share first: /drawings, or /drawings/2026 for a folder in it."
+msgstr ""
+"Zuerst die Freigabe: /drawings oder /drawings/2026 für einen Ordner "
+"darin."
+
 msgid "The sheet has changed since"
 msgstr "Die Tabelle hat sich seitdem geändert"
 
@@ -5783,6 +6219,9 @@ msgid "The source's own, copied here so the winner is one sorted read."
 msgstr ""
 "Der Wert der Quelle selbst, hierher kopiert, damit der Gewinner ein "
 "einziger sortierter Lesevorgang ist."
+
+msgid "The specification"
+msgstr "Die Spezifikation"
 
 msgid "The station this platform belongs to, where a feed says so."
 msgstr "Der Bahnhof, zu dem dieser Bahnsteig gehört, sofern ein Feed das angibt."
@@ -5810,11 +6249,30 @@ msgstr ""
 "ignoriert, weil niemand sie meint, wenn er eine Adresse eintippt."
 
 msgid ""
+"The top of what this mount shows. Nothing above it is reachable, which "
+"is the whole of the boundary. On SMB the first part is the share: "
+"/drawings/2026 is the 2026 folder of the drawings share."
+msgstr ""
+"Die oberste Ebene, die dieser verbundene Ordner zeigt. Nichts darüber "
+"ist erreichbar — das ist die gesamte Grenze. Bei SMB ist der erste Teil "
+"die Freigabe: /drawings/2026 ist der Ordner 2026 der Freigabe drawings."
+
+msgid ""
+"The usual chart of accounts and financial year for {0}. Check them "
+"before you invoice anything."
+msgstr ""
+"Der übliche Kontenplan und das Geschäftsjahr für {0}. Prüfen Sie beides, "
+"bevor Sie etwas fakturieren."
+
+msgid ""
 "The values as this source stated them, kept whole so a disagreement can "
 "be read rather than inferred."
 msgstr ""
 "Die Werte, wie diese Quelle sie angegeben hat — vollständig aufbewahrt, "
 "damit ein Widerspruch lesbar statt abgeleitet ist."
+
+msgid "The vehicles"
+msgstr "Die Fahrzeuge"
 
 msgid "The week"
 msgstr "Die Woche"
@@ -5854,16 +6312,15 @@ msgstr ""
 "sodass eine entfallene Option nicht mehr gesendet wird, ohne dass etwas "
 "migriert werden muss."
 
+msgid ""
+"The {0} files you can see, {1}, counted once each. The meter above "
+"covers files you cannot open too."
+msgstr ""
+"Die {0} Dateien, die Sie sehen, {1}, jeweils einmal gezählt. Die Anzeige "
+"oben umfasst auch Dateien, die Sie nicht öffnen können."
+
 msgid "The {0} most common. Use Filter for the rest."
 msgstr "Die {0} häufigsten. Für den Rest den Filter verwenden."
-
-msgid ""
-"Their changes go straight into the file and are attributed to the link, "
-"not to a person. Take it back when the work is done."
-msgstr ""
-"Ihre Änderungen gehen direkt in die Datei und werden dem Link "
-"zugeschrieben, nicht einer Person. Zieh ihn zurück, wenn die Arbeit "
-"erledigt ist."
 
 msgid "There are agreements you have not accepted yet."
 msgstr "Es gibt Vereinbarungen, die Sie noch nicht angenommen haben."
@@ -5949,6 +6406,9 @@ msgstr "Diese Schreibaktion gibt es nicht."
 msgid "There is no {0} called that."
 msgstr "Es gibt kein {0} mit diesem Namen."
 
+msgid "There is nothing at that path."
+msgstr "Unter diesem Pfad liegt nichts."
+
 msgid "There is nothing called {0} here."
 msgstr "Hier gibt es nichts mit dem Namen {0}."
 
@@ -6022,12 +6482,11 @@ msgid "This"
 msgstr "Dies"
 
 msgid ""
-"This app names its own records. The series is part of what it is, so it "
-"is shown rather than set — the counter under it can still be moved."
+"This app names its own records, so the series is shown rather than set. "
+"The counter still moves."
 msgstr ""
-"Diese App benennt ihre Datensätze selbst. Der Nummernkreis gehört zu "
-"ihr, wird also angezeigt statt festgelegt — der Zähler darunter lässt "
-"sich weiterhin verschieben."
+"Diese App benennt ihre Datensätze selbst, daher wird die Nummernserie "
+"angezeigt statt gesetzt. Der Zähler läuft trotzdem weiter."
 
 msgid "This browser"
 msgstr "Dieser Browser"
@@ -6049,6 +6508,9 @@ msgstr ""
 
 msgid "This company's chart of accounts has nowhere to put retention."
 msgstr "Der Kontenplan dieser Firma hat keinen Platz für Einbehalte."
+
+msgid "This connection"
+msgstr "Diese Verbindung"
 
 msgid "This could not be imported"
 msgstr "Dies konnte nicht importiert werden"
@@ -6074,16 +6536,11 @@ msgstr ""
 msgid "This device"
 msgstr "Dieses Gerät"
 
+msgid "This did not load"
+msgstr "Das konnte nicht geladen werden"
+
 msgid "This document"
 msgstr "Dieses Dokument"
-
-msgid ""
-"This document has no headings yet, so say what it should say. What is "
-"here now is replaced — you can undo it."
-msgstr ""
-"Dieses Dokument hat noch keine Überschriften — sagen Sie also, was darin "
-"stehen soll. Der jetzige Inhalt wird ersetzt — Sie können das rückgängig "
-"machen."
 
 msgid "This document has no source called {0}."
 msgstr "Dieses Dokument hat keine Quelle namens {0}."
@@ -6091,8 +6548,28 @@ msgstr "Dieses Dokument hat keine Quelle namens {0}."
 msgid "This does not look like it is about any one record."
 msgstr "Das sieht nicht so aus, als ginge es um einen bestimmten Datensatz."
 
+msgid ""
+"This file is {0} and the largest a WebDAV upload can be here is {1}, "
+"because the framework reads the whole request body before this share "
+"sees it. Upload it through the Drive in a browser instead, which sends "
+"large files straight to storage in parts, or raise max_file_size in the "
+"site configuration."
+msgstr ""
+"Diese Datei ist {0} groß und ein WebDAV-Upload darf hier höchstens {1} "
+"groß sein, weil das Framework den gesamten Anfragekörper liest, bevor "
+"diese Freigabe ihn sieht. Laden Sie die Datei stattdessen über die "
+"Ablage im Browser hoch, die große Dateien in Teilen direkt in den "
+"Speicher schickt, oder erhöhen Sie max_file_size in der "
+"Site-Konfiguration."
+
+msgid "This folder is empty"
+msgstr "Dieser Ordner ist leer"
+
 msgid "This has already been amended."
 msgstr "Dies wurde bereits berichtigt."
+
+msgid "This host answers in its own order."
+msgstr "Dieser Host antwortet in seiner eigenen Reihenfolge."
 
 msgid "This is a template"
 msgstr "Dies ist eine Vorlage"
@@ -6104,6 +6581,16 @@ msgid "This is the workspace's sending address. Choose another one first."
 msgstr ""
 "Dies ist die Absenderadresse des Arbeitsbereichs. Wählen Sie zuerst eine "
 "andere."
+
+msgid ""
+"This key reaches every file you can see. Pick a folder first to narrow "
+"it."
+msgstr ""
+"Dieser Schlüssel erreicht jede Datei, die Sie sehen können. Wählen Sie "
+"zuerst einen Ordner, um das einzugrenzen."
+
+msgid "This key reaches {0} and everything in it, and nothing else."
+msgstr "Dieser Schlüssel erreicht {0} und alles darin, sonst nichts."
 
 msgid "This kind of chart is not built."
 msgstr "Diese Art von Diagramm ist nicht gebaut."
@@ -6158,6 +6645,9 @@ msgstr ""
 "Dies ist derzeit für alle pausiert. Nichts, was Sie hier ändern, geht "
 "verloren."
 
+msgid "This one is too big to show here. Download it to read it."
+msgstr "Diese Datei ist zu groß für die Vorschau. Zum Lesen herunterladen."
+
 msgid ""
 "This one needs {0}, which your workspace cannot carry yet. Ask us and we "
 "will move it."
@@ -6180,13 +6670,6 @@ msgid ""
 msgstr ""
 "Dies öffnet die Vorlage als neues Dokument. Was Sie hier haben, bleibt "
 "unberührt."
-
-msgid ""
-"This reads the nightly roll-up. Once a few days of positions are in, it "
-"can say what a Tuesday looks like."
-msgstr ""
-"Dies liest die nächtliche Verdichtung. Sobald einige Tage an Positionen "
-"vorliegen, kann es sagen, wie ein Dienstag aussieht."
 
 msgid "This record is no longer in the workspace"
 msgstr "Dieser Datensatz ist nicht mehr im Arbeitsbereich"
@@ -6273,6 +6756,9 @@ msgstr "In dieser Tabelle ist noch nichts benannt"
 msgid "This sheet's stored data is not readable."
 msgstr "Die gespeicherten Daten dieser Tabelle sind nicht lesbar."
 
+msgid "This source needs a folder. Pick one in Files."
+msgstr "Diese Quelle braucht einen Ordner. Wählen Sie einen in den Dateien."
+
 msgid "This space is not open to you"
 msgstr "Dieser Bereich ist für Sie nicht zugänglich"
 
@@ -6331,13 +6817,6 @@ msgstr ""
 
 msgid "This workspace has no storage yet"
 msgstr "Dieser Arbeitsbereich hat noch keinen Speicher"
-
-msgid ""
-"This workspace has no templates yet. Any file can be made one from its "
-"own menu."
-msgstr ""
-"Dieser Arbeitsbereich hat noch keine Vorlagen. Jede Datei lässt sich "
-"über ihr eigenes Menü zu einer machen."
 
 msgid ""
 "This workspace has posted entries, so its chart of accounts can no "
@@ -6500,6 +6979,9 @@ msgstr "Lkw"
 msgid "Try again"
 msgstr "Erneut versuchen"
 
+msgid "Try fewer words."
+msgstr "Versuchen Sie es mit weniger Wörtern."
+
 msgid "Try {0} again"
 msgstr "{0} erneut versuchen"
 
@@ -6604,6 +7086,9 @@ msgstr "Ansicht ohne Titel"
 msgid "Up to 5 min late"
 msgstr "Bis zu 5 Min. Verspätung"
 
+msgid "Up to {0} each."
+msgstr "Bis zu {0} pro Datei."
+
 msgid "Upload a file to start."
 msgstr "Laden Sie eine Datei hoch, um zu beginnen."
 
@@ -6621,15 +7106,15 @@ msgstr "{0} Datei wird hochgeladen"
 msgid "Uploading {0} files"
 msgstr "{0} Dateien werden hochgeladen"
 
-msgid "Uploading {0}%"
-msgstr "Hochladen {0} %"
-
 msgid "Uploads are paused. Delete some files, or buy more storage."
 msgstr ""
 "Uploads sind pausiert. Löschen Sie Dateien oder kaufen Sie mehr "
 "Speicher."
 
 msgid "Usage"
+msgstr "Nutzung"
+
+msgid "Use"
 msgstr "Nutzung"
 
 msgid "Use AI in this workspace"
@@ -6643,6 +7128,9 @@ msgstr "Eine andere Tabelle verwenden"
 
 msgid "Use a different sheet…"
 msgstr "Eine andere Tabelle verwenden…"
+
+msgid "Use a private key instead"
+msgstr "Stattdessen einen privaten Schlüssel verwenden"
 
 msgid "Use a template"
 msgstr "Vorlage verwenden"
@@ -6671,17 +7159,11 @@ msgstr "Eine eigene Domain verwenden"
 msgid "Usually arrives"
 msgstr "Kommt üblicherweise an"
 
-msgid "VDV 452"
-msgstr "VDV 452"
-
 msgid "VDV 454"
 msgstr "VDV 454"
 
 msgid "VDV 457-2"
 msgstr "VDV 457-2"
-
-msgid "VDV 457-3"
-msgstr "VDV 457-3"
 
 msgid "Vector"
 msgstr "Vektor"
@@ -6767,6 +7249,9 @@ msgstr ""
 "Diese haben wir aus Ihrer Adresse abgeleitet. Ändern Sie sie, wenn Ihr "
 "Anbieter abweicht."
 
+msgid "WebDAV"
+msgstr "WebDAV"
+
 msgid "What"
 msgstr "Was"
 
@@ -6789,12 +7274,24 @@ msgstr ""
 "anspricht. Bleibt beim Austausch des Datensatzes gleich – genau darum "
 "geht es."
 
+msgid "What a {0} usually costs"
+msgstr "Was ein {0} üblicherweise kostet"
+
 msgid ""
 "What each target field is made of, keyed by target fieldname. See "
 "`onespace/importer.py`."
 msgstr ""
 "Woraus sich jedes Zielfeld zusammensetzt, geschlüsselt nach dem "
 "Zielfeldnamen. Siehe `onespace/importer.py`."
+
+msgid ""
+"What goes in the client's username box. Generated, because a person's "
+"own address here would be an invitation to type their own password "
+"beside it."
+msgstr ""
+"Was im Benutzernamenfeld des Clients steht. Generiert, denn die eigene "
+"Adresse einer Person hier wäre eine Einladung, daneben ihr eigenes "
+"Passwort einzutippen."
 
 msgid "What happened"
 msgstr "Was passiert ist"
@@ -6808,6 +7305,9 @@ msgid ""
 msgstr ""
 "Was in der URL steht. Lang genug, um nicht erraten zu werden, und das "
 "Einzige, was zwischen dem Link und der Datei steht."
+
+msgid "What is it for"
+msgstr "Wofür ist er"
 
 msgid "What is looked at."
 msgstr "Was betrachtet wird."
@@ -6826,6 +7326,9 @@ msgstr "Worum es geht"
 
 msgid "What it is called in the picker."
 msgstr "Wie es in der Auswahl heißt."
+
+msgid "What it is called in the rail."
+msgstr "Wie er in der Seitenleiste heißt."
 
 msgid "What it is called wherever it appears."
 msgstr "Wie er überall genannt wird."
@@ -6899,6 +7402,13 @@ msgstr ""
 "Überschreiben."
 
 msgid ""
+"What the key can reach. Empty is the whole Drive; anything else is that "
+"folder and what is under it."
+msgstr ""
+"Was der Schlüssel erreicht. Leer ist die ganze Ablage; alles andere ist "
+"dieser Ordner und was darunter liegt."
+
+msgid ""
 "What the link hands over. `read` is the original and the default; "
 "`write` lets somebody with no account edit the file, and is offered only "
 "to somebody who may write it themselves — you cannot give away a right "
@@ -6941,11 +7451,31 @@ msgstr "Was die Quelle gesagt hat, so wie sie es gesagt hat."
 msgid "What the timetable said would happen"
 msgstr "Was der Fahrplan angekündigt hat"
 
-msgid "What they can do"
-msgstr "Was diese Person darf"
+msgid "What the vehicles report, by hour"
+msgstr "Was die Fahrzeuge melden, nach Stunde"
+
+msgid ""
+"What this appears as in the Drive's rail. No slash: it is the first part "
+"of every path under it."
+msgstr ""
+"Wie dies in der Seitenleiste der Ablage erscheint. Kein Schrägstrich: Es "
+"ist der erste Teil jedes Pfades darunter."
 
 msgid "What this connection is called on screen."
 msgstr "Wie diese Verbindung auf dem Bildschirm heißt."
+
+msgid "What this delivery was identified as. Nobody declared it; the bytes did."
+msgstr ""
+"Als was diese Lieferung bestimmt wurde. Niemand hat es angegeben; die "
+"Bytes haben es gesagt."
+
+msgid ""
+"What this key is for, in the words of whoever made it. Also what the "
+"share calls itself when it is mounted."
+msgstr ""
+"Wofür dieser Schlüssel da ist, in den Worten dessen, der ihn erstellt "
+"hat. Zugleich der Name, unter dem sich die Freigabe beim Einbinden "
+"meldet."
 
 msgid "What this means"
 msgstr "Was das bedeutet"
@@ -6984,14 +7514,6 @@ msgstr ""
 "Was dieses ganze Gespräch gekostet hat, aufsummiert, sobald jeder "
 "Gesprächszug abgerechnet ist."
 
-msgid ""
-"What this workspace could add is kept with your account, and it is not "
-"answering. Everything you already have is unaffected."
-msgstr ""
-"Was dieser Arbeitsbereich hinzufügen könnte, liegt bei Ihrem Konto, und "
-"dieses antwortet nicht. Alles, was Sie bereits haben, ist davon "
-"unberührt."
-
 msgid "What this workspace is keeping, and how much room is left."
 msgstr "Was dieser Arbeitsbereich speichert und wie viel Platz noch frei ist."
 
@@ -7014,6 +7536,9 @@ msgstr ""
 "Wie diese Version in der Leiste heißen soll. Ein Zeitstempel bei einer "
 "automatischen; bei einer benannten das, was jemand eingegeben hat."
 
+msgid "What to do with this"
+msgstr "Was damit geschehen soll"
+
 msgid "What to do with this document"
 msgstr "Was mit diesem Dokument geschehen soll"
 
@@ -7022,6 +7547,9 @@ msgstr "Was mit diesem Datensatz geschehen soll"
 
 msgid "What to do with this version"
 msgstr "Was mit dieser Version geschehen soll"
+
+msgid "What to do with {0}"
+msgstr "Was mit {0} geschehen soll"
 
 msgid "What to read on the source site."
 msgstr "Was auf der Quellseite gelesen werden soll."
@@ -7059,6 +7587,16 @@ msgstr "Rollstuhl"
 msgid "When"
 msgstr "Wann"
 
+msgid ""
+"When a connection was last opened and the base path listed. Written by "
+"connecting and by saving a change, because a mount nobody has proved "
+"since it was edited is a mount nobody should trust."
+msgstr ""
+"Wann zuletzt eine Verbindung geöffnet und der Basispfad gelistet wurde. "
+"Wird beim Verbinden und beim Speichern einer Änderung geschrieben, denn "
+"ein Ordner, den seit seiner Bearbeitung niemand bestätigt hat, ist "
+"einer, dem niemand trauen sollte."
+
 msgid "When somebody gives you a record to deal with."
 msgstr "Wenn dir jemand einen Datensatz überträgt."
 
@@ -7068,6 +7606,9 @@ msgstr "Wenn jemand einen Datensatz oder eine Datei mit dir teilt."
 msgid "When somebody writes your name in a comment."
 msgstr "Wenn jemand deinen Namen in einem Kommentar nennt."
 
+msgid "When the host says the file was last written."
+msgstr "Wann der Host sagt, dass die Datei zuletzt geschrieben wurde."
+
 msgid ""
 "When the last warning went out. Kept so a daily job warns once and not "
 "every morning until somebody acts, which is how people learn to ignore "
@@ -7076,6 +7617,9 @@ msgstr ""
 "Wann die letzte Warnung hinausging. Wird gespeichert, damit ein "
 "täglicher Job einmal warnt und nicht jeden Morgen, bis jemand handelt — "
 "so lernen Leute, ihn zu ignorieren."
+
+msgid "When things break"
+msgstr "Wann etwas kaputtgeht"
 
 msgid "When this record"
 msgstr "Wenn dieser Datensatz"
@@ -7113,9 +7657,6 @@ msgstr "Wie es steht"
 
 msgid "Where mail that matches goes, before you see it."
 msgstr "Wohin passende E-Mail geht, bevor Sie sie sehen."
-
-msgid "Where on the host to look, for SFTP."
-msgstr "Wo auf dem Host gesucht wird, bei SFTP."
 
 msgid ""
 "Where one source row is several records. `{\"from\": \"attendance_log\", "
@@ -7190,15 +7731,6 @@ msgstr "Welcher Tag statt welche Uhrzeit."
 msgid "Which declared feature wrote it. See `ai/features.py`."
 msgstr "Welche deklarierte Funktion es geschrieben hat. Siehe `ai/features.py`."
 
-msgid ""
-"Which dialect it speaks. Leave it on Detect and every delivery is "
-"identified from what is inside it; naming one only breaks a tie, and "
-"never overrides the file."
-msgstr ""
-"Welchen Dialekt sie spricht. Auf automatische Erkennung belassen, dann "
-"wird jede Lieferung anhand ihres Inhalts bestimmt; eine Angabe "
-"entscheidet nur bei Gleichstand und überstimmt die Datei nie."
-
 msgid "Which domain?"
 msgstr "Welche Domain?"
 
@@ -7239,6 +7771,13 @@ msgstr ""
 
 msgid "Which one"
 msgstr "Welche"
+
+msgid ""
+"Which protocol this stream speaks. Only a stream needs one: a file is "
+"identified from what is inside it."
+msgstr ""
+"Welches Protokoll dieser Stream spricht. Nur ein Stream braucht eines: "
+"eine Datei wird an ihrem Inhalt erkannt."
 
 msgid "Which range?"
 msgstr "Welcher Zellbereich?"
@@ -7283,6 +7822,9 @@ msgstr ""
 "`.md`, eine `.txt` —, bei der die Nutzlast schlicht der Inhalt und der "
 "Speicher das Objekt ist."
 
+msgid "Which vehicle?"
+msgstr "Welches Fahrzeug?"
+
 msgid "Which vehicles run late"
 msgstr "Welche Fahrzeuge sich verspäten"
 
@@ -7302,14 +7844,6 @@ msgid "Who can sign in to this workspace, and what each of them may do."
 msgstr ""
 "Wer sich in diesem Arbeitsbereich anmelden kann und was jede Person tun "
 "darf."
-
-msgid ""
-"Who is in this workspace is kept with your account, and it is not "
-"answering. Nobody has lost access; this page is what cannot be read."
-msgstr ""
-"Wer in diesem Arbeitsbereich ist, wird bei Ihrem Konto geführt, und das "
-"antwortet gerade nicht. Niemand hat den Zugang verloren — nur diese "
-"Seite lässt sich nicht lesen."
 
 msgid "Who it is"
 msgstr "Wer er ist"
@@ -7402,8 +7936,8 @@ msgstr "Schreiben"
 msgid "Write the message"
 msgstr "Nachricht schreiben"
 
-msgid "Write with AI"
-msgstr "Mit KI schreiben"
+msgid "Write with {0}"
+msgstr "Mit {0} schreiben"
 
 msgid "Write your message"
 msgstr "Schreiben Sie Ihre Nachricht"
@@ -7417,17 +7951,23 @@ msgstr "Schreiben"
 msgid "Writing…"
 msgstr "Wird geschrieben…"
 
-msgid "Written by AI. Check it."
-msgstr "Von KI geschrieben. Bitte prüfen."
-
-msgid "Written by AI. Read it before you send it."
-msgstr "Von KI geschrieben. Lies es, bevor du es sendest."
+msgid "Written"
+msgstr "Geschrieben"
 
 msgid "Written by {0}, using {1}."
 msgstr "Geschrieben von {0}, mit {1}."
 
 msgid "Written by {0}."
 msgstr "Geschrieben von {0}."
+
+msgid "Written by {0}. Check it."
+msgstr "Von {0} geschrieben. Prüfen Sie es."
+
+msgid "Written by {0}. Read it before you send it."
+msgstr "Von {0} geschrieben. Lesen Sie es, bevor Sie senden."
+
+msgid "Written from working knowledge, not from the document."
+msgstr "Aus Arbeitswissen geschrieben, nicht aus dem Dokument."
 
 msgid "Yahoo needs an app password."
 msgstr "Yahoo benötigt ein App-Passwort."
@@ -7485,11 +8025,17 @@ msgstr "Sie können diese Datei nicht lesen."
 msgid "You cannot read that record."
 msgstr "Sie können diesen Datensatz nicht lesen."
 
+msgid "You cannot read that vehicle."
+msgstr "Sie dürfen dieses Fahrzeug nicht lesen."
+
 msgid "You cannot read this."
 msgstr "Sie können dies nicht lesen."
 
 msgid "You cannot read {0}."
 msgstr "Sie können {0} nicht lesen."
+
+msgid "You cannot report for a vehicle."
+msgstr "Sie können nicht für ein Fahrzeug melden."
 
 msgid "You cannot report positions."
 msgstr "Sie können keine Positionen melden."
@@ -7499,6 +8045,9 @@ msgstr "Sie können diese Quelle nicht ausführen."
 
 msgid "You cannot see that file's links."
 msgstr "Sie können die Verknüpfungen dieser Datei nicht sehen."
+
+msgid "You cannot see this."
+msgstr "Sie können das nicht sehen."
 
 msgid "You cannot share that file."
 msgstr "Sie können diese Datei nicht teilen."
@@ -7536,16 +8085,6 @@ msgstr ""
 "gebucht wird. Einmal beantwortet."
 
 msgid ""
-"Your country and currency are what you chose. The chart of accounts and "
-"financial year below are the usual ones for {0} — check them before you "
-"invoice anything, because they are only easy to change until then."
-msgstr ""
-"Land und Währung sind das, was Sie gewählt haben. Kontenplan und "
-"Geschäftsjahr unten sind die für {0} üblichen — prüfen Sie sie, bevor "
-"Sie etwas in Rechnung stellen, denn nur bis dahin sind sie leicht zu "
-"ändern."
-
-msgid ""
 "Your currency and chart of accounts cannot change once entries exist. "
 "Ask support if you need them changed."
 msgstr ""
@@ -7558,17 +8097,6 @@ msgstr "Ihr Tagebuch"
 
 msgid "Your domain"
 msgstr "Ihre Domain"
-
-msgid ""
-"Your domain is kept with your account, and it is not answering. The "
-"workspace is still reachable at the address it already has."
-msgstr ""
-"Ihre Domain wird bei Ihrem Konto geführt, und das antwortet gerade "
-"nicht. Der Arbeitsbereich ist weiterhin unter seiner bisherigen Adresse "
-"erreichbar."
-
-msgid "Your files did not load"
-msgstr "Ihre Dateien konnten nicht geladen werden"
 
 msgid "Your last payment did not go through"
 msgstr "Ihre letzte Zahlung ist fehlgeschlagen"
@@ -7588,9 +8116,6 @@ msgstr "Ihre eigene Domain"
 msgid "Your own mailboxes"
 msgstr "Ihre eigenen Postfächer"
 
-msgid "Your own roles"
-msgstr "Ihre eigenen Rollen"
-
 msgid "Your password, and where you are signed in."
 msgstr "Ihr Passwort und wo Sie angemeldet sind."
 
@@ -7600,13 +8125,6 @@ msgid ""
 msgstr ""
 "Ihr Tarif fügt jeden Monat Guthaben hinzu, das nicht übertragen wird. "
 "Gekauftes Guthaben verfällt nie."
-
-msgid ""
-"Your plan adds credits every month and they expire at the end of it. "
-"Credits you buy roll over and are spent last."
-msgstr ""
-"Ihr Tarif fügt jeden Monat Guthaben hinzu, das zum Monatsende verfällt. "
-"Gekauftes Guthaben wird übertragen und zuletzt verbraucht."
 
 msgid ""
 "Your plan does not include automatic backups. You can still take one "
@@ -7631,15 +8149,6 @@ msgid "Your spaces are all still where you left them."
 msgstr "Alle Ihre Bereiche sind noch dort, wo Sie sie verlassen haben."
 
 msgid ""
-"Your work has not been touched, and paying brings it back within a "
-"minute. If it is still unpaid on {0}, the workspace comes down and only "
-"a backup is kept."
-msgstr ""
-"Ihre Arbeit ist unangetastet, und eine Zahlung holt sie innerhalb einer "
-"Minute zurück. Ist am {0} noch nicht gezahlt, wird der Arbeitsbereich "
-"abgeschaltet und nur eine Sicherung bleibt erhalten."
-
-msgid ""
 "Your workspace already has everything on offer to it. When something new "
 "is, it appears here."
 msgstr ""
@@ -7654,6 +8163,13 @@ msgstr "Ihr Arbeitsbereich überschreitet das {0}-Limit dieses Tarifs"
 
 msgid "Zero for a source that pushes to us rather than being asked."
 msgstr "Null für eine Quelle, die zu uns pusht, statt abgefragt zu werden."
+
+msgid ""
+"Zero for the protocol's own — 22 for SFTP, 21 for FTP, 445 for SMB, 443 "
+"for WebDAV."
+msgstr ""
+"Null für den Standardport des Protokolls — 22 bei SFTP, 21 bei FTP, 445 "
+"bei SMB, 443 bei WebDAV."
 
 msgid "Zone"
 msgstr "Zone"
@@ -7893,6 +8409,9 @@ msgstr "Dateien"
 msgid "fire"
 msgstr "Feuerwehr"
 
+msgid "for {0} min"
+msgstr "seit {0} Min."
+
 msgid "from {0}"
 msgstr "von {0}"
 
@@ -7907,6 +8426,11 @@ msgstr "Gondelbahn"
 
 msgid "high-speed"
 msgstr "Hochgeschwindigkeit"
+
+msgid "https is assumed. Write http:// for a box with no certificate."
+msgstr ""
+"https wird angenommen. Schreiben Sie http:// für ein Gerät ohne "
+"Zertifikat."
 
 msgid "iCloud needs an app-specific password."
 msgstr "iCloud benötigt ein anwendungsspezifisches Passwort."
@@ -7928,6 +8452,9 @@ msgstr "ist über"
 
 msgid "is under"
 msgstr "ist unter"
+
+msgid "last used {0}"
+msgstr "zuletzt genutzt {0}"
 
 msgid "licences"
 msgstr "Lizenzen"
@@ -7976,6 +8503,9 @@ msgstr "Motorrad"
 msgid "name@example.com"
 msgstr "name@example.com"
 
+msgid "never used"
+msgstr "nie genutzt"
+
 msgid "nobody"
 msgstr "niemand"
 
@@ -7993,6 +8523,9 @@ msgstr "{0} Mal geöffnet"
 
 msgid "opened {0} times"
 msgstr "{0} Mal geöffnet"
+
+msgid "part {0}"
+msgstr "Teil {0}"
 
 msgid "past due"
 msgstr "überfällig"
@@ -8134,8 +8667,14 @@ msgstr "der Datensatz"
 msgid "the sidebar"
 msgstr "die Seitenleiste"
 
+msgid "the whole Drive"
+msgstr "die ganze Ablage"
+
 msgid "this"
 msgstr "dies"
+
+msgid "this new {0}"
+msgstr "neue {0}"
 
 msgid "three months"
 msgstr "drei Monaten"
@@ -8253,6 +8792,9 @@ msgstr "{0} Tage"
 msgid "{0} delivered."
 msgstr "{0} geliefert."
 
+msgid "{0} did not answer: {1}"
+msgstr "{0} hat nicht geantwortet: {1}"
+
 msgid "{0} does not carry a picture."
 msgstr "{0} trägt kein Bild."
 
@@ -8268,6 +8810,9 @@ msgstr "{0} Datei wurde nicht hochgeladen"
 msgid "{0} file uploaded"
 msgstr "{0} Datei hochgeladen"
 
+msgid "{0} files are larger than {1} and were not sent."
+msgstr "{0} Dateien sind größer als {1} und wurden nicht gesendet."
+
 msgid "{0} files did not upload"
 msgstr "{0} Dateien wurden nicht hochgeladen"
 
@@ -8275,22 +8820,18 @@ msgid "{0} files uploaded"
 msgstr "{0} Dateien hochgeladen"
 
 msgid ""
-"{0} files uploaded since then — {1} — are deleted from storage, because "
-"no record will be left that owns them. This part cannot be undone by "
-"restoring forward again."
+"{0} files uploaded since then — {1} — are deleted for good. Restoring "
+"forward will not bring them back."
 msgstr ""
-"{0} seither hochgeladene Dateien — {1} — werden aus dem Speicher "
-"gelöscht, weil kein Datensatz mehr übrig ist, dem sie gehören. Dieser "
-"Teil lässt sich durch erneutes Vorwärts-Wiederherstellen nicht "
-"rückgängig machen."
+"Die seither hochgeladenen {0} Dateien – {1} – werden endgültig gelöscht. "
+"Eine spätere Wiederherstellung bringt sie nicht zurück."
 
 msgid ""
-"{0} files were deleted since then. Their records come back and the files "
-"do not: those were removed for good when the bin emptied."
+"{0} files were deleted since then. Their records come back; the files "
+"went when the bin emptied."
 msgstr ""
-"{0} Dateien wurden seither gelöscht. Ihre Datensätze kommen zurück, die "
-"Dateien nicht: Die wurden beim Leeren des Papierkorbs endgültig "
-"entfernt."
+"Seither wurden {0} Dateien gelöscht. Ihre Datensätze kommen zurück; die "
+"Dateien gingen beim Leeren des Papierkorbs."
 
 msgid "{0} had no matching field and was left out."
 msgstr "{0} hatte kein passendes Feld und wurde ausgelassen."
@@ -8444,6 +8985,9 @@ msgstr ""
 "{0} ist nicht gebucht und kann daher weder gebucht noch storniert "
 "werden."
 
+msgid "{0} is not switched on here"
+msgstr "{0} ist hier nicht eingeschaltet"
+
 msgid "{0} is not verified yet. SPF: {1}. DKIM: {2}."
 msgstr "{0} ist noch nicht verifiziert. SPF: {1}. DKIM: {2}."
 
@@ -8460,6 +9004,12 @@ msgstr "{0} ist eines von: {1}"
 msgid "{0} is part of your workspace but has no screens in it yet."
 msgstr "{0} gehört zu Ihrem Arbeitsbereich, hat aber noch keine Ansichten darin."
 
+msgid "{0} is paused."
+msgstr "{0} ist pausiert."
+
+msgid "{0} is read by {1}. Point those somewhere else first."
+msgstr "{0} wird von {1} gelesen. Richten Sie diese zuerst woanders hin aus."
+
 msgid "{0} is switched off"
 msgstr "{0} ist ausgeschaltet"
 
@@ -8468,6 +9018,9 @@ msgstr "{0} ist für diesen Workspace ausgeschaltet."
 
 msgid "{0} is taken."
 msgstr "{0} ist bereits vergeben."
+
+msgid "{0} is {1}, and the largest that can go here is {2}."
+msgstr "{0} ist {1}, und das Größte, was hierhin passt, ist {2}."
 
 msgid "{0} lines stop here"
 msgstr "Hier halten {0} Linien"
@@ -8486,6 +9039,12 @@ msgstr "{0} Min. zu früh"
 
 msgid "{0} min late"
 msgstr "{0} Min. zu spät"
+
+msgid "{0} moved to the bin"
+msgstr "{0} in den Papierkorb verschoben"
+
+msgid "{0} needing attention"
+msgstr "{0} brauchen Aufmerksamkeit"
 
 msgid "{0} needs a file."
 msgstr "{0} benötigt eine Datei."
@@ -8518,6 +9077,9 @@ msgstr "{0} von {1} heute"
 msgid "{0} on a {1}"
 msgstr "{0} an einem {1}"
 
+msgid "{0} on {1} vehicles, right now"
+msgstr "{0} an {1} Fahrzeugen, gerade jetzt"
+
 msgid "{0} once"
 msgstr "{0} einmalig"
 
@@ -8529,6 +9091,9 @@ msgstr "{0} Messungen, {1} bis {2}"
 
 msgid "{0} records will have {1} set to this."
 msgstr "Bei {0} Datensätzen wird {1} darauf gesetzt."
+
+msgid "{0} reports"
+msgstr "{0} Meldungen"
 
 msgid "{0} rings are trips due to be running."
 msgstr "{0}-Ringe sind Fahrten, die unterwegs sein sollten."
@@ -8581,6 +9146,9 @@ msgstr "{0} Elemente"
 msgid "{0} things chosen"
 msgstr "{0} Elemente ausgewählt"
 
+msgid "{0} things need attention"
+msgstr "{0} Sachen brauchen Aufmerksamkeit"
+
 msgid "{0} things, more below"
 msgstr "{0} Elemente, weitere unten"
 
@@ -8627,6 +9195,9 @@ msgstr "{0} — Ihre, auf der Domain dieses Arbeitsbereichs."
 
 msgid "{0} — {1}"
 msgstr "{0} — {1}"
+
+msgid "{0}% of them go wrong then"
+msgstr "{0}% davon gehen dann schief"
 
 msgid "{0}, highlighted"
 msgstr "{0}, hervorgehoben"

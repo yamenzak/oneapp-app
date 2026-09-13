@@ -7,7 +7,7 @@
       data-oneapp="settings-dialog"
       class="flex shrink-0 items-center justify-between border-b border-outline-gray-1 px-4 py-3 sm:hidden"
     >
-      <span class="text-lg font-semibold text-ink-gray-8">{{ __('Settings') }}</span>
+      <span class="text-lg font-semibold text-ink-primary">{{ __('Settings') }}</span>
       <Button
         variant="ghost"
         icon="lucide-x"
@@ -42,7 +42,7 @@
           :data-slot="`settings-tab-${tab.key}`"
         >
           <template #prefix>
-            <Icon :name="iconFor(tab)" class="size-4 text-ink-gray-7" />
+            <Icon :name="iconFor(tab)" class="size-4 text-ink-secondary" />
           </template>
           {{ tab.label }}
         </SettingsNavItem>
@@ -102,7 +102,9 @@ import { TAB_GROUP, TAB_ITEM, TAB_STRIP, PANEL_CONTENT } from '@/modules/onespac
 // `lucide-*` class only where it can read it as a string, and a tab's icon is
 // named in Python. See `./icons.js`.
 import { TAB_ICONS } from '@/modules/onespace/components/settings/icons'
+import ConnectionSettings from '@/modules/onespace/components/settings/ConnectionSettings.vue'
 import { settings } from '@/modules/onespace/lib/shell/settings'
+import { useAddress } from '@/shared/composables/useAddress'
 import { workspace } from '@/shared/lib/workspace'
 import { __ } from '@/shared/lib/runtime/translate'
 
@@ -134,6 +136,7 @@ const PANELS = {
   roles: RoleSettings,
   storage: StorageSettings,
   backups: BackupSettings,
+  connections: ConnectionSettings,
 }
 
 const data = ref(null)
@@ -172,6 +175,31 @@ const reload = async () => {
   const open = tabs.value.some((one) => one.key === settings.tab)
   if (!open && tabs.value.length) settings.tab = tabs.value[0].key
 }
+
+/**
+ * Settings has an address — `?panel=backups`, §C4.
+ *
+ * Twenty-four panels and no way to link to one made every support answer
+ * "open settings, then find Backups". It stays a dialog, because C2 is right
+ * that a thing you toggle is not a route; what changes is only that it can be
+ * *said*.
+ *
+ * Here rather than in the store because this is where the dialog is, and
+ * because the tab has to be checked against what this reader may open —
+ * `steady()` below does that, and a deep link to a panel somebody has no
+ * business on lands them on the first one they do.
+ */
+useAddress('panel', {
+  read: () => (settings.open ? settings.tab || '' : ''),
+  write: (value) => {
+    if (!value) {
+      settings.open = false
+      return
+    }
+    settings.tab = value
+    settings.open = true
+  },
+})
 
 // Fetched when the dialog is open and has nothing rather than at boot: most
 // sessions never open settings, and this reads several singles.

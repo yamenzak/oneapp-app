@@ -145,10 +145,11 @@ test('narrowing to one line asks the server again', async ({ page }) => {
     if (one.url().includes('onemobility.rhythm')) asked.push(one.url())
   })
 
-  // The facet bar's controls are Comboboxes with a button trigger — the value
+  // The narrowing bar's controls are Comboboxes with a button trigger — the
   // list is long enough on a real network that it has to be searchable — so
-  // the trigger is a button carrying the facet's name, not a `<select>`.
-  const bar = screen.locator('[data-slot="facet-bar"]')
+  // value is chosen rather than typed, so the trigger is a button carrying
+  // the facet's name and not a `<select>`. `docs/UNIFICATION.md` §B2.
+  const bar = screen.locator('[data-slot="narrow"]')
   await bar.getByRole('button', { name: 'Line' }).click()
   await page.getByRole('option').first().click()
 
@@ -163,9 +164,12 @@ test('a record carries its own name over to the screen that can say how it ran',
   // A line, a stop and a vehicle are documents; how each of them ran is not —
   // it is in the fact tiers, outside the document system, and no dashboard
   // widget over `tabTransit Line` reaches it. So the record hands its name to
-  // Insights through the engine's screen-action, and the facet bar there
+  // Insights through the engine's screen-action, and the narrowing bar there
   // arrives with that one thing chosen.
-  await page.goto('/one/space/onemobility?screen=insights&vehicle=zz-1041')
+  // Through `narrow`, which is the one declared parameter for it — §C4. It
+  // was one query key per facet, so `?vehicle=` was a parameter nothing
+  // declared and no reader could place.
+  await page.goto('/one/space/onemobility?screen=insights&narrow=vehicle:zz-1041')
   const screen = page.locator('[data-slot="insights"]')
   await screen.waitFor({ timeout: 30_000 })
 
@@ -175,7 +179,7 @@ test('a record carries its own name over to the screen that can say how it ran',
     'aria-selected', 'true', { timeout: 20_000 },
   )
   await expect(
-    screen.locator('[data-slot="facet-bar"]').getByRole('button', { name: /1041/ }),
+    screen.locator('[data-slot="narrow"]').getByRole('button', { name: /1041/ }),
   ).toBeVisible({ timeout: 20_000 })
 })
 
@@ -231,7 +235,7 @@ test('a facet this tier cannot answer is refused before it is used', async ({ pa
   // `serviceHour` is rolled per line and per hour and has no vehicle column,
   // so the network tab cannot narrow by one — and says so before anybody
   // chooses, rather than accepting the choice and quietly ignoring it.
-  const bar = screen.locator('[data-slot="facet-bar"]')
+  const bar = screen.locator('[data-slot="narrow"]')
   await expect(bar.getByRole('button', { name: 'Vehicle' })).toBeDisabled()
 
   // The fleet tab is rolled per vehicle per day, so there it is a real
@@ -409,6 +413,49 @@ test('the outlook reads the same tier forward, and says what it rests on', async
   const scored = page.locator('[data-slot="outlook-accuracy"]')
   await expect(scored).toContainText('Inside the range')
   await expect(scored).toContainText('written down the night before')
+  expectNoRealErrors(errors)
+})
+
+test('what the vehicles say about themselves reaches the screen', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await page.goto('/one/space/onemobility?screen=insights')
+  await page.getByText('The vehicles', { exact: true }).click()
+
+  // The list that earns the tier: a state still in force, with how long it
+  // has been in force, measured against now rather than against a later row
+  // — because there is no later row, which is what makes it still true.
+  const attention = page.locator('[data-slot="attention"]')
+  await attention.waitFor({ timeout: 30_000 })
+  await expect(attention).toContainText('right now')
+  await expect(attention.locator('[data-slot="attention-row"]').first()).toContainText('min')
+
+  // And attributed. A count nobody can trace to a VDV part is a count nobody
+  // can check against their own supplier.
+  await expect(attention).toContainText('301-2')
+
+  // The measured dwell beside the inferred one, named rather than merged: a
+  // fleet that half-reports has to be able to see which half.
+  for (const line of ['At the doors', 'From positions']) {
+    await expect(page.getByText(line, { exact: true })).toBeVisible({ timeout: 20_000 })
+  }
+  await expect(page.locator('[data-slot="event-kinds"]')).toContainText('door')
+  expectNoRealErrors(errors)
+})
+
+test('the same tier is read forward, as how often a day breaks', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await page.goto('/one/space/onemobility?screen=outlook')
+
+  // The event tier's own forecast, beside the service one. A counted
+  // frequency rather than a normal tail — see `forecast.faults` — so the
+  // panel says how many of that weekday it rests on rather than only a
+  // percentage.
+  const panel = page.locator('[data-slot="outlook-faults"]')
+  await panel.waitFor({ timeout: 30_000 })
+  await expect(panel).toContainText('usually costs')
+  await expect(panel).toContainText('The hour to staff')
+  await expect(panel).toContainText(/Across \d+ of them|Only \d+ of them/)
+  await expect(page.getByText('When things break', { exact: true })).toBeVisible()
   expectNoRealErrors(errors)
 })
 

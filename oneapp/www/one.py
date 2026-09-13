@@ -1,7 +1,9 @@
 import frappe
 from frappe.utils import get_system_timezone
 
+from oneapp.api import number_formats
 from oneapp.onespace import basemap, branding
+from oneapp.onestorage import limits
 from oneapp.onespace.ai import settings as ai_settings
 
 # The SPA owns routing under /one, so every path below it serves the same shell
@@ -57,6 +59,14 @@ def get_context(context):
 		# guest gets it too: the workspace's own language is the one its link
 		# bar should be reading in.
 		"lang": frappe.local.lang or "en",
+		# How this workspace writes a date, a time and a number. Before first
+		# paint for the same reason the language is: a list draws numbers in
+		# its first frame, and a column that reads `1,234.50` and then
+		# `1.234,50` a round trip later is worse than one that was always
+		# right. It is also what makes the settings a person can change on the
+		# Regional screen actually reach the product — they wrote through to
+		# System Settings and nothing read them back. See `lib/format`.
+		"formats": number_formats(),
 	}
 
 	if not guest:
@@ -75,6 +85,11 @@ def get_context(context):
 		# answer and an air-gapped install changes it in one place. See
 		# `onespace/basemap.py`.
 		context.boot["basemap"] = basemap.boot()
+		# How big a file may be, here. Before first paint because the sentence
+		# belongs *under* the attach control rather than after it: a limit read
+		# once the file has been chosen and sent is a limit somebody has
+		# already spent a minute on. See `onestorage/limits.py`.
+		context.boot["limits"] = limits.boot()
 
 	context.no_cache = 1
 	return context

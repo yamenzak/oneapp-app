@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import { notifyError, notifySuccess } from '@/shared/lib/runtime/notify'
 import { saveCsv } from '@/modules/onestorage/lib/download'
 import { workspace } from '@/shared/lib/workspace'
+import { __ } from '@/shared/lib/runtime/translate'
+import { number as count } from '@/shared/lib/runtime/format'
 
 /**
  * Everything the selection bar and the footer do to more than one record.
@@ -29,12 +31,23 @@ export function useBulkActions({ spaceCode, spec, selection, payload, reloadRows
   const refused = (rows) =>
     notifyError(rows.map((row) => `${row.name}: ${row.reason}`).join('\n'))
 
+  /**
+   * Run one bulk verb and say what happened.
+   *
+   * `said` is a function of the count rather than a word to glue a number
+   * onto. `${said} ${n}` read correctly in English and nowhere else: the verb
+   * and the number landed in the catalogue as two things, a translator saw
+   * the verb alone, and a language that puts the count first had no way to
+   * say so. It was also invisible to the i18n guard, because the reader
+   * extracted quoted strings and this was a template literal —
+   * `docs/UNIFICATION.md` §D2.
+   */
   const through = async (work, said, close) => {
     bulking.value = true
     try {
       const result = await work()
       if (result?.refused?.length) refused(result.refused)
-      if (result?.done?.length) notifySuccess(`${said} ${result.done.length}`)
+      if (result?.done?.length) notifySuccess(said(result.done.length))
       close.value = false
       selection.value = []
       await reloadRows()
@@ -48,14 +61,14 @@ export function useBulkActions({ spaceCode, spec, selection, payload, reloadRows
   const bulkSet = ({ field, value }) =>
     through(
       () => workspace.screenBulkSet(spaceCode, spec.value.screen, selection.value, field, value),
-      'Changed',
+      (n) => __('Changed {0}', [n]),
       bulkEditing,
     )
 
   const bulkAssign = (users) =>
     through(
       () => workspace.screenBulkAssign(spaceCode, spec.value.screen, selection.value, users),
-      'Assigned',
+      (n) => __('Assigned {0}', [n]),
       bulkAssigning,
     )
 
@@ -69,14 +82,14 @@ export function useBulkActions({ spaceCode, spec, selection, payload, reloadRows
   const bulkSubmit = () =>
     through(
       () => workspace.screenBulkSubmit(spaceCode, spec.value.screen, selection.value),
-      'Submitted',
+      (n) => __('Submitted {0}', [n]),
       bulkEditing,
     )
 
   const bulkCancel = () =>
     through(
       () => workspace.screenBulkCancel(spaceCode, spec.value.screen, selection.value),
-      'Cancelled',
+      (n) => __('Cancelled {0}', [n]),
       confirmBulkCancel,
     )
 
@@ -105,7 +118,7 @@ export function useBulkActions({ spaceCode, spec, selection, payload, reloadRows
       confirmDelete.value = false
       selection.value = (result?.refused || []).map((row) => row.name)
       if (result?.refused?.length) refused(result.refused)
-      else notifySuccess(`Deleted ${result?.deleted?.length || 0}`)
+      else notifySuccess(__('Deleted {0}', [result?.deleted?.length || 0]))
       await reloadRows()
     } finally {
       deleting.value = false
@@ -140,9 +153,9 @@ export function useBulkActions({ spaceCode, spec, selection, payload, reloadRows
       // about to add it up.
       notifySuccess(
         file?.capped
-          ? `The first ${file.rows.toLocaleString()} rows — this screen has more than ` +
-            `${file.limit.toLocaleString()}, which is the most one file carries.`
-          : `${(file?.rows || 0).toLocaleString()} rows exported`,
+          ? `The first ${count(file.rows, 0)} rows — this screen has more than ` +
+            `${count(file.limit, 0)}, which is the most one file carries.`
+          : `${count(file?.rows || 0, 0)} rows exported`,
       )
     } catch (e) {
       notifyError(e)

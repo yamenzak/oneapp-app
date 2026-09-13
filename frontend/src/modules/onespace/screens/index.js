@@ -15,10 +15,15 @@ import { defineAsyncComponent } from 'vue'
 export const APP_COMPONENTS = {
   // 'crm/pipeline': () => import('@/modules/onespace/screens/crm/Pipeline.vue'),
 
-  // The operator console's two surfaces that are genuinely not lists.
+  // The operator console's surfaces that are genuinely not lists.
   // Registered here rather than in the control app because this is where the
   // shell resolves them. They call whitelisted methods on the same site: on a
   // tenant, the space that names them does not exist.
+  //
+  // Attention is first on the rail and first here for the same reason: it is
+  // the only screen that says something is wrong without being asked. The
+  // other twenty-odd are places to go looking.
+  'onespace-ops/attention': () => import('@/modules/onespace/screens/ops/Attention.vue'),
   'onespace-ops/readiness': () => import('@/modules/onespace/screens/ops/Readiness.vue'),
   'onespace-ops/press': () => import('@/modules/onespace/screens/ops/FrappeCloud.vue'),
   'onespace-ops/tenant': () => import('@/modules/onespace/screens/ops/Tenant.vue'),
@@ -32,7 +37,7 @@ export const APP_COMPONENTS = {
   'onespace-account/billing': () => import('@/modules/onespace/screens/account/Billing.vue'),
   'onespace-account/plan': () => import('@/modules/onespace/screens/account/Plan.vue'),
 
-  // OneMobility's three screens that are not lists: a map of a moving fleet
+  // OneMobility's screens that are not lists: a map of a moving fleet
   // with a time scrubber, the aggregate tier as plots, and the same tier read
   // about a day that has not happened. Registered here for the same reason the
   // operator's are — this is where the shell resolves a `component`. None of
@@ -42,6 +47,7 @@ export const APP_COMPONENTS = {
   'onemobility/insights': () => import('@/modules/onemobility/components/Insights.vue'),
   'onemobility/outlook': () => import('@/modules/onemobility/components/Outlook.vue'),
   'onemobility/plan': () => import('@/modules/onemobility/components/Timetable.vue'),
+  'onemobility/protocols': () => import('@/modules/onemobility/components/Protocols.vue'),
 }
 
 /**

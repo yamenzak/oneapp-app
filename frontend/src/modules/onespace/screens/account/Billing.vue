@@ -7,13 +7,13 @@
 <template>
   <WorkspaceBar />
 
-  <div class="mx-auto w-full max-w-[940px] px-3 pb-10 sm:px-5">
+  <div class="mx-auto w-full max-w-measure px-3 pb-10 sm:px-5">
   <div v-if="data" class="flex flex-col gap-6 py-5">
     <section>
       <div class="flex items-start justify-between gap-4 rounded-6 border border-outline-gray-2 p-4">
         <div>
-          <p class="text-base-medium text-ink-gray-8">{{ data.plan.name }}</p>
-          <p class="mt-0.5 text-p-sm text-ink-gray-6">
+          <p class="text-base-medium text-ink-primary">{{ data.plan.name }}</p>
+          <p class="mt-0.5 text-p-sm text-ink-secondary">
             <template v-if="data.subscription">
               {{ __('{0} · renews {1}', [
                 data.subscription.interval,
@@ -32,15 +32,15 @@
         </div>
         <Button :label="__('Manage billing')" :loading="opening" @click="openPortal" />
       </div>
-      <p class="mt-2 text-p-sm text-ink-gray-5">
+      <p class="mt-2 text-p-sm text-ink-muted">
         {{ __('Change your card, download an invoice or cancel from there.') }}
       </p>
     </section>
 
     <section>
-      <h3 class="mb-1 text-base-medium text-ink-gray-8">{{ __('Add-ons') }}</h3>
-      <p class="mb-3 text-p-sm text-ink-gray-6">
-        {{ __('Extra room, billed with your plan and charged from the day you add it. It is not paid for with AI credits.') }}
+      <h3 class="mb-1 text-base-medium text-ink-primary">{{ __('Add-ons') }}</h3>
+      <p class="mb-3 text-p-sm text-ink-secondary">
+        {{ __('Extra room, billed with your plan from the day you add it. Not paid for with credits.') }}
       </p>
 
       <Alert v-if="!addons.can_buy" theme="amber" :title="__('No plan yet')">
@@ -70,20 +70,20 @@
 
     <section>
       <div class="mb-1 flex items-baseline justify-between gap-3">
-        <h3 class="text-base-medium text-ink-gray-8">{{ __('AI credits') }}</h3>
-        <span class="text-p-sm tabular-nums text-ink-gray-6">
-          {{ __('{0} available', [Math.round(data.credits.available).toLocaleString()]) }}
+        <h3 class="text-base-medium text-ink-primary">{{ __('AI credits') }}</h3>
+        <span class="text-p-sm tabular-nums text-ink-secondary">
+          {{ __('{0} available', [count(Math.round(data.credits.available), 0)]) }}
         </span>
       </div>
-      <p class="mb-3 text-p-sm text-ink-gray-6">
-        {{ __('Your plan adds credits every month and they expire at the end of it. Credits you buy roll over and are spent last.') }}
+      <p class="mb-3 text-p-sm text-ink-secondary">
+        {{ __('Plan credits expire at the end of the month. Credits you buy roll over and are spent last.') }}
       </p>
 
-      <div class="grid gap-3 sm:grid-cols-3">
+      <div class="grid gap-3 md:grid-cols-3">
         <PackCard
           v-for="pack in packs.credits"
           :key="pack.code"
-          :title="__('{0} credits', [Number(pack.credits).toLocaleString()])"
+          :title="__('{0} credits', [count(Number(pack.credits), 0)])"
           :price="pack.amount"
           :currency="pack.currency"
           :description="pack.description"
@@ -106,21 +106,21 @@
           <ListRow :value="value">
             <ListCell>
               <div class="min-w-0">
-                <p class="truncate text-p-sm text-ink-gray-8">{{ row.entry_type }}</p>
-                <p v-if="row.remarks" class="truncate text-xs text-ink-gray-5">
+                <p class="truncate text-sm text-ink-primary">{{ row.entry_type }}</p>
+                <p v-if="row.remarks" class="truncate text-xs text-ink-muted">
                   {{ row.remarks }}
                 </p>
               </div>
             </ListCell>
             <ListCell v-if="historyShows('when')">
-              <span class="text-p-sm text-ink-gray-5">{{ formatDate(row.creation) }}</span>
+              <span class="text-p-sm text-ink-muted">{{ formatDate(row.creation) }}</span>
             </ListCell>
             <ListCell>
               <span
                 class="text-p-sm tabular-nums"
-                :class="row.credits < 0 ? 'text-ink-red-3' : 'text-ink-gray-8'"
+                :class="row.credits < 0 ? 'text-ink-red-3' : 'text-ink-primary'"
               >
-                {{ row.credits > 0 ? '+' : '' }}{{ Math.round(row.credits).toLocaleString() }}
+                {{ row.credits > 0 ? '+' : '' }}{{ count(Math.round(row.credits), 0) }}
               </span>
             </ListCell>
           </ListRow>
@@ -129,17 +129,17 @@
     </section>
 
     <section v-if="invoices.length">
-      <h3 class="mb-3 text-base-medium text-ink-gray-8">{{ __('Invoices') }}</h3>
+      <h3 class="mb-3 text-base-medium text-ink-primary">{{ __('Invoices') }}</h3>
       <!-- Narrowed rather than dropped: three short cells all fit a phone once
            the two fixed tracks stop being sized for a desktop. -->
       <List :columns="invoiceColumns" :row-height="52" class="px-3" divider="full">
         <ListRows :items="invoices" row-key="name" v-slot="{ item: inv, value }">
           <ListRow :value="value">
             <ListCell>
-              <span class="text-p-sm text-ink-gray-8">{{ formatDate(inv.posting_date) }}</span>
+              <span class="text-p-sm text-ink-primary">{{ formatDate(inv.posting_date) }}</span>
             </ListCell>
             <ListCell>
-              <span class="text-p-sm tabular-nums text-ink-gray-7">
+              <span class="text-p-sm tabular-nums text-ink-secondary">
                 {{ inv.currency }} {{ inv.grand_total }}
               </span>
             </ListCell>
@@ -153,7 +153,7 @@
   </div>
 
   <div v-else class="grid place-items-center py-16">
-    <LoadingIndicator class="size-5 text-ink-gray-5" />
+    <LoadingIndicator class="size-5 text-ink-muted" />
   </div>
   </div>
 </template>
@@ -161,7 +161,7 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Alert, Badge, Button, LoadingIndicator, List, ListRows, ListRow, ListCell, dayjsLocal } from '@/ui'
+import { Alert, Badge, Button, LoadingIndicator, List, ListRows, ListRow, ListCell } from '@/ui'
 import WorkspaceBar from '@/modules/onespace/screens/account/WorkspaceBar.vue'
 import { useWorkspace } from '@/modules/onespace/screens/account/workspace'
 import PackCard from '@/modules/onespace/screens/account/PackCard.vue'
@@ -171,6 +171,8 @@ import { useListColumns } from '@/modules/onespace/lib/screen/list'
 import { customer, useOverview } from '@/modules/onespace/screens/account/customer'
 import { notifyInfo, notifySuccess } from '@/shared/lib/runtime/notify'
 import { __ } from '@/shared/lib/runtime/translate'
+import { date } from '@/shared/lib/runtime/format'
+import { number as count } from '@/shared/lib/runtime/format'
 
 const { columns: invoiceColumns } = useListColumns([
   { key: 'date', header: __('Date'), track: 'minmax(0,1fr)' },
@@ -217,10 +219,10 @@ onMounted(() => {
   router.replace({ query })
 })
 
-// dayjsLocal, not dayjs: the value is stored in the site's timezone, and
+// not dayjs: the value is stored in the site's timezone, and
 // reading it as local puts an invoice on the wrong day for anyone far
 // enough east or west of the server.
-const formatDate = (value) => (value ? dayjsLocal(value).format('D MMM YYYY') : '—')
+const formatDate = (value) => (value ? date(value) : '—')
 
 async function openPortal() {
   opening.value = true

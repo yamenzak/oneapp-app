@@ -11,9 +11,7 @@
     permission path each screen uses.
   -->
   <PageHeader>
-    <nav data-slot="breadcrumb" aria-label="Breadcrumb" class="flex min-w-0 items-center">
-      <Breadcrumbs :items="[{ label: __('Calendar'), route: { name: 'Calendar' } }]" />
-    </nav>
+    <Trail :items="crumbs" />
 
     <!-- The one thing this surface writes. Everything else on the grid is a
          record under a screen's rules, and New there means New *there*. -->
@@ -52,9 +50,14 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Alert, Breadcrumbs, Button, Calendar, PageHeader } from '@/ui'
+import { Alert, Button, Calendar, PageHeader } from '@/ui'
+import Trail from '@/shared/components/Trail.vue'
+import { useCrumbs } from '@/shared/composables/useCrumbs'
 import EventDialog from '@/modules/onecalendar/components/EventDialog.vue'
 import { workspace } from '@/shared/lib/workspace'
+import { KIND, writeAt } from '@/shared/lib/url/at'
+import { useIsMobile } from '@/modules/onespace/lib/shell/breakpoint'
+import { settings } from '@/shared/lib/runtime/format'
 import { errorText } from '@/shared/lib/runtime/errors'
 import { __ } from '@/shared/lib/runtime/translate'
 import { diary, diaryEvents, showing } from '@/modules/onespace/lib/screen/diary'
@@ -63,8 +66,23 @@ import { diary, diaryEvents, showing } from '@/modules/onespace/lib/screen/diary
  * Read-only, and more firmly than the screen calendar is: every entry here
  * belongs to a different doctype under a different screen's rules, so dragging
  * one would be writing a field on a record this surface knows nothing about.
+ *
+ * And a day on a phone — §E6. A month grid at 390px is thirty-one cells four
+ * characters wide, which is a month you can count but not read; what a person
+ * with a phone in their hand is asking is "what have I got on". That is the
+ * component's own `Day` mode rather than a media query over the month, which
+ * is the audit's point: it is a different view, not a narrower one. The
+ * switcher stays, so somebody who does want the month can still have it.
  */
-const CONFIG = { isEditMode: false, defaultMode: 'Month' }
+const phone = useIsMobile()
+const CONFIG = computed(() => ({
+  isEditMode: false,
+  defaultMode: phone.value ? 'Day' : 'Month',
+  // The clock the workspace set — §D1. The grid was on the component's own
+  // default, so a workspace on a 24-hour clock everywhere else had one
+  // surface saying 2 PM.
+  timeFormat: settings().time.includes('a') ? '12h' : '24h',
+}))
 
 const router = useRouter()
 
@@ -101,7 +119,7 @@ function open(event) {
   router.push({
     name: 'Screen',
     params: { spaceCode: found.space },
-    query: { screen: found.screen, record: found.record },
+    query: { screen: found.screen, at: writeAt(KIND.RECORD, found.record) },
   })
 }
 
@@ -135,4 +153,7 @@ async function moved({ startDate, endDate }) {
     error.value = errorText(raised)
   }
 }
+
+// One root for every surface — §C1.
+const crumbs = useCrumbs({ label: __('Calendar'), route: { name: 'Calendar' } })
 </script>

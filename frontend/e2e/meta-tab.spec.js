@@ -13,7 +13,7 @@ const openFirst = async (page, baseURL, screen) => {
   await signIn(page, baseURL)
   await page.goto(`/one/space/zzmock?screen=${screen}&type=list`)
   await page.locator('[data-slot="list-row"]').first().click()
-  await page.locator('[data-slot="record-pane"]').waitFor({ timeout: 15_000 })
+  await page.locator('[data-slot="object-pane"]').waitFor({ timeout: 15_000 })
 }
 
 test('the record says who made it, and when, on its own tab', async ({
@@ -79,7 +79,7 @@ test('a doctype that allows it can be renamed, and the URL follows', async ({
     await expect(page.locator('[data-slot="record-id"]')).toHaveText(now, {
       timeout: 45_000,
     })
-    await expect(page).toHaveURL(new RegExp(`record=${now}`))
+    await expect(page).toHaveURL(new RegExp(`at=record:${now}`))
   } finally {
     await restore(page, was)
   }

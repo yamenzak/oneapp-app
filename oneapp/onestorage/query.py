@@ -13,7 +13,10 @@ a filter on `owner` over a query that was already permission-scoped.
 import frappe
 from frappe import _
 
-from .kinds import ACTIVE, KIND_FIELD, OPENED_FIELD, STATUS_FIELD, TEMPLATE_FIELD, TRASHED
+from .kinds import (
+    ACTIVE, KIND_FIELD, OPENED_FIELD, PLACE_FOR, STATUS_FIELD, TEMPLATE_FIELD,
+    TRASHED,
+)
 
 # Frappe's own root folder. Every file is somewhere under it.
 ROOT = "Home"
@@ -46,7 +49,27 @@ ALL = "all"
 # tab draws the Drive's own rows rather than a second list that looks like them.
 RECORD = "record"
 
-PLACES = (HOME, RECENTS, FAVOURITES, SHARED, TEMPLATES, TRASH, ALL, RECORD)
+# The same query, walked rather than filtered. `record` answers "what is filed
+# against *this* one"; this is the tree over all of them — a directory per kind
+# of record, and one per record inside it — which is what a mounted
+# `doctype:Quotation` already presents over WebDAV. The Drive draws the same
+# tree from the same resolver, because a rail place and a mount that disagree
+# about what a record has on it would be two answers to one question.
+#
+# Not a filter, so it has no entry in `ORDER` and no clause in
+# `_place_filters`: `reading.listing` hands it to `scopes.py` instead. It is in
+# `PLACES` because that is the list the endpoint validates against, and a place
+# the client may ask for has to be in it.
+RECORDS = "records"
+
+# What somebody made here rather than uploaded: Documents and Workbooks, one
+# place per kind in `kinds.PLACE_FOR`. Derived rather than listed, so a third
+# editor gets its place by declaring the kind — which is the thing that did not
+# happen for the first two.
+EDITED = {place: kind for kind, place in PLACE_FOR.items()}
+
+PLACES = (HOME, RECENTS, FAVOURITES, SHARED, TEMPLATES, TRASH, ALL, RECORD,
+          RECORDS, *EDITED)
 
 # Where each place looks and how it is ordered. `order` is the reader's default;
 # a column header still overrides it.
@@ -59,6 +82,9 @@ ORDER = {
     TRASH: "custom_trashed_on desc",
     ALL: "modified desc",
     RECORD: "creation desc",
+    RECORDS: "creation desc",
+    # What you were working on, which is the question a home screen answers.
+    **{place: "modified desc" for place in EDITED},
 }
 
 
@@ -121,13 +147,27 @@ def _place_filters(place: str, folder: str = "", kind: str = "",
 
     if place == HOME:
         # A folder is a place, and the top of the drive is what sits in `Home`.
-        # Frappe's own attachments land in `Home/Attachments`, which is a
-        # folder like any other and shows as one.
         filters["folder"] = folder or ["in", ["", "Home", None]]
         # `Home` is the drive, not a thing inside it. Its own `folder` is
         # empty, so without this the root lists itself and clicking it is a
         # loop back to where you already are.
         filters["name"] = ["!=", ROOT]
+        if not folder:
+            # And not the attachments, which since §E1 have no folder at all:
+            # they belong to a record and live in the Records tree. Without
+            # this clause, dropping Frappe's `Home/Attachments` bucket would
+            # put every attachment in the workspace at the top of the drive,
+            # which is worse than the bucket was.
+            #
+            # Only at the root. A file that is both attached and filed into a
+            # folder somebody made shows in that folder, which is the whole of
+            # what "it can have both" means.
+            #
+            # `is not set` and not `in ["", None]`: a NULL never matches
+            # anything inside an SQL `IN`, so that spelling would have hidden
+            # every file that is *not* attached — which is all of them at the
+            # root, and is what it did.
+            filters["attached_to_doctype"] = ["is", "not set"]
     elif place == FAVOURITES:
         filters["_liked_by"] = ["like", f"%{frappe.session.user}%"]
     elif place == SHARED:
@@ -138,6 +178,12 @@ def _place_filters(place: str, folder: str = "", kind: str = "",
         filters[OPENED_FIELD] = ["is", "set"]
     elif place == TEMPLATES:
         filters[TEMPLATE_FIELD] = 1
+    elif place in EDITED:
+        # A flat list of one kind, wherever it sits — the folder it is filed in
+        # is not the question "show me my documents" is asking. The root is
+        # excluded for the same reason Home excludes it: it is the drive.
+        filters[KIND_FIELD] = EDITED[place]
+        filters["name"] = ["!=", ROOT]
     elif place == ALL:
         # No folder clause at all. The only thing excluded is the root itself,
         # for the same reason Home excludes it: it is the drive, not a file.

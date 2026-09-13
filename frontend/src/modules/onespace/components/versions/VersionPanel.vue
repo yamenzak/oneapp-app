@@ -15,7 +15,7 @@
     :aria-label="__('Version history')"
   >
     <div class="flex shrink-0 items-center justify-between gap-2 border-b border-outline-gray-1 px-4 py-3">
-      <p class="text-p-base font-medium text-ink-gray-8">{{ __('Version history') }}</p>
+      <p class="text-p-base font-medium text-ink-primary">{{ __('Version history') }}</p>
       <Button
         variant="ghost"
         icon="lucide-x"
@@ -37,46 +37,55 @@
       <p v-if="error" class="mt-2 text-p-xs text-ink-red-3">{{ error }}</p>
     </div>
 
-    <FadedScroll class="min-h-0 flex-1">
-      <div v-if="loading && !groups.length" class="flex flex-col gap-2 p-3">
-        <Skeleton v-for="n in 6" :key="n" class="h-10 w-full" />
-      </div>
-
-      <EmptyState
-        v-else-if="!groups.length"
-        icon="lucide-history"
-        :title="__('No earlier versions yet')"
-        :description="__('One is kept the first time this is saved, and every few minutes of work after that.')"
-      />
-
-      <div v-else class="flex flex-col gap-3 p-3">
-        <section v-for="group in groups" :key="group.label" class="flex flex-col gap-1">
-          <p class="px-1 text-p-xs font-medium uppercase tracking-wide text-ink-gray-5">
+    <FadedScroll class="min-h-0 flex-1 p-3">
+      <!--
+        The frame is `DataList` — §B1. A row here is a *day*, not a version:
+        the grouping is the server's and the section is what this panel draws
+        per row.
+      -->
+      <DataList
+        :source="source"
+        :skeleton="6"
+        skeleton-class="h-10 w-full"
+        body-class="gap-3"
+      >
+        <template #row="{ row: group }">
+        <section class="flex flex-col gap-1">
+          <p class="px-1 text-p-xs font-medium uppercase tracking-wide text-ink-muted">
             {{ group.label }}
           </p>
-          <div
+          <!--
+            The row is a container rather than the control, which is the one
+            shape `<Row>` cannot collapse: a menu button inside a `<button>`
+            is invalid markup, so the version stays a `Button` and the menu
+            stays beside it. What `<Row>` brings is the leading edge on the
+            current version and the pad, both of which were spelled here.
+          -->
+          <Row
             v-for="one in group.versions"
             :key="one.name"
-            class="rounded-6 px-2 py-1.5 hover:bg-surface-gray-2"
-            :class="one.current ? 'bg-surface-gray-2' : ''"
+            edge="rounded"
+            pad="tight"
+            align="start"
+            :open="one.current"
           >
-            <div class="flex items-start gap-2">
-              <Button
-                variant="ghost"
-                class="!h-auto min-w-0 flex-1 !justify-start !px-2 !py-1.5"
-                :label="__('Look at {0}', [one.title])"
-                @click="emit('preview', one)"
-              >
-                <span class="w-full min-w-0 text-start">
-                  <span class="flex items-center gap-1 truncate text-p-sm text-ink-gray-8">
-                    {{ one.title }}
-                    <Badge v-if="one.current" theme="green" :label="__('Current')" size="sm" />
-                  </span>
-                  <span class="block truncate text-p-xs font-normal text-ink-gray-5">
-                    {{ said(one) }}
-                  </span>
+            <Button
+              variant="ghost"
+              class="!h-auto w-full !justify-start !px-2 !py-1.5"
+              :label="__('Look at {0}', [named(one)])"
+              @click="emit('preview', one)"
+            >
+              <span class="w-full min-w-0 text-start">
+                <span class="flex items-center gap-1 truncate text-sm text-ink-primary">
+                  {{ named(one) }}
+                  <Badge v-if="one.current" theme="green" :label="__('Current')" size="sm" />
                 </span>
-              </Button>
+                <span class="block truncate text-xs font-normal text-ink-muted">
+                  {{ said(one) }}
+                </span>
+              </span>
+            </Button>
+            <template #trail>
               <Dropdown :options="menu(one)">
                 <Button
                   variant="ghost"
@@ -85,10 +94,11 @@
                   :tooltip="__('What to do with this version')"
                 />
               </Dropdown>
-            </div>
-          </div>
+            </template>
+          </Row>
         </section>
-      </div>
+        </template>
+      </DataList>
     </FadedScroll>
   </aside>
 
@@ -103,7 +113,7 @@
         :placeholder="__('Signed off by the client')"
         @keyup.enter="keep"
       />
-      <p class="mt-2 text-p-xs text-ink-gray-5">
+      <p class="mt-2 text-p-xs text-ink-muted">
         {{ __('A named version is never thinned out. The automatic ones are, once they are old enough to be too many.') }}
       </p>
     </template>
@@ -114,14 +124,17 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
-import { Badge, Button, Dialog, Dropdown, FormControl, Skeleton, dayjsLocal } from '@/ui'
-import EmptyState from '@/shared/components/EmptyState.vue'
+import { Badge, Button, Dialog, Dropdown, FormControl } from '@/ui'
+import DataList from '@/shared/components/DataList.vue'
 import FadedScroll from '@/shared/components/FadedScroll.vue'
+import Row from '@/shared/components/Row.vue'
+import { staticSource } from '@/shared/lib/list/source'
 import { useSaving } from '@/shared/composables/useSaving'
 import { workspace } from '@/shared/lib/workspace'
 import { __ } from '@/shared/lib/runtime/translate'
+import { ago, moment } from '@/shared/lib/runtime/format'
 
 const props = defineProps({
   file: { type: String, required: true },
@@ -143,9 +156,37 @@ const title = ref('')
 const { saving, error, attempt } = useSaving()
 const { saving: loading, attempt: attemptLoad } = useSaving(error)
 
+/**
+ * The days this file has versions on, and what this panel can do with them
+ * — §B1.
+ *
+ * Nothing but draw them. The order is the server's and it is the only order
+ * a history has; searching a list whose rows are dates would be searching for
+ * a date, which the grouping already answers.
+ */
+const source = computed(() => staticSource({
+  rows: groups.value,
+  key: (group) => group.label,
+  // The rows are fetched, not held: without this the frame would read the
+  // empty array it starts with as "no versions" and say so for as long as the
+  // read takes.
+  loading: loading.value,
+  empty: {
+    icon: 'lucide-history',
+    title: __('No earlier versions yet'),
+    description: __('One is kept the first time this is saved, and every few minutes of work after that.'),
+  },
+}))
+
+// What a version is called. A named one says its name; an unnamed one says
+// when it was taken — here rather than stored on the row, because a stored
+// timestamp is one the reader's browser can never convert into their own
+// timezone or their workspace's date format. See `docs/UNIFICATION.md` §D1.
+const named = (one) => one.title || moment(one.at)
+
 const said = (one) => [
   one.by,
-  one.at ? dayjsLocal(one.at).fromNow() : '',
+  one.at ? ago(one.at) : '',
   one.saves ? __('{0} changes', [one.saves]) : '',
 ].filter(Boolean).join(' · ')
 

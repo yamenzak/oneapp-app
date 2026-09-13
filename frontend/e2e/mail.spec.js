@@ -55,7 +55,7 @@ test('a conversation is one row, and opening it is a place you can link to', asy
   await row.click()
 
   // The thread is in the query string, not in a ref beside it.
-  await expect(page).toHaveURL(/thread=/)
+  await expect(page).toHaveURL(/at=thread:/)
   await expect(messages(page)).toHaveCount(2)
 
   // Oldest first — the order it happened, which is the only order a reply
@@ -815,10 +815,11 @@ test('an attachment shows its size and opens in the previewer', async ({
   // The size the server always sent and the old anchor never rendered.
   await expect(chip).toContainText('130 B')
 
-  // The Drive's own previewer, not a second one: a mail attachment is the same
-  // `File` row, so it reads text inline and offers the same Share and Download.
+  // The Drive's own pane, not a second one: a mail attachment is the same
+  // `File` row, so it reads text inline and offers the same Share and Download
+  // — and since §C2 it opens beside the message rather than over it.
   await chip.click()
-  const preview = page.getByRole('dialog')
+  const preview = page.locator('[data-slot="object-pane"]')
   await expect(preview).toContainText('Zone 3 glazing line moved')
   await expect(preview.getByRole('button', { name: 'Share a link' })).toBeVisible()
 
@@ -943,7 +944,7 @@ test('conversations are archived together, and Undo puts them back', async ({
   // `input[...]` because frappe-ui's Checkbox puts a fallthrough attribute on
   // both its wrapper and the control inside it.
   await row.locator('input[data-slot="mail-pick"]').click()
-  await expect(page).not.toHaveURL(/thread=/)
+  await expect(page).not.toHaveURL(/at=thread:/)
   await expect(page.getByText('1 selected')).toBeVisible()
 
   await page.getByRole('button', { name: 'Archive' }).click()
@@ -973,7 +974,7 @@ test('the keyboard opens a conversation, ticks it, and says what it can do', asy
   // `j` walks the list, and walking it opens what it lands on: this is a
   // two-pane reader, so "go to the next conversation" and "show it" are one.
   await page.keyboard.press('j')
-  await expect(page).toHaveURL(/thread=/)
+  await expect(page).toHaveURL(/at=thread:/)
 
   // `x` ticks what is open.
   await page.keyboard.press('x')
@@ -1003,8 +1004,8 @@ test('a shortcut does not fire while somebody is typing', async ({
 
   // `e` is archive. Typed into the search box it is a letter, and a mail
   // reader that files the conversation you are looking for is not one.
-  await page.locator('[data-slot="mail-search"]').fill('quotation')
-  await expect(page.locator('[data-slot="mail-search"]')).toHaveValue('quotation')
+  await page.locator('[data-slot="list-search"] input').fill('quotation')
+  await expect(page.locator('[data-slot="list-search"] input')).toHaveValue('quotation')
   await expect(page.locator('[data-slot="mail-undo"]')).toHaveCount(0)
 
   expectNoRealErrors(errors)
@@ -1130,7 +1131,7 @@ test('search takes from: and has:attachment, and means them', async ({
 
   await signIn(page, baseURL)
   await page.goto('/one/mail')
-  const box = page.locator('[data-slot="mail-search"]')
+  const box = page.locator('[data-slot="list-search"] input')
   await expect(threads(page).first()).toBeVisible()
 
   // Everything Hala sent — which on this fixture is everything received.

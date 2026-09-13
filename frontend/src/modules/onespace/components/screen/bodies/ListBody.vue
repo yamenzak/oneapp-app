@@ -37,7 +37,7 @@
     <template #header-__activity="{ pinned, style }">
       <ListHeaderCell class="justify-end" :class="pinned" :style="style">
         <template #prefix>
-          <span class="whitespace-nowrap text-p-xs text-ink-gray-5">{{ counted }}</span>
+          <span class="whitespace-nowrap text-xs text-ink-muted">{{ counted }}</span>
         </template>
         <template #suffix>
           <Button
@@ -63,6 +63,8 @@
       <RowMeta
         v-else-if="column.cell === 'meta'"
         :meta="row._meta || {}"
+        :menu="verbs(row)"
+        :menu-label="__('What to do with {0}', [titleOf(row)])"
         @like="emit('like', row)"
       />
       <!--
@@ -101,13 +103,13 @@
     <template v-if="report" #total="{ column }">
       <span
         v-if="column.key === first && hasTotals"
-        class="text-p-sm font-medium text-ink-gray-7"
+        class="text-p-sm font-medium text-ink-secondary"
       >
         {{ __('Total') }}
       </span>
       <span
         v-else-if="totals[column.key] !== undefined"
-        class="tabular-nums text-p-sm font-medium text-ink-gray-8"
+        class="tabular-nums text-p-sm font-medium text-ink-primary"
       >
         {{ money(totals[column.key], column.column) }}
       </span>
@@ -127,6 +129,8 @@ import RowMeta from '@/modules/onespace/components/screen/bodies/RowMeta.vue'
 import { formatNumber } from '@/modules/onespace/lib/screen/format'
 import { isNumericCell } from '@/modules/onespace/lib/screen/fields'
 import { session } from '@/modules/onespace/lib/shell/session'
+import { rowState } from '@/shared/lib/rowstate'
+import { notifyError, notifySuccess } from '@/shared/lib/runtime/notify'
 
 const props = defineProps({
   /** The resolved screen: columns, title field, states, permissions. */
@@ -153,7 +157,64 @@ const props = defineProps({
   groupTotals: { type: Object, default: () => ({}) },
 })
 
-const emit = defineEmits(['open', 'like', 'sort', 'favourites', 'change', 'resize'])
+const emit = defineEmits([
+  'open', 'like', 'sort', 'favourites', 'change', 'resize',
+  'duplicate', 'remove',
+])
+
+/**
+ * What can be done to one row, from the row.
+ *
+ * Four, and every one of them was already reachable somewhere else and
+ * nowhere near the row: Open was a click with nothing saying so, Copy link
+ * and Duplicate were inside the record you had to open first, and Delete was
+ * in the *bulk* bar — so deleting one record meant opening it, closing it,
+ * ticking its box and using the multi-record path. §B3's parity table is the
+ * whole argument.
+ *
+ * The verbs a *source* declares — B1's `actions(rows)` — will replace this
+ * list rather than add to it, and that is why the shape is already the one a
+ * `Dropdown` takes.
+ */
+const verbs = (row) => {
+  const found = [
+    { key: 'open', label: __('Open'), icon: 'lucide-arrow-up-right', onClick: () => emit('open', row) },
+    { key: 'link', label: __('Copy link'), icon: 'lucide-link', onClick: () => copyLink(row) },
+  ]
+  if (props.spec?.can_create) {
+    found.push({
+      key: 'duplicate',
+      label: __('Duplicate'),
+      icon: 'lucide-copy-plus',
+      onClick: () => emit('duplicate', row),
+    })
+  }
+  if (props.spec?.can_delete) {
+    found.push({
+      key: 'delete',
+      label: __('Delete for ever'),
+      icon: 'lucide-trash-2',
+      theme: 'red',
+      onClick: () => emit('remove', row),
+    })
+  }
+  return found
+}
+
+const titleOf = (row) => row?.[props.spec?.title_field] || row?.name || ''
+
+// The same address the record pane is at, which is what makes a copied link
+// open the thing rather than the list it was in.
+const copyLink = async (row) => {
+  const url = new URL(window.location.href)
+  url.searchParams.set('record', row.name)
+  try {
+    await navigator.clipboard.writeText(url.toString())
+    notifySuccess(__('Link copied'))
+  } catch (raised) {
+    notifyError(raised)
+  }
+}
 
 /**
  * A report rather than a list: cells you can type into, a row of totals, and a
@@ -172,13 +233,18 @@ const chosen = defineModel('selection', { type: Array, default: () => [] })
  * which row you were reading. Scroll twenty rows and the pane belonged to
  * nobody.
  *
- * A tint rather than the selection's checkbox: ticking rows is a different
- * statement, and a person acting on four ticked rows while a fifth is open
- * must be able to tell the two apart at a glance.
+ * An *edge* rather than a tint, which is what lets the open row also be
+ * hovered and also be ticked without three fills fighting over one
+ * background — `lib/rowstate.js` has the whole of it. A tint here was half
+ * the answer: ticking rows is a different statement, and a person acting on
+ * four ticked rows while a fifth is open must tell the two apart at a glance.
  */
-const rowProps = (row) => (row?.name && row.name === props.openRecord
-  ? { class: 'bg-surface-gray-2', 'aria-current': 'true' }
-  : {})
+const rowProps = (row) => {
+  const open = Boolean(row?.name && row.name === props.openRecord)
+  return open
+    ? { class: rowState({ open }), 'aria-current': 'true' }
+    : { class: rowState() }
+}
 
 const META_FIELD = '__activity'
 

@@ -84,7 +84,7 @@ test('an entry opens the record it belongs to, on its own screen', async ({
   // event belongs to the workspace rather than to this person.
   await page.getByText('Van collection').click()
   await expect(page).toHaveURL(/space\/zzmock/)
-  await expect(page).toHaveURL(/record=/)
+  await expect(page).toHaveURL(/at=record:/)
 
   expectNoRealErrors(errors)
 })
@@ -123,7 +123,7 @@ test('an event of your own is written, edited and taken away again', async ({
   await page.getByText(subject).click()
   await expect(page.getByRole('dialog').getByText('Edit event')).toBeVisible()
 
-  await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('dialog').getByRole('button', { name: 'Delete for ever' }).click()
   await expect(page.getByText(subject)).toBeHidden({ timeout: 15_000 })
 
   expectNoRealErrors(errors)

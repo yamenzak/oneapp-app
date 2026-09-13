@@ -28,8 +28,8 @@
 
       <div class="flex flex-col gap-2">
         <div class="flex items-baseline justify-between">
-          <h3 class="text-p-sm font-medium text-ink-gray-8">{{ here }}</h3>
-          <p class="text-p-xs text-ink-gray-5">
+          <h3 class="text-p-sm font-medium text-ink-primary">{{ here }}</h3>
+          <p class="text-p-xs text-ink-muted">
             {{ __('Drag to reorder, or use the arrows') }}
           </p>
         </div>
@@ -38,26 +38,15 @@
              otherwise push the add box off the bottom of a laptop. -->
         <FadedScroll class="max-h-[26rem]">
           <ul class="flex flex-col gap-1.5 pe-1">
-            <li
-              v-for="(column, index) in chosen"
-              :key="column.fieldname"
-              draggable="true"
-              data-slot="column-row"
-              class="flex flex-col gap-2 rounded-6 border border-outline-gray-2 bg-surface-base p-2"
-              :class="dragging === index && 'opacity-50'"
-              @dragstart="dragging = index"
-              @dragend="dragging = null"
-              @dragover.prevent
-              @drop="dropOn(index)"
-            >
+            <Panel as="li" pad="tight" v-for="(column, index) in chosen" :key="column.fieldname" draggable="true" data-slot="column-row" class="flex flex-col gap-2" :class="dragging === index && 'opacity-50'" @dragstart="dragging = index" @dragend="dragging = null" @dragover.prevent @drop="dropOn(index)">
               <!-- What it is, and what can be done to it whole. -->
               <div class="flex items-center gap-1.5">
                 <Icon
                   name="lucide-grip-vertical"
                   class="size-3.5 shrink-0 cursor-grab text-ink-gray-4"
                 />
-                <Icon :name="iconFor(column)" class="size-3.5 shrink-0 text-ink-gray-5" />
-                <span class="min-w-0 flex-1 truncate text-p-sm text-ink-gray-8">
+                <Icon :name="iconFor(column)" class="size-3.5 shrink-0 text-ink-muted" />
+                <span class="min-w-0 flex-1 truncate text-sm text-ink-primary">
                   {{ labelFor(column) }}
                 </span>
 
@@ -101,7 +90,7 @@
               -->
               <div class="flex flex-wrap items-center gap-x-4 gap-y-2 ps-6">
                 <div v-if="has('align')" class="flex items-center gap-1.5">
-                  <span class="text-p-xs text-ink-gray-5">{{ __('Align') }}</span>
+                  <span class="text-p-xs text-ink-muted">{{ __('Align') }}</span>
                   <TabButtons
                     :model-value="column.align || ''"
                     :options="ALIGN"
@@ -111,7 +100,7 @@
                 </div>
 
                 <div v-if="has('pin')" class="flex items-center gap-1.5">
-                  <span class="text-p-xs text-ink-gray-5">{{ __('Pin') }}</span>
+                  <span class="text-p-xs text-ink-muted">{{ __('Pin') }}</span>
                   <TabButtons
                     :model-value="column.pin || ''"
                     :options="PIN"
@@ -121,7 +110,7 @@
                 </div>
 
                 <div v-if="has('width')" class="flex items-center gap-1.5">
-                  <span class="text-p-xs text-ink-gray-5">{{ __('Width') }}</span>
+                  <span class="text-p-xs text-ink-muted">{{ __('Width') }}</span>
                   <!-- `aria-label` rather than `label`: FormControl renders a
                        label visibly above the field, which in a row this dense
                        wraps and pushes everything else out of shape. -->
@@ -135,15 +124,15 @@
                   />
                 </div>
               </div>
-            </li>
+            </Panel>
           </ul>
         </FadedScroll>
       </div>
 
       <div v-if="unused.length" class="flex flex-col gap-2">
         <div class="flex items-baseline justify-between">
-          <h3 class="text-p-sm font-medium text-ink-gray-8">{{ __('Add a column') }}</h3>
-          <p class="text-p-xs text-ink-gray-5">
+          <h3 class="text-p-sm font-medium text-ink-primary">{{ __('Add a column') }}</h3>
+          <p class="text-p-xs text-ink-muted">
             {{ leftNote }}
           </p>
         </div>
@@ -161,7 +150,7 @@
               :label="column.label"
               @click="add(column)"
             />
-            <p v-if="!matching.length" class="px-2 py-1 text-p-sm text-ink-gray-5">
+            <p v-if="!matching.length" class="px-2 py-1 text-p-sm text-ink-muted">
               {{ __('Nothing matches “{0}”.', [search]) }}
             </p>
           </div>
@@ -180,6 +169,7 @@ import { computed, ref } from 'vue'
 import { Button, Dialog, FormControl, Icon, TabButtons } from '@/ui'
 import FadedScroll from '@/shared/components/FadedScroll.vue'
 import { __ } from '@/shared/lib/runtime/translate'
+import Panel from '@/shared/components/Panel.vue'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },

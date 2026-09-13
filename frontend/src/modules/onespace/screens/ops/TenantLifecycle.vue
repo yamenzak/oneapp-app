@@ -8,8 +8,8 @@
     -->
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
-        <p class="text-base-medium text-ink-gray-8">{{ headline }}</p>
-        <p class="mt-0.5 text-p-sm text-ink-gray-5">{{ detail }}</p>
+        <p class="text-base-medium text-ink-primary">{{ headline }}</p>
+        <p class="mt-0.5 text-p-sm text-ink-muted">{{ detail }}</p>
       </div>
 
       <div class="flex shrink-0 flex-wrap gap-2">
@@ -45,7 +45,7 @@
 
     <Alert v-if="held" theme="amber" :title="__('Held out of the lifecycle')" class="mt-4">
       <template #description>
-        {{ __('Nothing is suspended, archived or deleted while this is set. The clock keeps running — releasing resumes at whatever rung the dates say.') }}
+        {{ __('Nothing is suspended, archived or deleted while this is set. The clock keeps running underneath.') }}
       </template>
     </Alert>
 
@@ -54,7 +54,7 @@
     </Alert>
 
     <div v-if="loading && !data" class="grid place-items-center py-12">
-      <LoadingIndicator class="size-5 text-ink-gray-5" />
+      <LoadingIndicator class="size-5 text-ink-muted" />
     </div>
 
     <template v-else-if="data">
@@ -62,17 +62,17 @@
         <ListRows :items="rows" row-key="label" v-slot="{ item: row, value }">
           <ListRow :value="value" class="py-3">
             <ListCell>
-              <span class="text-p-sm text-ink-gray-6">{{ row.label }}</span>
+              <span class="text-p-sm text-ink-secondary">{{ row.label }}</span>
             </ListCell>
             <ListCell>
               <Badge v-if="row.badge" :theme="row.badge" :label="row.value" variant="subtle" />
-              <span v-else class="truncate text-p-sm text-ink-gray-8">{{ row.value }}</span>
+              <span v-else class="truncate text-sm text-ink-primary">{{ row.value }}</span>
             </ListCell>
           </ListRow>
         </ListRows>
       </List>
 
-      <p class="mt-6 text-base-medium text-ink-gray-8">{{ __('What has happened') }}</p>
+      <p class="mt-6 text-base-medium text-ink-primary">{{ __('What has happened') }}</p>
       <EmptyState
         v-if="!events.length"
         icon="lucide-clock"
@@ -93,19 +93,60 @@
           <ListRow :value="value">
             <ListCell>
               <div class="min-w-0">
-                <p class="truncate text-base text-ink-gray-8">{{ row.event }}</p>
-                <p class="truncate text-xs text-ink-gray-5">{{ row.reason || '—' }}</p>
+                <p class="truncate text-base text-ink-primary">{{ row.event }}</p>
+                <p class="truncate text-xs text-ink-muted">{{ row.reason || '—' }}</p>
               </div>
             </ListCell>
             <ListCell v-if="eventShows('by')">
               <Badge :label="row.triggered_by || __('Sweep')" theme="gray" variant="subtle" />
             </ListCell>
             <ListCell>
-              <span class="truncate text-p-sm text-ink-gray-6">{{ when(row.occurred_on) }}</span>
+              <span class="truncate text-sm text-ink-secondary">{{ when(row.occurred_on) }}</span>
             </ListCell>
           </ListRow>
         </ListRows>
       </List>
+
+      <!--
+        Who has been in here, and why they said they were.
+
+        On the workspace rather than only on the fleet-wide Support logins
+        screen, because the question is asked about *one* workspace, usually
+        on a call, and answering it used to mean leaving the record to filter
+        a list. The fleet screen stays: "what did we do to everybody last
+        week" is a different question and a real one.
+
+        Silent when nobody has. An empty state here would be a heading and a
+        shrug on every workspace nobody has ever had to help.
+      -->
+      <template v-if="logins.length">
+        <p class="mt-6 text-base-medium text-ink-primary">{{ __('Who has signed in') }}</p>
+        <List :columns="fieldTracks" divider="full" class="mt-3">
+          <ListRows :items="logins" row-key="name" v-slot="{ item: row, value }">
+            <ListRow :value="value" class="py-3">
+              <ListCell>
+                <div class="min-w-0">
+                  <p class="truncate text-sm text-ink-primary">{{ row.operator }}</p>
+                  <p class="truncate text-xs text-ink-muted">{{ row.reason || '—' }}</p>
+                </div>
+              </ListCell>
+              <ListCell>
+                <div class="flex min-w-0 items-center gap-2">
+                  <Badge
+                    v-if="!row.succeeded"
+                    theme="red"
+                    :label="__('Refused')"
+                    variant="subtle"
+                  />
+                  <span class="truncate text-sm text-ink-secondary">
+                    {{ when(row.logged_in_on) }}
+                  </span>
+                </div>
+              </ListCell>
+            </ListRow>
+          </ListRows>
+        </List>
+      </template>
     </template>
   </div>
 </template>
@@ -114,12 +155,13 @@
 import { computed, ref, watch } from 'vue'
 import {
   Alert, Badge, Button, LoadingIndicator,
-  List, ListHeader, ListHeaderCell, ListRows, ListRow, ListCell, dayjsLocal,
-} from '@/ui'
+  List, ListHeader, ListHeaderCell, ListRows, ListRow, ListCell, } from '@/ui'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { useListColumns } from '@/modules/onespace/lib/screen/list'
 import { admin } from '@/modules/onespace/screens/ops/admin'
 import { __ } from '@/shared/lib/runtime/translate'
+import { date, moment } from '@/shared/lib/runtime/format'
+import { sizeText } from '@/shared/lib/files/size'
 
 const props = defineProps({
   tenant: { type: String, required: true },
@@ -168,6 +210,7 @@ const backup = computed(() => data.value?.backup || {})
 const quota = computed(() => data.value?.quota || {})
 const windows = computed(() => data.value?.windows || {})
 const events = computed(() => data.value?.events || [])
+const logins = computed(() => data.value?.logins || [])
 
 const held = computed(() => Boolean(ladder.value.held))
 const canRestore = computed(() =>
@@ -182,7 +225,7 @@ const toggleHold = () =>
 const headline = computed(() => {
   if (!data.value) return __('Lifecycle')
   if (!ladder.value.started_on) return __('Not on the lifecycle ladder')
-  return __('On the ladder since {0}', [date(ladder.value.started_on)])
+  return __('On the ladder since {0}', [day(ladder.value.started_on)])
 })
 
 const detail = computed(() => {
@@ -202,36 +245,33 @@ const detail = computed(() => {
   }[ladder.value.stage] || __('Unpaid, and the next sweep decides what happens.')
 })
 
-const date = (value) => (value ? dayjsLocal(value).format('D MMM YYYY') : '—')
-const when = (value) => (value ? dayjsLocal(value).format('D MMM YYYY, HH:mm') : '—')
+// A dash where a workspace has not reached that rung yet — `date()`
+// answers an empty string, and an empty cell in a ladder reads as a
+// missing value rather than a stage nobody has got to.
+const day = (value) => date(value) || '—'
+const when = (value) => (value ? moment(value) : '—')
 
-const bytes = (value) => {
-  const n = Number(value) || 0
-  if (!n) return '—'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.min(Math.floor(Math.log(n) / Math.log(1024)), units.length - 1)
-  return `${(n / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
+const bytes = (value) => sizeText(value, { blank: '—' })
 
 const rows = computed(() => {
   if (!data.value) return []
 
   const out = [
     { label: __('Rung'), value: ladder.value.stage || __('Not on the ladder') },
-    { label: __('Unpaid since'), value: date(ladder.value.started_on) },
-    { label: __('Switched off'), value: date(ladder.value.suspended_on) },
-    { label: __('Archived'), value: date(ladder.value.archived_on) },
+    { label: __('Unpaid since'), value: day(ladder.value.started_on) },
+    { label: __('Switched off'), value: day(ladder.value.suspended_on) },
+    { label: __('Archived'), value: day(ladder.value.archived_on) },
   ]
 
   if (ladder.value.purge_after) {
     out.push({
       label: __('Deleted after'),
-      value: date(ladder.value.purge_after),
+      value: day(ladder.value.purge_after),
       // Red rather than plain: this is the one date after which nothing can
       // be recovered, and it should not read like the others.
       badge: 'red',
     })
-    out.push({ label: __('Warned on'), value: date(ladder.value.purge_warned_on) })
+    out.push({ label: __('Warned on'), value: day(ladder.value.purge_warned_on) })
   }
   if (ladder.value.purged_on) {
     out.push({ label: __('Deleted'), value: when(ladder.value.purged_on), badge: 'red' })

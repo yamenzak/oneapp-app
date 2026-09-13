@@ -11,6 +11,7 @@ import { computed, ref, watch } from 'vue'
 
 import { workspace } from '@/shared/lib/workspace'
 import { PAGE, declared, remember, remembered } from '@/modules/onespace/lib/screen/surfaces'
+import { KIND, atOf, pushAt, withAt, writeAt } from '@/shared/lib/url/at'
 
 export function useRecordSurface({ spaceCode, spec, route, router, reloadList }) {
   const editing = ref(null)
@@ -33,7 +34,7 @@ export function useRecordSurface({ spaceCode, spec, route, router, reloadList })
   /**
    * Whether the open record takes the page rather than a pane beside the list:
    * the reader's answer where they have given one, the manifest's otherwise.
-   * Nothing here asks the viewport — the phone's answer is `RecordPane`'s and
+   * Nothing here asks the viewport — the phone's answer is `ObjectPane`'s and
    * it wins either way.
    */
   const asPage = computed(
@@ -48,7 +49,7 @@ export function useRecordSurface({ spaceCode, spec, route, router, reloadList })
   }
 
   const open = (row) => {
-    router.push({ query: { ...route.query, record: row.name } })
+    router.push({ query: withAt(route.query, KIND.RECORD, row.name) })
   }
 
   /**
@@ -66,10 +67,10 @@ export function useRecordSurface({ spaceCode, spec, route, router, reloadList })
     if (!name) return
     const where = screen || route.query.screen
     if (asPage.value) {
-      router.push({ query: { ...route.query, peek: name, peekScreen: where } })
+      router.push({ query: pushAt(route.query, KIND.PEEK, name, where) })
       return
     }
-    router.push({ query: { screen: where, record: name } })
+    router.push({ query: { screen: where, at: writeAt(KIND.RECORD, name) } })
   }
 
   // Opening it is a fetch rather than a read of the row: the list carries the
@@ -93,10 +94,8 @@ export function useRecordSurface({ spaceCode, spec, route, router, reloadList })
 
   const closeRecord = () => {
     editing.value = null
-    if (!route.query.record) return
-    const query = { ...route.query }
-    delete query.record
-    router.replace({ query })
+    if (!atOf(route.query, KIND.RECORD)) return
+    router.replace({ query: withAt(route.query, null) })
   }
 
   // Somebody else saved it while this was open, and the reader asked for their
@@ -119,18 +118,25 @@ export function useRecordSurface({ spaceCode, spec, route, router, reloadList })
     await openRecord(name)
   }
 
+  // Gone. The pane shuts and the list behind it has one row fewer — and it
+  // has to be told, because nothing else on this screen knows.
+  const recordRemoved = async () => {
+    closeRecord()
+    await reloadList()
+  }
+
   // The record's id changed, so the URL points at something that no longer
   // exists. Replaced rather than pushed: leaving it in the history is leaving a
   // 404 in it.
   const recordRenamed = async (name) => {
     if (!name) return
-    await router.replace({ query: { ...route.query, record: name } })
+    await router.replace({ query: withAt(route.query, KIND.RECORD, name) })
     await reloadList()
   }
 
   return {
     shownRecord, asPage, setSurface,
-    open, openElsewhere, openRecord, closeRecord,
+    open, openElsewhere, openRecord, closeRecord, recordRemoved,
     reloadRecord, recordSaved, recordRenamed,
   }
 }

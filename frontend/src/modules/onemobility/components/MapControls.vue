@@ -16,8 +16,7 @@
     class="pointer-events-auto absolute end-4 top-[5.5rem] z-10 flex flex-col gap-2"
     data-slot="map-controls"
   >
-    <div class="flex flex-col overflow-hidden rounded-6 border border-outline-gray-2
-                bg-surface-elevation-2 shadow-sm">
+    <Panel ground="raised" pad="none" elevation="floating" class="flex flex-col overflow-hidden">
       <Popover v-model:open="layersOpen" align="end">
         <template #trigger>
           <Button
@@ -36,13 +35,13 @@
               once is mud.
             -->
             <div class="flex flex-col gap-1.5" data-slot="overlay-picker">
-              <p class="text-xs font-medium text-ink-gray-7">{{ __('Show over the map') }}</p>
+              <p class="text-xs font-medium text-ink-secondary">{{ __('Show over the map') }}</p>
               <Select
                 :model-value="overlay"
                 :options="overlayOptions"
                 @update:model-value="(one) => emit('update:overlay', one)"
               />
-              <p v-if="overlayNow.hint" class="text-xs leading-snug text-ink-gray-5">
+              <p v-if="overlayNow.hint" class="text-xs leading-snug text-ink-muted">
                 {{ overlayNow.hint() }}
               </p>
             </div>
@@ -53,7 +52,7 @@
               to one question.
             -->
             <div class="flex flex-col gap-2 border-t border-outline-gray-1 pt-3">
-              <p class="text-xs font-medium text-ink-gray-7">{{ __('The network itself') }}</p>
+              <p class="text-xs font-medium text-ink-secondary">{{ __('The network itself') }}</p>
               <Switch
                 :model-value="showRoutes" size="sm" :label="__('Routes')"
                 @update:model-value="(one) => emit('update:showRoutes', one)"
@@ -94,7 +93,7 @@
         <template #default>
           <div class="flex w-[min(17rem,90vw)] flex-col gap-3 p-3" data-slot="ground-picker">
             <div class="flex flex-col gap-1.5">
-              <p class="text-xs font-medium text-ink-gray-7">{{ __('Basemap') }}</p>
+              <p class="text-xs font-medium text-ink-secondary">{{ __('Basemap') }}</p>
               <Select
                 :model-value="ground.pick"
                 :options="groundOptions"
@@ -108,13 +107,13 @@
                 :label="__('Name places')"
                 @update:model-value="(one) => emit('ground', { labels: one })"
               />
-              <p class="text-xs font-medium text-ink-gray-7">{{ __('How much is drawn') }}</p>
+              <p class="text-xs font-medium text-ink-secondary">{{ __('How much is drawn') }}</p>
               <Select
                 :model-value="ground.detail"
                 :options="detailOptions"
                 @update:model-value="(one) => emit('ground', { detail: one })"
               />
-              <p class="text-xs leading-snug text-ink-gray-5">
+              <p class="text-xs leading-snug text-ink-muted">
                 {{ __('Everyone on this workspace sees what you choose here.') }}
               </p>
             </div>
@@ -141,7 +140,7 @@
           <MarkerPicker :styles="styles" :may-write="mayStyle" @pick="onPick" />
         </template>
       </Popover>
-    </div>
+    </Panel>
 
     <!--
       Standing on its own, below the rail and only while it applies: leaving
@@ -168,6 +167,7 @@ import MarkerPicker from '@/modules/onemobility/components/MarkerPicker.vue'
 import { overlayFor } from '@/modules/onemobility/lib/layers'
 import { __ } from '@/shared/lib/runtime/translate'
 import { Button, Popover, Select, Switch } from '@/ui'
+import Panel from '@/shared/components/Panel.vue'
 
 const props = defineProps({
   overlay: { type: String, default: 'none' },

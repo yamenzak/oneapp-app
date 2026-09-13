@@ -50,7 +50,7 @@
       -->
       <div
         v-if="preview"
-        class="h-[62vh] overflow-hidden rounded-6 border border-outline-gray-2 bg-white"
+        class="h-overlay overflow-hidden rounded-6 border border-outline-gray-2 bg-white"
       >
         <LoadingText v-if="rendering" class="p-6" :text="__('Rendering')" />
         <iframe
@@ -62,13 +62,13 @@
         />
       </div>
 
-      <div v-else class="flex h-[62vh] gap-3">
+      <div v-else class="flex h-overlay gap-3">
         <!-- What can go on the page. Dragged onto a column, or clicked to land
              in the last one that was touched. -->
         <div class="w-52 shrink-0 overflow-y-auto rounded-6 border border-outline-gray-2">
           <div v-for="group in groups" :key="group.key" class="flex flex-col">
             <span
-              class="sticky top-0 bg-surface-gray-1 px-3 py-1.5 text-p-xs font-medium text-ink-gray-6"
+              class="sticky top-0 bg-surface-gray-1 px-3 py-1.5 text-p-xs font-medium text-ink-secondary"
             >
               {{ group.label }}
             </span>
@@ -93,7 +93,7 @@
         </div>
 
         <!-- The page. -->
-        <div class="flex-1 overflow-y-auto rounded-6 border border-outline-gray-2 bg-surface-gray-1 p-4">
+        <Panel ground="sunken" class="flex-1 overflow-y-auto">
           <div class="mx-auto flex max-w-3xl flex-col gap-3">
             <BuilderZone
               zone="header"
@@ -108,7 +108,7 @@
               @justify="justify(layout.header, $event)"
             />
 
-            <div class="flex flex-col gap-3 rounded-6 bg-surface-elevation-1 p-4 shadow-sm">
+            <div class="flex flex-col gap-3 rounded-6 bg-surface-elevation-1 p-4 shadow-raised">
               <BuilderZone
                 v-for="(section, index) in layout.sections"
                 :key="index"
@@ -145,7 +145,7 @@
               @justify="justify(layout.footer, $event)"
             />
           </div>
-        </div>
+        </Panel>
 
         <div class="w-64 shrink-0 rounded-6 border border-outline-gray-2">
           <BuilderInspector
@@ -188,6 +188,7 @@ import { workspace } from '@/shared/lib/workspace'
 import { errorText } from '@/shared/lib/runtime/errors'
 import { useSaving } from '@/shared/composables/useSaving'
 import { __ } from '@/shared/lib/runtime/translate'
+import Panel from '@/shared/components/Panel.vue'
 
 const props = defineProps({
   doctype: { type: String, required: true },

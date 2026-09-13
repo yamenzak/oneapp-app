@@ -182,7 +182,8 @@ def _attachable(space_code: str, screen: str, name: str) -> str:
 
 @frappe.whitelist(methods=["GET"])
 def attachments(space_code: str, screen: str, name: str,
-                fieldname: str | None = None) -> dict:
+                fieldname: str | None = None,
+                start: int = 0, limit: int = 0) -> dict:
 	"""Everything filed against one record.
 
 	Frappe's own File rows, which is what the desk's sidebar lists and what an
@@ -201,20 +202,51 @@ def attachments(space_code: str, screen: str, name: str,
 	filters = {"attached_to_doctype": doctype, "attached_to_name": name}
 	filters.update(_gallery_filters(space_code, screen, fieldname))
 
+	# Not what is in the bin, and through the Drive's own `_visible()` rather
+	# than a second spelling of it — a file predating the status field has no
+	# status at all, so `!= Trashed` would hide every one of them.
+	#
+	# This list did not exclude the bin, so binning a file from the record's
+	# Files tab left the row exactly where it was and pressing the verb again
+	# did nothing visible a second time. The bin is thirty days of reversible,
+	# not a second place the same file is.
+	from oneapp.onestorage.query import _visible
+
+	filters.update(_visible())
+
 	# The Drive's fields and the Drive's shaping, because a record's Files tab
 	# is the Drive filtered to one record — see `docs/DRIVE.md`. Two lists that
 	# looked alike would be two places to add a column to, and the tab would be
 	# the one that never got it.
 	from oneapp.onestorage import reading
 
+	# One page at a time, the same way every other file list reads — see
+	# `shared/lib/list/files.js`. A record with three hundred attachments used
+	# to send all three hundred to draw the first screenful of them.
+	#
+	# `limit` of zero still means all of them: the Attachment Gallery and the
+	# record panel's count both want the whole set, and neither draws a list
+	# somebody scrolls.
+	limit = max(0, int(limit or 0))
+	start = max(0, int(start or 0))
 	found = frappe.get_all(
 		"File",
 		filters=filters,
 		fields=sorted(set(FILE_FIELDS) | set(reading.FIELDS)),
 		order_by="creation desc",
+		limit_start=start,
+		limit_page_length=(limit + 1) if limit else 0,
 	)
+	more = bool(limit) and len(found) > limit
+	if more:
+		found = found[:limit]
 	reading._shape(found)
-	return {"files": found, "doctype": doctype}
+	# How many there are, not how many were sent. The record panel's
+	# Attachments row says a number and a paged list can only see its own
+	# page, so the count is asked for rather than inferred — one `count` over
+	# filters the query above just used, and only when a page was asked for.
+	total = frappe.db.count("File", filters) if limit else len(found)
+	return {"files": found, "more": more, "total": total, "doctype": doctype}
 
 
 def _gallery_filters(space_code: str, screen: str, fieldname: str | None) -> dict:

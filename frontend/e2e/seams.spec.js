@@ -50,7 +50,7 @@ test('a child table opens in a sheet, headings and all', async ({ page }, info) 
   // Still there behind it. By slot rather than by role: a modal takes the rest
   // of the page out of the accessibility tree, which is the whole point of a
   // modal and would make `getByRole` answer "gone" about a record that is not.
-  await expect(page.locator('[data-slot="record-pane"]')).toBeAttached()
+  await expect(page.locator('[data-slot="object-pane"]')).toBeAttached()
 
   // Which sheet, from the dialog rather than from a URL there no longer is.
   const name = await held.getAttribute('data-sheet')
@@ -127,11 +127,11 @@ test('a document marked as a template is one the editor offers to load', async (
   await page.waitForURL(/\/one\/docs\//, { timeout: 30_000 })
   await expect(page.locator('.ProseMirror').first()).toBeVisible()
 
-  await page.getByRole('button', { name: 'What to do with this document' }).click()
-  await page.getByRole('menuitem', { name: 'Rename' }).click()
-  const renaming = page.getByRole('dialog').filter({ hasText: 'Rename' })
-  await renaming.getByRole('textbox', { name: 'Name' }).fill(title)
-  await renaming.getByRole('button', { name: 'Rename' }).click()
+  // In the bar, not in a dialog off the menu — §E2/E3. The sheet's title has
+  // always worked this way and the document's is the one that moved.
+  const naming = page.locator('[data-slot="editor-title"]')
+  await naming.fill(title)
+  await naming.blur()
 
   await page.getByRole('button', { name: 'What to do with this document' }).click()
   await page.getByRole('menuitem', { name: 'Use as a template' }).click()

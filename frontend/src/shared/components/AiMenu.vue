@@ -19,10 +19,18 @@
 -->
 <template>
   <Dropdown v-if="offered.length" :options="options" :align="align">
+    <!--
+      The mark keeps its word on a desktop and loses it on a phone — §D4.
+      "Write with Rua" is four times the width of the glyph and it was taking
+      that width out of the document's own title at 390px. `label` stays
+      either way: on an icon-only `Button` it is the accessible name, which is
+      the pattern every other icon button here uses.
+    -->
     <Button
       :variant="variant"
-      icon-left="lucide-sparkles"
-      :label="label || __('Write with AI')"
+      :icon="phone ? 'lucide-sparkles' : undefined"
+      :icon-left="phone ? undefined : 'lucide-sparkles'"
+      :label="label || __('Write with {0}', [assistantName])"
       :loading="busy"
       :disabled="disabled"
       data-slot="ai-menu"
@@ -46,7 +54,7 @@
         @keydown.enter.meta="write()"
         @keydown.enter.ctrl="write()"
       />
-      <p class="mt-2 text-p-xs text-ink-gray-5">
+      <p class="mt-2 text-p-xs text-ink-muted">
         {{ __('It writes from what is on this screen and invents nothing. Check it before it goes out.') }}
       </p>
     </template>
@@ -67,6 +75,8 @@ import { Button, Dialog, Dropdown, FormControl } from '@/ui'
 
 import { writingVerbs } from '@/shared/lib/ai/verbs'
 import { __ } from '@/shared/lib/runtime/translate'
+import { assistantName } from '@/modules/onespace/lib/shell/assistant'
+import { useIsMobile } from '@/modules/onespace/lib/shell/breakpoint'
 
 const props = defineProps({
   /**
@@ -84,6 +94,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['ask'])
+
+const phone = useIsMobile()
 
 const declared = writingVerbs()
 

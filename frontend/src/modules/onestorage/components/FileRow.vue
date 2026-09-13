@@ -17,9 +17,7 @@
       grid
         ? 'flex flex-col gap-2 rounded-6 border border-outline-gray-1 p-3'
         : 'flex items-center gap-2 rounded-4 pe-2',
-      selected ? 'bg-surface-gray-2' : 'hover:bg-surface-gray-2',
-      over ? 'ring-2 ring-outline-gray-3' : '',
-      lifted ? 'opacity-50' : '',
+      rowState({ selected, drop: over, lifted }),
     ]"
     @contextmenu="emit('menu', menu)"
     @dragstart="onDragStart"
@@ -34,7 +32,7 @@
          visible text, and forty rows captioned "Select Perspective.jpg" is a
          column of instructions. -->
     <Checkbox
-      v-if="selectable"
+      v-if="selectable && !remote"
       :model-value="selected"
       :aria-label="__('Select {0}', [file.file_name])"
       class="ms-2.5 shrink-0"
@@ -69,7 +67,7 @@
       class="flex min-w-0 flex-1 rounded-4 px-2 py-2"
       :class="grid ? '!px-0 !py-0' : ''"
       :to="file.is_folder
-        ? { name: 'Drive', query: { place: 'home', folder: file.name } }
+        ? { name: 'Drive', query: { place, folder: file.name } }
         : link"
       @click.capture="onOpen"
     >
@@ -95,7 +93,7 @@
       <!-- The heart is the whole of Favourites: `_liked_by` on the row, which
            the framework keeps on every doctype. -->
       <Button
-        v-if="actions"
+        v-if="actions && !remote"
         icon="lucide-heart"
         variant="ghost"
         :class="file.liked ? 'text-ink-red-3' : 'text-ink-gray-4'"
@@ -113,7 +111,7 @@
       <template v-if="!grid">
         <Avatar
           v-if="file.owner_person?.label && !dense"
-          class="hidden sm:flex"
+          class="hidden md:flex"
           size="sm"
           :label="file.owner_person.label"
           :image="file.owner_person.image"
@@ -123,35 +121,45 @@
              the name. -->
         <span
           v-if="!dense"
-          class="hidden w-24 shrink-0 text-p-xs text-ink-gray-5 sm:block"
+          class="hidden w-24 shrink-0 text-p-xs text-ink-muted md:block"
         >
           {{ when }}
         </span>
       </template>
 
-      <Dropdown v-if="menu.length" :options="menu" align="end">
-        <Button
-          data-slot="drive-more"
-          icon="lucide-ellipsis-vertical"
-          variant="ghost"
-          :label="__('More for {0}', [file.file_name])"
-          :tooltip="__('More')"
-        />
-      </Dropdown>
+      <!-- The same menu a record's row has, in the same place, revealed the
+           same way — `shared/components/RowMenu.vue`. -->
+      <RowMenu
+        v-if="menu.length"
+        :items="menu"
+        :label="__('What to do with {0}', [file.file_name])"
+      />
     </div>
   </div>
 </template>
 
 <script setup>
 import { computed, ref } from 'vue'
-import { Avatar, Button, Checkbox, Dropdown, dayjsLocal } from '@/ui'
+import { Avatar, Button, Checkbox } from '@/ui'
+import RowMenu from '@/shared/components/RowMenu.vue'
 import FileFace from '@/modules/onestorage/components/FileFace.vue'
 import { __ } from '@/shared/lib/runtime/translate'
+import { ago } from '@/shared/lib/runtime/format'
+import { rowState } from '@/shared/lib/rowstate'
 
 const props = defineProps({
   file: { type: Object, required: true },
   grid: { type: Boolean, default: false },
   // Off in the picker, which offers one file and has nothing to do in bulk.
+  /**
+   * Which place this row is in, so walking into a folder stays in it.
+   *
+   * It was `'home'` outright, which was true while every folder was a real
+   * `File` under the drive. The Records place is a tree — `Quotation` then
+   * `QTN-0001` — and a row there that linked to `place=home` would walk out of
+   * the tree on the first click.
+   */
+  place: { type: String, default: 'home' },
   selectable: { type: Boolean, default: false },
   selected: { type: Boolean, default: false },
   // Off in the picker too: a rename control behind an Attach field is a control
@@ -210,15 +218,36 @@ function onOpen(event) {
 
 const emit = defineEmits([
   'open', 'select', 'favourite', 'share', 'rename', 'move', 'trash', 'restore',
-  'destroy', 'menu', 'move-into',
+  'destroy', 'menu', 'move-into', 'copy',
 ])
+
+/**
+ * A file on a mounted host, which is not a row here at all.
+ *
+ * Nothing that writes is offered on one: there is no `File` to rename, no
+ * `_liked_by` to heart and no `DocShare` to hang a share on. The server
+ * refuses all three with a sentence rather than a stack trace — see
+ * `remote.deny` — and this is the half that stops anybody reaching them.
+ */
+const remote = computed(() => !!props.file.remote)
 
 const menu = computed(() => {
   if (!props.actions) return []
+  if (remote.value) {
+    // One thing, and it is the seam: bringing the file across is what makes
+    // every other item on this menu possible.
+    return props.file.is_folder
+      ? []
+      : [{
+        label: __('Copy into the Drive'),
+        icon: 'lucide-download',
+        onClick: () => emit('copy', props.file),
+      }]
+  }
   if (props.trashed) {
     return [
       { label: __('Put it back'), icon: 'lucide-rotate-ccw', onClick: () => emit('restore', props.file) },
-      { label: __('Delete for good'), icon: 'lucide-trash-2', onClick: () => emit('destroy', props.file) },
+      { label: __('Delete for ever'), icon: 'lucide-trash-2', theme: 'red', onClick: () => emit('destroy', props.file) },
     ]
   }
   const items = [{ label: __('Share'), icon: 'lucide-user-plus', onClick: () => emit('share', props.file) }]
@@ -226,14 +255,14 @@ const menu = computed(() => {
     items.push(
       { label: __('Rename'), icon: 'lucide-pencil', onClick: () => emit('rename', props.file) },
       { label: __('Move to a folder'), icon: 'lucide-folder-input', onClick: () => emit('move', props.file) },
-      { label: __('Move to the bin'), icon: 'lucide-trash-2', onClick: () => emit('trash', props.file) },
+      { label: __('Move to the bin'), icon: 'lucide-trash-2', theme: 'red', onClick: () => emit('trash', props.file) },
     )
   }
   return items
 })
 
 const when = computed(() =>
-  props.file.modified ? dayjsLocal(props.file.modified).fromNow() : '',
+  props.file.modified ? ago(props.file.modified) : '',
 )
 
 // --- dragging a row onto a folder -------------------------------------------
@@ -247,7 +276,7 @@ const lifted = ref(false)
 const over = ref(false)
 
 function onDragStart(event) {
-  if (!props.movable) return
+  if (!props.movable || remote.value) return
   lifted.value = true
   event.dataTransfer.effectAllowed = 'move'
   event.dataTransfer.setData(MOVING, props.file.name)
@@ -257,6 +286,8 @@ function onDragOver(event) {
   // Only a folder is a destination, and only for one of ours. A file dragged
   // from the desktop falls through to the page's own drop zone, which uploads
   // it.
+  // A mount is read-only through the Drive, so it is not a drop target either.
+  if (remote.value) return
   if (!props.file.is_folder || !event.dataTransfer.types.includes(MOVING)) return
   event.preventDefault()
   event.stopPropagation()

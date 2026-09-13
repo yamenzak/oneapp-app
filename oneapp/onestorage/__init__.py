@@ -38,6 +38,8 @@ The layers, in import order:
     kinds     what a file is, from its mime type
     query     the places — home, recents, favourites, shared, trash — as filters
     reading   listing a place, the path to a folder, one file's details
+    remote    a folder on an FTP or SFTP host, browsed live and never copied
+    dav       the other direction: a folder here, served over WebDAV
     writing   folders, renaming, moving, trashing, restoring, emptying
     sharing   a link that outlives a session, which is the one thing
               `DocShare` cannot be
@@ -49,7 +51,7 @@ from .kinds import (
     KIND_FIELD, KINDS, OPENED_FIELD, STATUS_FIELD, TRASHED_FIELD,
     ACTIVE, TRASHED, kind_of, on_insert,
 )
-from .query import ALL, PLACES, RECORD, _place_filters, _visible
+from .query import ALL, EDITED, PLACES, RECORD, _place_filters, _visible
 from .reading import PAGE, details, listing, path, storage
 from .writing import (
     attach, empty_trash, make_folder, move, rename, restore, set_favourite,
@@ -71,6 +73,21 @@ from .direct import abort, begin, finish, sign
 # else uses. See `docs/COLLABORATION.md` §5.
 from .linked import MAX_PAYLOAD, follow, open_file, save_file
 from .r2 import download, serve
+# And the mirror of `remote`: a Drive folder served *as* a WebDAV share, so a
+# folder here is a drive in Finder. Its own module for the same reason —
+# nothing in it is a `File` query, it is an HTTP protocol.
+from .dav import revoke_share, share_folder, shares
+# A folder on somebody else's server, browsed live rather than synced. Its own
+# module because it is the one place in this package where a row is not a
+# `File` — see the argument at the top of `remote.py`.
+from .remote import (
+    check_remote, connect_folder, copy_here, disconnect, folder_settings, mounts,
+    set_paused, update_folder,
+)
+# Every file under one folder, for a machine rather than a person — and the
+# same answer whether the folder is in the Drive or on a mounted host. What
+# lets a transit source name one field instead of choosing between two.
+from .walk import preview as folder_preview
 from .sharing import (
     DEFAULT_DAYS, MAX_DAYS, SECRET_BYTES, colleagues, links, make_link, open_link, people,
     revoke, share_with, sweep_links, unshare_with,
@@ -79,6 +96,7 @@ from .sharing import (
 __all__ = [
     "ACTIVE",
     "ALL",
+    "EDITED",
     "attach",
     "colleagues",
     "DEFAULT_DAYS",
@@ -93,11 +111,17 @@ __all__ = [
     "kind_of",
     "KINDS",
     "links",
+    "check_remote",
+    "connect_folder",
+    "copy_here",
+    "disconnect",
+    "folder_settings",
     "listing",
     "make_folder",
     "make_link",
     "MAX_PAYLOAD",
     "MAX_DAYS",
+    "mounts",
     "move",
     "notes",
     "on_insert",
@@ -116,9 +140,14 @@ __all__ = [
     "say",
     "SECRET_BYTES",
     "set_favourite",
+    "set_paused",
+    "update_folder",
     "share_with",
     "STATUS_FIELD",
     "serve",
+    "share_folder",
+    "shares",
+    "revoke_share",
     "sign",
     "storage",
     "sweep_links",
@@ -128,6 +157,7 @@ __all__ = [
     "TRASHED_FIELD",
     "unsay",
     "unshare_with",
+    "folder_preview",
     "_place_filters",
     "_visible",
 ]

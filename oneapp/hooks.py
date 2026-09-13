@@ -27,6 +27,27 @@ website_route_rules = [
 	{"from_route": "/one/<path:app_path>", "to_route": "one"},
 ]
 
+# ---------------------------------------------------------------------------
+# WebDAV
+# ---------------------------------------------------------------------------
+# A Drive folder served to Finder, Explorer and Nextcloud. Not a route rule,
+# because Frappe's dispatcher routes GET, HEAD and POST to the website and
+# raises NotFound for everything else — PROPFIND never reaches a page. So the
+# only way in is `before_request`, which runs before that dispatch and before
+# `validate_auth`: the handler authenticates itself with HTTP Basic against a
+# `Drive Access` key, builds a whole response, and raises it.
+#
+# It returns immediately for every path that is not `/dav`, which is all of
+# them on a workspace that has never made a key. See `onestorage/dav.py`.
+before_request = ["oneapp.onestorage.dav.intercept"]
+
+# The refusal that matters on that path is not one of ours. `init_request`
+# caps the body at the site's `max_file_size` and reads it — both before the
+# first `before_request` hook — so an oversized PUT is answered by werkzeug
+# with an HTML error page a file manager displays as nothing. `after_request`
+# runs in `application`'s `finally`, which is the one place downstream of it.
+after_request = ["oneapp.onestorage.dav.explain_refusal"]
+
 # Signing in lands on the workspace, not the desk. Frappe's fallback is "me",
 # which it rewrites to "desk" for any System User.
 home_page = "one"
@@ -302,6 +323,11 @@ scheduler_events = {
 		# off a history that now includes yesterday. A forecast nobody scores is
 		# a decoration — see `onemobility/scoring.py`.
 		"oneapp.onemobility.scoring.nightly",
+		# Yesterday's vehicle events per vehicle and kind. Not a declared
+		# rollup: `eventHour` is one and `facts.roll_up` writes it, but a day
+		# grain is outside what that machinery groups, and a span is the gap
+		# between two rows so no single row knows its own length.
+		"oneapp.onemobility.events.nightly",
 	],
 	"hourly": [
 		"oneapp.onespace.sync.report_usage_to_control_plane",

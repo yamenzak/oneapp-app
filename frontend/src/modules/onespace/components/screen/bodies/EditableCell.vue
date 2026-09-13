@@ -23,7 +23,7 @@
     v-else-if="!editing"
     type="button"
     data-slot="editable"
-    class="flex w-full min-w-0 items-center rounded-4 px-1 text-start hover:bg-surface-gray-2"
+    class="flex w-full min-w-0 items-center rounded-4 px-1 text-start group-hover/row:ring-1 group-hover/row:ring-inset group-hover/row:ring-outline-gray-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-outline-gray-8"
     :class="align"
     @click.stop="start"
   >
@@ -53,6 +53,7 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import FieldControl from '@/modules/onespace/components/screen/fields/FieldControl.vue'
+import { STATE, fieldState } from '@/shared/lib/fields/state'
 
 const props = defineProps({
   /** The column, as `ListBody` shaped it — `column.column` is the DocField. */
@@ -75,12 +76,20 @@ const control = ref(null)
  * carries the three questions worth asking; what is added here is the row — a
  * submitted or cancelled document is not edited in a table.
  */
+/**
+ * Whether this cell may be typed in — §B5.
+ *
+ * `lib/fields/state.js`, the same call the form and the child table make.
+ * This used to be four clauses spelled out here, and the fourth was added
+ * separately because it was missing: a field locked by `read_only_depends_on`
+ * was editable in a list cell and the save went through.
+ */
 const editable = computed(
   () =>
-    props.enabled &&
-    !!props.column?.column?.editable &&
-    props.spec?.can_write !== false &&
-    !Number(props.row?.docstatus || 0),
+    props.enabled
+    && fieldState(props.column?.column || {}, props.row || {}, {
+      canWrite: props.spec?.can_write !== false,
+    }) === STATE.WRITABLE,
 )
 
 // Numbers sit against the right edge in the cell, so the control that replaces

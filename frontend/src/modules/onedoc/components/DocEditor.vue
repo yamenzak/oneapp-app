@@ -15,39 +15,31 @@
     header says whose text is on screen and when it last landed.
   -->
   <div class="flex h-full min-h-0 flex-col">
-    <!-- The shell's header, teleported, rather than a second bar of our own:
-         the document is a file, so it opens with the same trail every other
-         page does — Files, then what it is called. Renaming goes through the
-         menu, the way it does in the Drive, so there is one rename in the
-         product rather than an editable title here and a dialog there. -->
-    <PageHeader>
-      <nav data-slot="breadcrumb" :aria-label="__('Breadcrumb')" class="flex min-w-0 items-center gap-2">
-        <!-- The mark and the name, ahead of the trail. Not a control: the
-             first crumb is already Files, and a logo that navigates where the
-             word beside it navigates is one of them too many. It is here
-             because the corner of a document is where a product says what it
-             is, and a breadcrumb on its own said nothing.
+    <!-- The one editor bar, shared with the sheet — §E2/E3. What stood here
+         was its earlier half: a `PageHeader` with the trail in it and a rename
+         you had to open a dialog for. The trail, the mark, the title and the
+         rename belong to the component now; what stays is what is true of a
+         *document* — the outline, the writing verbs, and the three panels. -->
+    <EditorChrome
+      brand="onedoc"
+      :crumbs="crumbs"
+      :title="title"
+      :placeholder="__('Untitled document')"
+      :shared="shared"
+      :renamable="!shared && writable"
+      :hosted="hosted"
+      @update:title="renameTo"
+    >
+      <template #status>
+        <!-- Who else has this open. Before the save state rather than after
+             it: "Saved a minute ago" is about the file and this is about the
+             people, and the people are the thing you look for first when a
+             sentence changes under you. -->
+        <PresenceStrip :people="alsoHere" />
+        <span class="text-p-xs text-ink-muted">{{ state }}</span>
+      </template>
 
-             The name as well as the mark, because a mark alone is recognisable
-             to somebody who already knows it and says nothing to somebody who
-             does not — which is everybody on their first day. Hidden on a
-             phone, where the trail is the only thing there is room for. -->
-        <BrandMark name="onedoc" class="size-6 shrink-0" />
-        <!-- Through a link, the trail is the name and nothing else. Every
-             crumb above it is a place in a workspace this reader has no
-             account in, so following one is a redirect to a sign-in page
-             they cannot pass. -->
-        <p v-if="shared" class="min-w-0 truncate text-base font-medium text-ink-gray-8">
-          {{ title || __('Untitled document') }}
-        </p>
-        <template v-else>
-          <SpaceName brand="onedoc" class="hidden shrink-0 text-base font-medium sm:block" />
-          <span class="hidden shrink-0 text-ink-gray-3 sm:block" aria-hidden="true">·</span>
-          <Breadcrumbs :items="crumbs" />
-        </template>
-      </nav>
-
-      <div class="flex shrink-0 items-center gap-2">
+      <template #actions>
         <!-- The outline, on a phone. There is no room for a rail, and a reader
              thirty pages into a contract needs it more there than anywhere. -->
         <Dropdown v-if="worthShowing" :options="outlineOptions" class="lg:hidden">
@@ -73,25 +65,26 @@
           :verbs="verbs"
           :busy="writing.running.value"
           :disabled="writing.running.value"
-          :label="__('Write with AI')"
+          :label="__('Write with {0}', [assistantName])"
           align="end"
           @ask="askAi"
         />
 
-        <!-- Who else has this open. Before the save state rather than after
-             it: "Saved a minute ago" is about the file and this is about the
-             people, and the people are the thing you look for first when a
-             sentence changes under you. -->
-        <PresenceStrip :people="alsoHere" />
-
-        <span class="text-p-xs text-ink-gray-5">{{ state }}</span>
         <!-- The three controls that reach past this file, and the menu that
              does the same: the records it reads, what people have said about
              it, and what it looked like before. Each is a window onto the
              workspace and each of their endpoints would refuse a guest, so
-             through a link there is the document and nothing else. -->
+             through a link there is the document and nothing else.
+
+             Not on a phone — §D4. Six controls and a title do not fit at
+             390px, and what happened instead was that they overlapped. So the
+             three become entries in the menu below, which is where the sheet
+             has always kept its own: the same verbs, one place, and nothing
+             lost. `md:flex` and not `md:inline-flex`, because a `Button` is a
+             flex row of icon and label. -->
         <Button
           v-if="!shared"
+          class="hidden md:flex"
           variant="ghost"
           icon="lucide-link"
           :label="__('Records')"
@@ -102,6 +95,7 @@
         />
         <Button
           v-if="!shared"
+          class="hidden md:flex"
           variant="ghost"
           icon="lucide-message-square"
           :label="notes ? __('Notes ({0})', [notes]) : __('Notes')"
@@ -112,6 +106,7 @@
         />
         <Button
           v-if="!shared"
+          class="hidden md:flex"
           variant="ghost"
           icon="lucide-history"
           :label="__('Version history')"
@@ -127,8 +122,8 @@
             :tooltip="__('What to do with this document')"
           />
         </Dropdown>
-      </div>
-    </PageHeader>
+      </template>
+    </EditorChrome>
 
     <div class="flex min-h-0 flex-1">
       <Outline :editor="editor" :revision="revision" />
@@ -145,7 +140,7 @@
         >
           <template v-if="writing.running.value">
             <AiGlow mode="inline" active>
-              <span class="text-p-xs text-ink-gray-6">{{ __('Writing…') }}</span>
+              <span class="text-p-xs text-ink-secondary">{{ __('Writing…') }}</span>
             </AiGlow>
             <Button
               variant="ghost"
@@ -156,7 +151,7 @@
             />
           </template>
           <template v-else-if="replaced !== null">
-            <span class="text-p-xs text-ink-gray-6">{{ __('Written by AI. Check it.') }}</span>
+            <span class="text-p-xs text-ink-secondary">{{ __('Written by {0}. Check it.', [assistantName]) }}</span>
             <Button
               variant="ghost"
               size="sm"
@@ -193,7 +188,7 @@
               v-if="doc.can_write && !settings.locked"
               :editor="instance"
               :items="toolbar"
-              class="shrink-0 overflow-x-auto border-b border-outline-gray-1 px-4 py-1.5"
+              class="shrink-0 overflow-x-auto overflow-y-hidden border-b border-outline-gray-1 px-4 py-1.5"
             />
             <EditorTableMenu v-if="doc.can_write" :editor="instance" />
 
@@ -212,7 +207,7 @@
                 ref="sheet"
                 :data-paper="paperId"
                 class="relative mx-auto"
-                :class="paper.paged ? 'doc-sheet my-8 shadow-sm' : 'w-full'"
+                :class="paper.paged ? 'doc-sheet my-8 shadow-raised' : 'w-full'"
                 :style="sheetStyle"
               >
                 <template v-if="paper.paged">
@@ -273,7 +268,7 @@
         </Editor>
 
         <footer
-          class="flex shrink-0 items-center justify-between gap-3 border-t border-outline-gray-1 px-4 py-1.5 text-p-xs text-ink-gray-5"
+          class="flex shrink-0 items-center justify-between gap-3 border-t border-outline-gray-1 px-4 py-1.5 text-p-xs text-ink-muted"
         >
           <span>{{ counted }}</span>
           <span v-if="settings.locked" class="flex items-center gap-1">
@@ -344,10 +339,10 @@
     <Dialog v-model="filling" :title="__('Fill in this document')">
       <template #default>
         <div class="flex flex-col gap-3">
-          <p class="text-p-sm text-ink-gray-6">
+          <p class="text-p-sm text-ink-secondary">
             {{ outlineCount
-              ? __('It writes under each of the {0} headings, from the records this document reads. What is here now is replaced — you can undo it.', [outlineCount])
-              : __('This document has no headings yet, so say what it should say. What is here now is replaced — you can undo it.') }}
+              ? __('It writes under each of the {0} headings, from the records this document reads. Undo brings it back.', [outlineCount])
+              : __('No headings yet, so say what it should say. Undo brings back what is here now.') }}
           </p>
           <FormControl
             v-model="fillBrief"
@@ -379,18 +374,6 @@
       :said="__('This opens the template as a new document. What you have here is not touched.')"
       @pick="fromTemplate"
     />
-
-    <!-- The Drive's rename, in the Drive's shape: one dialog, one field, one
-         button. A document renamed here is renamed there, because they are the
-         same `File`. -->
-    <Dialog v-model="renaming" :title="__('Rename')">
-      <template #default>
-        <FormControl v-model="draftTitle" :label="__('Name')" @keyup.enter="rename" />
-      </template>
-      <template #actions>
-        <Button variant="solid" :label="__('Rename')" :loading="busy" @click="rename" />
-      </template>
-    </Dialog>
 
     <Dialog v-model="showing" :title="shown?.title || __('An earlier version')" size="3xl">
       <template #default>
@@ -430,7 +413,6 @@ import { useRoute, useRouter } from 'vue-router'
 import {
   Button,
   Dialog,
-  Breadcrumbs,
   Dropdown,
   Editor,
   EditorContent,
@@ -439,11 +421,8 @@ import {
   ErrorMessage,
   FormControl,
   Icon,
-  PageHeader,
   RichTextKit,
   Skeleton,
-  dayjsLocal,
-  toast,
 } from '@/ui'
 import FadedScroll from '@/shared/components/FadedScroll.vue'
 import FileChat from '@/shared/components/FileChat.vue'
@@ -465,8 +444,8 @@ import AiMenu from '@/shared/components/AiMenu.vue'
 import Outline from '@/modules/onedoc/components/Outline.vue'
 import VersionPanel from '@/modules/onespace/components/versions/VersionPanel.vue'
 import TemplatePicker from '@/modules/onestorage/components/TemplatePicker.vue'
-import BrandMark from '@/shared/components/brand/BrandMark.vue'
-import SpaceName from '@/shared/components/brand/SpaceName.vue'
+import EditorChrome from '@/shared/components/EditorChrome.vue'
+import { useCrumbs } from '@/shared/composables/useCrumbs'
 import { documentToolbar, liveDocumentToolbar, pageClasses } from '@/modules/onedoc/components/toolbar'
 import { geometry, typeStyle } from '@/shared/lib/paper/setup'
 import { paginate } from '@/shared/lib/paper/paginate'
@@ -477,16 +456,27 @@ import { writingVerbs } from '@/shared/lib/ai/verbs'
 import { useLiveDocument } from '@/modules/onedoc/lib/live'
 import { useOutline } from '@/shared/composables/useOutline'
 import { throughLink } from '@/shared/lib/live/link'
+import { useIsMobile } from '@/modules/onespace/lib/shell/breakpoint'
 import { putFile } from '@/modules/onestorage/lib/attach'
 import { workspace } from '@/shared/lib/workspace'
-import { cameFrom } from '@/modules/onespace/lib/screen/returnTo'
 import { __ } from '@/shared/lib/runtime/translate'
+import { ago } from '@/shared/lib/runtime/format'
+import { notifyWarning } from '@/shared/lib/runtime/notify'
+import { assistantName } from '@/modules/onespace/lib/shell/assistant'
 
 const route = useRoute()
 
 const props = defineProps({
   name: { type: String, required: true },
   doc: { type: Object, required: true },
+  /**
+   * Inside the Drive's pane rather than on a page of its own.
+   *
+   * It changes where the bar goes: `PageHeader` is a teleport into the shell's
+   * header, so a hosted editor that drew one would put its title above the
+   * file list it is sitting beside rather than above itself.
+   */
+  hosted: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['renamed', 'reload'])
@@ -496,6 +486,9 @@ const emit = defineEmits(['renamed', 'reload'])
 // `shared/lib/live/link.js` gives: the secret is already there, it cannot
 // disagree with itself, and the same file's save reads it the same way.
 const shared = throughLink()
+
+// Which half of the bar this is — `lib/shell/breakpoint.js`, the one number.
+const phone = useIsMobile()
 
 // The whole capability of the editor. RichTextKit is frappe-ui's article-grade
 // bundle, which is the right one for a document — the lighter CommentKit is
@@ -737,7 +730,7 @@ function askAi(ask) {
     // cannot see a selection and this is the one thing it would be wrong
     // about.
     writing.reset()
-    toast.warning(__('Select the words to work on first.'))
+    notifyWarning(__('Select the words to work on first.'))
     return
   }
   streamInto(() => workspace.docRewrite(props.name, { ...ask, text: said }),
@@ -996,8 +989,6 @@ if (!shared) {
     .then((answer) => { notes.value = answer?.count || 0 })
     .catch(() => {})
 }
-const renaming = ref(false)
-const draftTitle = ref('')
 const showSettings = ref(false)
 
 /*
@@ -1075,7 +1066,7 @@ const state = computed(() => {
   if (busy.value) return __('Saving…')
   if (dirty.value) return __('Unsaved')
   if (!savedAt.value) return ''
-  return __('Saved {0}', [dayjsLocal(savedAt.value).fromNow()])
+  return __('Saved {0}', [ago(savedAt.value)])
 })
 
 const counted = computed(() => {
@@ -1136,22 +1127,29 @@ function reopen() {
   emit('reload')
 }
 
-// The trail says where this document sits. Usually that is the Drive; when it
-// was opened from a record it is that record, so the crumb is a way back to
-// what you were reading rather than a way to a folder you never visited —
-// `lib/screen/returnTo.js`.
-const back = computed(() => cameFrom(route))
+/**
+ * Files, and nothing after it — §C1.
+ *
+ * The root used to be `back` *or* Files, so the same document had a different
+ * first crumb depending on how you reached it, and there was no way home from
+ * one opened off a record. Then it was Files *and* where you came from, which
+ * was better and still two lines of route above a document. `Trail` collapses
+ * a trail that draws a subject, and the subject here is the title: what a
+ * person wants over an open document is its name and one press out.
+ */
+const crumbs = useCrumbs({ label: __('Files'), route: { name: 'Drive' } })
 
-const crumbs = computed(() => [
-  back.value
-    ? { label: back.value.label, route: back.value.path }
-    : { label: __('Files'), route: { name: 'Drive' } },
-  { label: title.value || __('Untitled document') },
-])
-
-async function rename() {
-  title.value = draftTitle.value
-  renaming.value = false
+/*
+ * The title, as typed into the bar.
+ *
+ * It was a dialog off the menu, in the Drive's shape, and the sheet's was an
+ * input you clicked into — which is what a person who has used a spreadsheet
+ * expects of a title beside a mark. `EditorChrome` carries the sheet's, so
+ * this is the half that lands it: one save, the same one every keystroke in
+ * the body goes through.
+ */
+async function renameTo(next) {
+  title.value = next
   await save()
 }
 
@@ -1206,6 +1204,30 @@ const menu = computed(() => [
       },
     },
   ]},
+  // The three panel toggles, where a phone can reach them — §D4. They are
+  // buttons on the bar at `md:` and up and hidden below it, so this group is
+  // their only door at 390px; `condition` rather than a second menu, because
+  // one list that knows the width is one list.
+  { group: __('Open beside this'), options: [
+    {
+      label: showRecords.value ? __('Hide the records') : __('Records'),
+      icon: 'lucide-link',
+      condition: () => phone.value,
+      onClick: () => { showRecords.value = !showRecords.value },
+    },
+    {
+      label: notes.value ? __('Notes ({0})', [notes.value]) : __('Notes'),
+      icon: 'lucide-message-square',
+      condition: () => phone.value,
+      onClick: () => { showNotes.value = !showNotes.value },
+    },
+    {
+      label: __('Version history'),
+      icon: 'lucide-history',
+      condition: () => phone.value,
+      onClick: () => { showHistory.value = !showHistory.value },
+    },
+  ]},
   { group: __('This document'), options: [
     {
       // Where a template is reached from, now that it is not in the New menu.
@@ -1225,12 +1247,6 @@ const menu = computed(() => [
       icon: 'lucide-sparkles',
       condition: () => !shared && writable.value && ai.live,
       onClick: () => { fillBrief.value = ''; filling.value = true },
-    },
-    {
-      label: __('Rename'),
-      icon: 'lucide-pencil',
-      condition: () => props.doc.can_write,
-      onClick: () => { draftTitle.value = title.value; renaming.value = true },
     },
     {
       label: __('Page setup'),

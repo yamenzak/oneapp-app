@@ -111,6 +111,23 @@ test('a heading shows up in the outline and the count counts', async ({ page }) 
   await expect(page.getByText(/\d+ words/)).toBeVisible()
 })
 
+/**
+ * Open the version rail, from wherever the viewport keeps it.
+ *
+ * The three panel toggles are desktop chrome: below `md` they are entries in
+ * the document's own menu instead, so the phone reaches them the same way it
+ * reaches everything else the bar has no room for.
+ */
+const openVersions = async (page) => {
+  const button = page.getByRole('button', { name: 'Version history' })
+  if (await button.isVisible().catch(() => false)) {
+    await button.click()
+    return
+  }
+  await page.getByRole('button', { name: 'What to do with this document' }).click()
+  await page.getByRole('menuitem', { name: 'Version history' }).click()
+}
+
 test('a version can be kept by name and put back', async ({ page }) => {
   const name = await newDocument(page)
 
@@ -120,7 +137,7 @@ test('a version can be kept by name and put back', async ({ page }) => {
     .poll(async () => (await stored(page, name)).content, { timeout: 20_000 })
     .toContain('Five per cent.')
 
-  await page.getByRole('button', { name: 'Version history' }).click()
+  await openVersions(page)
   await page.getByRole('button', { name: 'Save this version' }).click()
   await page.getByLabel('What this version is').fill('Signed off')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -204,7 +221,9 @@ test('a code file keeps versions too, and an old one goes back', async ({ page }
   await page.goto('/one/files')
   await page.getByRole('button', { name: 'New', exact: true }).click()
   await page.getByRole('menuitem', { name: 'Code', exact: true }).click()
-  await page.locator('[data-slot="language-option"]:has-text("Python")').click()
+  // `picker-option`, not a slot of the language dialog's own: every
+  // search-and-choose dialog is one `<Picker>` now. `docs/UNIFICATION.md` §A2.
+  await page.locator('[data-slot="picker-option"]:has-text("Python")').click()
   await page.waitForURL(/\/one\/docs\//)
 
   const name = nameInUrl(page, '/one/docs/')

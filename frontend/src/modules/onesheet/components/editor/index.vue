@@ -48,70 +48,40 @@
     </div>
 
     <template v-else>
-    <!-- Bar 1 · Identity -->
-    <div class="sn-topbar">
-      <div class="sn-topbar-left">
-        <!-- The mark, and the way back, are one control — which is how every
-             other spreadsheet on the web does it, and it is worth the pixels
-             twice over: the corner of a document is the only place a product
-             gets to say what it is, and a bare arrow said nothing. Still
-             `flushAndClose`, so anything typed in the last two seconds is
-             saved before the route changes.
+    <!--
+      Bar 1 · Identity, which is `shared/components/EditorChrome.vue` and no
+      longer this file's — `docs/UNIFICATION.md` §E2/E3.
 
-             An arrow slides over the mark on hover so the click is not a
-             guess — the mark is the identity at rest and the exit under the
-             pointer, and neither has to be explained. -->
-        <!-- Through a link there is nowhere to go back to: Files is a place
-             in a workspace this reader has no account in, so the mark is the
-             identity and nothing more. -->
-        <span v-if="shared" class="sn-app-icon-btn" data-slot="sheet-brand">
-          <BrandMark name="onesheet" class="sn-app-icon" />
-          <SpaceName brand="onesheet" class="sn-app-name" />
-        </span>
-        <button
-          v-else
-          type="button"
-          class="sn-app-icon-btn"
-          data-slot="sheet-brand"
-          aria-label="Back to Files"
-          @click="flushAndClose"
-        >
-          <Tooltip text="Back to Files">
-            <span class="sn-app-swap">
-              <BrandMark name="onesheet" class="sn-app-icon" />
-              <Icon name="lucide-arrow-left" class="sn-app-back" />
-            </span>
-          </Tooltip>
-          <!-- And the name beside it. The mark alone is recognisable to
-               somebody who already knows it and says nothing to somebody who
-               does not, which is everybody on their first day. Hidden on a
-               phone, where the filename is the only thing there is room for. -->
-          <SpaceName brand="onesheet" class="sn-app-name" />
-        </button>
-        <!-- Auto-sizing title. A hidden ::after pseudo mirrors the text and
-             sizes the grid track, so the input grows via real DOM text layout —
-             pixel-perfect and smooth per keystroke, with no JS canvas measuring
-             and no width animation lagging behind the caret. -->
-        <span class="sn-title-fit" :data-value="currentTitle || 'Untitled Sheet'">
-          <input
-            name="sheet-title"
-            class="sn-title-input"
-            v-model="currentTitle"
-            :readonly="shared"
-            placeholder="Untitled Sheet"
-            spellcheck="false"
-            @focus="onTitleFocus"
-            @blur="onTitleBlur"
-          />
-        </span>
-        <!-- Save status — muted inline text; never competes with the title -->
+      What stood here was a mark that was also the way back, a title input, a
+      save state and a three-dot menu, all hand-rolled, and it agreed with the
+      document editor's own bar about none of it. The mark, the name, the trail
+      and the title are the component's now. What is still the sheet's is what
+      only a sheet knows — whether it is saving, whether you may write to it,
+      who else is on which tab, and its File menu — and those come through the
+      two slots.
+
+      The trail is what this bar did not have and is the reason for the swap:
+      the product's most immersive surface had no crumb, so the only way out
+      was a mark you had to guess was a button.
+    -->
+    <EditorChrome
+      brand="onesheet"
+      :crumbs="crumbs"
+      :title="currentTitle"
+      :placeholder="__('Untitled sheet')"
+      :shared="shared"
+      :renamable="!shared && !readOnly"
+      :hosted="hosted"
+      @update:title="renameTo"
+    >
+      <template #status>
         <span v-if="isSaving" class="sn-save-status">
           <Icon name="lucide-loader" class="sn-save-icon sn-save-spin" />
-          Saving…
+          {{ __('Saving…') }}
         </span>
         <span v-else-if="justSaved" class="sn-save-status">
           <Icon name="lucide-check" class="sn-save-icon" />
-          Saved
+          {{ __('Saved') }}
         </span>
         <template v-if="saveError">
           <Badge theme="red" variant="subtle" size="sm" :label="saveError" :tooltip="saveError" />
@@ -119,39 +89,45 @@
             variant="ghost"
             size="sm"
             icon="lucide-refresh-cw"
-            tooltip="Retry save"
+            :tooltip="__('Try saving again')"
             :loading="isSaving"
             @click="onRetrySave"
           />
         </template>
-        <!-- View-only indicator — shown up front so a viewer knows they can't
-             edit before they try. Neutral gray (not an error) because read
-             access is expected, not a failure. Uses the Frappe UI Badge so it
-             matches the save-error chip beside it and the Espresso tokens. -->
-        <Tooltip v-if="readOnly" text="You have view access. Ask the owner for edit access to make changes.">
-          <Badge theme="gray" variant="subtle" size="lg" label="View only">
+        <!-- Said up front, so a reader knows before they try. Neutral gray
+             rather than an error: read access is expected, not a failure. -->
+        <Tooltip v-if="readOnly" :text="__('You can read this. Ask the owner if you need to change it.')">
+          <Badge theme="gray" variant="subtle" size="lg" :label="__('View only')">
             <template #prefix><Icon name="lucide-eye" class="h-3.5 w-3.5" /></template>
           </Badge>
         </Tooltip>
-        <!-- Public indicator for the owner/editors — surfaces that the sheet
-             is exposed via a public link (the missing transparency signal). -->
         <Badge
           v-else-if="isPublic"
           theme="blue" variant="subtle" size="sm"
-          label="Public"
-          tooltip="Anyone with the link can view this sheet"
+          :label="__('Public')"
+          :tooltip="__('Anyone with the link can read this.')"
         />
-        <Badge v-if="protectionNotice" theme="gray" variant="subtle" size="sm" data-slot="protection-notice" :label="protectionNotice" :tooltip="protectionNotice" />
-      </div>
-      <div class="sn-topbar-right">
+        <Badge
+          v-if="protectionNotice"
+          theme="gray" variant="subtle" size="sm"
+          data-slot="protection-notice"
+          :label="protectionNotice"
+          :tooltip="protectionNotice"
+        />
+        <!-- Who else is in the workbook, drawn by the same component the
+             document editor uses. -->
+        <PresenceStrip :people="alsoHere" />
+      </template>
+
+      <template #actions>
         <input ref="csvInputRef"  name="csv-import"  type="file" accept=".csv"                   style="display:none" @change="importCSV" />
         <input ref="xlsxInputRef" name="xlsx-import" type="file" accept=".xlsx,.xls,.xlsm,.ods"  style="display:none" @change="importXLSX" />
-        <!-- Notes: button toggles the side panel listing all notes across sheets.
-             Shift+F2 still opens the per-cell inline editor for quick capture. -->
+        <!-- Notes: the panel listing every note across every tab. Shift+F2
+             still opens the per-cell editor for quick capture. -->
         <span class="sn-notes-btn-wrap">
           <Button :variant="notesPanel.open ? 'subtle' : 'ghost'"
                   size="sm" icon="lucide-message-square"
-                  :tooltip="`Notes${allNotes.length ? ` (${allNotes.length})` : ''} — Shift+F2 to add`"
+                  :tooltip="allNotes.length ? __('Notes ({0}) — Shift+F2 to add', [allNotes.length]) : __('Notes — Shift+F2 to add')"
                   @click="toggleNotesPanel" />
           <span v-if="allNotes.length" class="sn-notes-badge">{{ allNotes.length > 9 ? '9+' : allNotes.length }}</span>
         </span>
@@ -161,48 +137,21 @@
              `lib/sheets/services/versions.js`. The panel and its plumbing stay
              wired; only the way in is gone, so restoring the feature is
              restoring one button. -->
-        <Button variant="ghost" size="sm" icon="lucide-help-circle" tooltip="Keyboard shortcuts" @click="showShortcutsHelp = true" />
-        <span class="sn-topbar-divider" aria-hidden="true" />
-        <!-- Presence avatars — other users currently in the workbook.
-             Outline = their cursor color; tooltip says which sub-sheet
-             they're on so cross-sheet collaborators are discoverable. -->
-        <div v-if="presentUsers.length" class="sn-presence">
-          <Avatar
-            v-for="u in presentUsers.slice(0, 3)"
-            :key="u.user"
-            :label="u.initials"
-            :image="u.user_image || undefined"
-            size="sm"
-            :tooltip="u.sub_sheet && u.sub_sheet !== currentSheet
-              ? `${u.full_name} — on ${u.sub_sheet}`
-              : u.full_name"
-            class="sn-presence-avatar"
-            :style="{ '--rc': u.color }"
-          />
-          <span
-            v-if="presentUsers.length > 3"
-            class="sn-presence-more"
-            :title="`${presentUsers.length - 3} more people`"
-          >+{{ presentUsers.length - 3 }}</span>
-        </div>
-        <!-- The signed-in person is the shell's, bottom left of every screen
-             in the product. A second avatar here would say it twice. -->
+        <Button variant="ghost" size="sm" icon="lucide-help-circle" :tooltip="__('Keyboard shortcuts')" @click="showShortcutsHelp = true" />
         <!--
           What to do with this sheet. A three-dot menu at the end of the bar
           rather than a labelled "File" dropdown at the start of it, because
           the document editor keeps its own there and the two are one suite:
           a person who has found the verbs in one should not have to look
-          somewhere else in the other. The contents are unchanged, groups and
-          all — `docs/SHEETS.md` §8.
+          somewhere else in the other. `docs/SHEETS.md` §8.
         -->
-        <span v-if="!shared" class="sn-topbar-divider" aria-hidden="true" />
         <Dropdown v-if="!shared" :options="fileDropdownOptions" align="end">
           <template #default="{ open }">
-            <Button :variant="open ? 'subtle' : 'ghost'" size="sm" icon="lucide-more-horizontal" label="What to do with this sheet" tooltip="What to do with this sheet" />
+            <Button :variant="open ? 'subtle' : 'ghost'" size="sm" icon="lucide-more-horizontal" :label="__('What to do with this sheet')" :tooltip="__('What to do with this sheet')" />
           </template>
         </Dropdown>
-      </div>
-    </div>
+      </template>
+    </EditorChrome>
 
     <!-- Bar 2 · Formatting toolbar -->
     <!-- Read-only viewers: dim the whole bar and swallow pointer events so no
@@ -1036,10 +985,10 @@
             placeholder="#,##0.00"
             @keydown.enter="confirmCustomFormat"
           />
-          <div class="text-sm text-ink-gray-6">
+          <div class="text-sm text-ink-secondary">
             Preview: <span class="font-medium text-ink-gray-9">{{ customFormatPreview || '—' }}</span>
           </div>
-          <div class="text-xs text-ink-gray-5 leading-relaxed">
+          <div class="text-xs text-ink-muted leading-relaxed">
             <code>0</code> padded digit · <code>#</code> optional digit · <code>,</code> thousands ·
             <code>.</code> decimal · <code>%</code> percent · <code>"text"</code> literal.
             e.g. <code>#,##0.00</code>, <code>0.0%</code>, <code>"$"#,##0</code>
@@ -1292,11 +1241,13 @@ import { useContextMenu } from '@/modules/onesheet/components/editor/useContextM
 import { usePivotIntegration } from '@/modules/onesheet/components/editor/usePivotIntegration.js'
 import { useShortcuts } from '@/modules/onesheet/components/editor/useShortcuts.js'
 import { useCollaboration }    from '@/modules/onesheet/components/editor/useCollaboration.js'
+import PresenceStrip          from '@/shared/components/PresenceStrip.vue'
 import { useExportImport }     from '@/modules/onesheet/components/editor/useExportImport.js'
 import { useTemplateInsert }   from '@/modules/onesheet/components/editor/useTemplateInsert.js'
 import { workbookFromTab }     from '@/modules/onesheet/lib/headless.js'
 import { saveWorkbook }        from '@/modules/onesheet/lib/store.js'
 import { notifySuccess }       from '@/shared/lib/runtime/notify'
+import { __ }                 from '@/shared/lib/runtime/translate'
 import { workspace as workspaceApi } from '@/shared/lib/workspace'
 import { throughLink }        from '@/shared/lib/live/link'
 import { useVersionHistory }   from '@/modules/onesheet/components/editor/useVersionHistory.js'
@@ -1319,8 +1270,7 @@ import { createNamedRanges }   from '@/modules/onesheet/lib/engine/named-ranges.
 import { getFunctionNames }    from '@/modules/onesheet/lib/engine/formula.js'
 import NamedRangesDialog       from '@/modules/onesheet/components/editor/NamedRangesDialog.vue'
 import SheetPrintDialog        from '@/modules/onesheet/components/SheetPrintDialog.vue'
-import BrandMark              from '@/shared/components/brand/BrandMark.vue'
-import SpaceName              from '@/shared/components/brand/SpaceName.vue'
+import EditorChrome           from '@/shared/components/EditorChrome.vue'
 import { useSmartFill }        from '@/modules/onesheet/components/editor/useSmartFill.js'
 import * as versionsApi        from '@/modules/onesheet/lib/services/versions.js'
 import { Avatar, Badge, Button, Checkbox, Dialog, Dropdown, FormControl, Icon, KeyboardShortcut, KeyboardShortcutsDialog, Spinner, TextInput, Tooltip, useKeyboardShortcut } from 'frappe-ui'
@@ -1328,6 +1278,7 @@ import {
   CommandPalette, CommandPaletteEmpty, CommandPaletteGroup, CommandPaletteInput,
   CommandPaletteItem, CommandPaletteList,
 } from 'frappe-ui/experimental'
+import { ago, number as count } from '@/shared/lib/runtime/format'
 
 const props = defineProps({
   id: { type: String, default: 'new' },
@@ -1336,6 +1287,11 @@ const props = defineProps({
   // there are things to do with one that a standalone Sheets has no idea
   // about. Same `{group, items:[{label, icon, onClick}]}` shape as the rest.
   hostMenu: { type: Array, default: () => [] },
+  // The trail, from the host, because where a sheet sits in the workspace is
+  // the host's question and not the grid's — `shared/composables/useCrumbs.js`.
+  crumbs: { type: Array, default: () => [] },
+  /** Inside the Drive's pane rather than on a page of its own. */
+  hosted: { type: Boolean, default: false },
 })
 const emit  = defineEmits(['close', 'saved'])
 
@@ -1925,7 +1881,7 @@ async function doSaveTabAsTemplate(tabName) {
   const made = await workspaceApi.sheetMake({ title: tabName })
   await saveWorkbook(made.name, tabName, payload)
   await workspaceApi.sheetSetTemplate(made.name, true)
-  notifySuccess(`"${tabName}" is a template now.`)
+  notifySuccess(__('"{0}" is a template now.', [tabName]))
 }
 
 /**
@@ -2235,7 +2191,7 @@ async function _computeSelectionStatsAsync(token) {
 }
 
 function formatStat(n) {
-  return Number.isInteger(n) ? n.toLocaleString() : parseFloat(n.toFixed(4)).toLocaleString()
+  return Number.isInteger(n) ? count(n, 0) : count(parseFloat(n.toFixed(4)), 4)
 }
 
 
@@ -2579,6 +2535,19 @@ const { presentUsers, remoteCursors, broadcastCellChange, broadcastBatchChange, 
     // show the static snapshot loaded by get_sheet.
     canCollaborate: computed(() => !isGuest.value),
   })
+
+// The shape `PresenceStrip` reads. The sheet's own record carries a tab name
+// and a differently spelled colour; naming the difference here is cheaper
+// than a second component that draws the same three faces.
+const alsoHere = computed(() =>
+  presentUsers.value.map((one) => ({
+    user: one.user,
+    full_name: one.full_name,
+    image: one.user_image,
+    colour: one.color,
+    note: one.sub_sheet && one.sub_sheet !== currentSheet.value ? one.sub_sheet : '',
+  })),
+)
 // Wire the binding's per-segment touch-tracking into the history we declared
 // up top — undo() will now revert only this client's writes from the undone
 // segment, leaving any remote-applied cells alone.
@@ -3846,12 +3815,6 @@ async function _doAutoSave() {
   }
 }
 
-async function flushSave() {
-  if (!isDirty.value) return
-  clearTimeout(_autoSaveTimer)
-  await _doAutoSave()
-}
-
 // Manual retry handler — bound to the refresh button next to the
 // save-error chip. Routes through _doAutoSave (rather than calling
 // retrySave directly) so freshly-queued ops since the last failure
@@ -3883,11 +3846,6 @@ watch(saveError, (msg) => {
   }, 30_000)
 })
 
-async function flushAndClose() {
-  await flushSave()
-  emit('close')
-}
-
 // Watch for any dirty change → schedule auto-save
 watch(isDirty, (dirty) => { if (dirty) _triggerAutoSave() })
 
@@ -3895,16 +3853,15 @@ watch(isDirty, (dirty) => { if (dirty) _triggerAutoSave() })
 // (or release) right-padding for the chevron buttons.
 watch(showSortFilter, () => { grid?.render?.() })
 
-// Title focus/blur — mark `isDirty` when the value changed during the focus
-// session so `_doAutoSave` doesn't bail on its `!isDirty` guard. Without
-// this, a rename-then-leave flow (no cell edit in between) silently dropped
-// the new title: the 2 s autosave ran but exited early, and `flushAndClose`
-// → `flushSave` did the same. Snapshotting on focus avoids spurious saves
-// when the user just clicks into and out of the field without typing.
-let _titleAtFocus = ''
-function onTitleFocus() { _titleAtFocus = currentTitle.value }
-function onTitleBlur() {
-  if (currentTitle.value !== _titleAtFocus) isDirty.value = true
+// The title, as `EditorChrome` hands it over — already trimmed, and only when
+// it changed. `isDirty` has to be set explicitly: a rename with no cell edit
+// behind it used to be dropped, because the 2 s autosave bails on its
+// `!isDirty` guard — and so does the `onBeforeUnmount` flush that now catches
+// a rename made on the way out, the mark that used to flush by hand having
+// become an ordinary crumb.
+function renameTo(next) {
+  currentTitle.value = next
+  isDirty.value = true
   _triggerAutoSave()
 }
 
@@ -4494,15 +4451,11 @@ function deleteComment() {
   isDirty.value = true
 }
 
-// "5m ago" style relative time for a reply's epoch-ms timestamp.
-function commentTime(ts) {
-  if (!ts) return ''
-  const s = Math.max(0, Math.round((Date.now() - ts) / 1000))
-  if (s < 60)    return 'just now'
-  const m = Math.round(s / 60);   if (m < 60) return `${m}m ago`
-  const h = Math.round(m / 60);   if (h < 24) return `${h}h ago`
-  return new Date(ts).toLocaleDateString()
-}
+// When a reply was posted. An epoch in milliseconds rather than a stored
+// Frappe datetime — `ago()` tells the two apart and converts only the one
+// that needs it — and the same seven-day rule as every other relative time in
+// the product rather than a fourth ladder of its own.
+const commentTime = (ts) => ago(ts)
 
 // ── Notes side panel ──────────────────────────────────────────────────────────
 

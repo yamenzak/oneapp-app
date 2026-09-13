@@ -66,7 +66,7 @@
              in it means nothing without one to read it from. -->
         <div
           v-if="sample.length"
-          class="flex flex-col gap-1 rounded-6 bg-surface-gray-2 p-3 font-mono text-p-xs text-ink-gray-7"
+          class="flex flex-col gap-1 rounded-6 bg-surface-gray-2 p-3 font-mono text-p-xs text-ink-secondary"
         >
           <span v-for="one in sample" :key="one">{{ one }}</span>
         </div>
@@ -91,18 +91,18 @@
               this line is a different counter that starts at nothing.
             -->
             <span class="flex min-w-0 flex-1 flex-col">
-              <span class="truncate font-mono text-p-sm text-ink-gray-8">
+              <span class="truncate font-mono text-sm text-ink-primary">
                 {{ one.counted || one.prefix }}
               </span>
               <span
                 v-if="one.counted && one.counted !== one.prefix"
-                class="truncate text-p-xs text-ink-gray-5"
+                class="truncate text-xs text-ink-muted"
               >
                 {{ __('from {0}', [one.prefix]) }}
               </span>
             </span>
             <Badge v-if="one.default" :label="__('Default')" theme="blue" variant="subtle" />
-            <span class="text-p-xs text-ink-gray-5">{{ __('Last used') }}</span>
+            <span class="text-p-xs text-ink-muted">{{ __('Last used') }}</span>
             <FormControl
               type="number"
               class="w-28"
@@ -117,7 +117,7 @@
             />
           </li>
         </ul>
-        <p class="text-p-xs text-ink-gray-5">
+        <p class="text-p-xs text-ink-muted">
           {{ __('Moving a counter backwards will re-issue ids that already exist. The change is recorded against the series.') }}
         </p>
       </div>
@@ -148,9 +148,9 @@ import { __ } from '@/shared/lib/runtime/translate'
 // case is the one people will not expect and the first is the one they will.
 // One literal, however long: the extractor reads the string in the call, so a
 // sentence built with `+` is a sentence that never reaches the catalogue.
-const EDITABLE = __('One per line, and the first is what new records use. A run of # is where the number goes and .YYYY. is the year, so ACME-.YYYY.-.##### starts counting again each January.')
+const EDITABLE = __('One per line; the first is what new records use. `#` is the number, `.YYYY.` the year.')
 const FIXED = __(
-  'This app names its own records. The series is part of what it is, so it is shown rather than set — the counter under it can still be moved.',
+  'This app names its own records, so the series is shown rather than set. The counter still moves.',
 )
 
 const rows = ref([])

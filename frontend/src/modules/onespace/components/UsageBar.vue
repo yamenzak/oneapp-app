@@ -2,7 +2,7 @@
 <template>
   <div>
     <div class="flex items-baseline justify-between gap-2">
-      <span class="text-p-sm text-ink-gray-6">{{ label }}</span>
+      <span class="text-p-sm text-ink-secondary">{{ label }}</span>
       <span class="shrink-0 text-p-sm tabular-nums" :class="valueClass">
         {{ formatted }}
       </span>
@@ -30,6 +30,7 @@
 import { computed } from 'vue'
 import { Progress } from '@/ui'
 import { __ } from '@/shared/lib/runtime/translate'
+import { sizeText } from '@/shared/lib/files/size'
 
 const props = defineProps({
   label: { type: String, required: true },
@@ -60,15 +61,14 @@ const valueClass = computed(() => {
   if (props.usage?.exceeded && props.graceUntil) return 'text-ink-amber-3'
   if (props.usage?.exceeded) return 'text-ink-red-3'
   if (props.usage?.warn) return 'text-ink-amber-3'
-  return 'text-ink-gray-7'
+  return 'text-ink-secondary'
 })
 
-function bytes(value) {
-  if (!value) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
-  return `${(value / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
+// The one byte formatter — §D3. A quota bar reading `1.2 GB` above a file
+// list reading `1,2 GB` was two implementations, not two opinions. `0 B`
+// rather than an empty string, because a bar with nothing in it still has to
+// say what nothing is.
+const bytes = (value) => sizeText(value, { blank: '0 B' })
 
 const formatted = computed(() => {
   const u = props.usage

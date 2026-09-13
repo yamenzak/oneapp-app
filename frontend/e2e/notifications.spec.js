@@ -29,8 +29,8 @@ test('an assignment turns up in the panel, and opens the record', async ({
 
   // Assign, as a person would.
   await signIn(page, baseURL)
-  await page.goto(`/one/space/zzmock?screen=tasks&record=${TASK}`)
-  await page.locator('[data-slot="record-pane"]').waitFor({ timeout: 15_000 })
+  await page.goto(`/one/space/zzmock?screen=tasks&at=record:${TASK}`)
+  await page.locator('[data-slot="object-pane"]').waitFor({ timeout: 15_000 })
   // Assignment is on Meta now, with the other three things you do to a record
   // about other people.
   await page.getByRole('tab', { name: 'Meta' }).click()
@@ -76,9 +76,9 @@ test('an assignment turns up in the panel, and opens the record', async ({
   // doctype: a Notification Log names a doctype, and OneSpace has no doctype
   // routes, so the destination is resolved from the manifest.
   await page.getByText(/assigned a new task/).first().click()
-  await expect(page).toHaveURL(new RegExp(`record=${TASK}`))
+  await expect(page).toHaveURL(new RegExp(`at=record:${TASK}`))
   await expect(
-    page.locator('[data-slot="record-pane"]').getByText('File Q3 returns').first(),
+    page.locator('[data-slot="object-pane"]').getByText('File Q3 returns').first(),
   ).toBeVisible({ timeout: 15_000 })
 
   // Put the fixture back. Two reasons, and both have already cost a run: the
@@ -87,8 +87,8 @@ test('an assignment turns up in the panel, and opens the record', async ({
   // a screen that lists ToDo, so every run leaves two rows in the fixture it
   // shares with every other spec.
   await signIn(page, baseURL)
-  await page.goto(`/one/space/zzmock?screen=tasks&record=${TASK}`)
-  await page.locator('[data-slot="record-pane"]').waitFor({ timeout: 15_000 })
+  await page.goto(`/one/space/zzmock?screen=tasks&at=record:${TASK}`)
+  await page.locator('[data-slot="object-pane"]').waitFor({ timeout: 15_000 })
   // Assignment is on Meta now, with the other three things you do to a record
   // about other people.
   await page.getByRole('tab', { name: 'Meta' }).click()
@@ -176,13 +176,18 @@ test('every kind says where it reaches you, and each channel is its own', async 
   baseURL,
 }) => {
   await signIn(page, baseURL)
-  await page.goto('/one/account')
+  // In Settings, where everything a person sets is — §E7. Account used to
+  // render this panel as well, which is the same question answered on two
+  // surfaces; it links here now, and a panel has an address.
+  await page.goto('/one/account?panel=notifications')
 
   // Two masters, then a row per kind. The kinds are the server's registry —
   // `onespace/notifications.py` — so this is also what proves a declared
   // notification reaches the panel without an edit to the SPA.
-  const app = page.getByText('Notifications', { exact: true })
-  await expect(app).toBeVisible({ timeout: 15_000 })
+  // The panel's own heading, not the tab that opens it — both say the word.
+  await expect(
+    page.getByRole('heading', { name: 'Notifications' }),
+  ).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText('Email me as well')).toBeVisible()
   await expect(page.locator('[data-slot="notification-kind"]').first()).toBeVisible()
 

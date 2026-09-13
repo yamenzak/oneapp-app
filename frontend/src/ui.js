@@ -21,8 +21,14 @@ export {
   MobileShell,
   MobileNav,
   MobileNavItem,
-  Rail,
-  RailItem,
+  // No `Rail`/`RailItem`. frappe-ui ships them and we re-exported them for
+  // three years without a caller, while "the rail" — the word this product
+  // uses everywhere for the app-level column — is a `Sidebar`. Two names for
+  // one idea and an unused import of the other is how a vocabulary rots, so
+  // §C2 asked the question and the answer is: our rail is a Sidebar, and
+  // frappe-ui's `Rail` (a narrow strip of icons) is a different component we
+  // are not using. `lib/shell/sidebar.js` says the same thing where the
+  // width and the collapsed state live.
   ScrollArea,
   ScrollBar,
 
@@ -127,7 +133,11 @@ export {
   FrappeUIProvider,
 
   // ----- Imperative ------------------------------------------------------
-  toast,
+  //
+  // `toast` is deliberately absent. Every notification goes through
+  // `lib/runtime/notify`, which is what guarantees the sound, the parsed
+  // Frappe error and the duration — seven files took it from here and got
+  // none of the three. `test_notify_is_the_only_door` holds the line.
   dialog,
 
   // ----- Composables -----------------------------------------------------

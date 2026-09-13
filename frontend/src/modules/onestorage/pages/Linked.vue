@@ -19,19 +19,19 @@
            here: the editor below draws a header with the name in it, and two
            bars saying the same word is one bar too many. The one case with no
            editor — a drawing, a PDF — names it in the body instead. -->
-      <p class="min-w-0 truncate text-p-sm text-ink-gray-6">
+      <p class="min-w-0 truncate text-sm text-ink-secondary">
         {{ __('Shared with you') }}
       </p>
       <Badge :theme="link.level === 'write' ? 'green' : 'gray'" variant="subtle">
         {{ link.level === 'write' ? __('You can edit this') : __('Read only') }}
       </Badge>
-      <span v-if="until" class="ms-auto shrink-0 text-p-xs text-ink-gray-5">
+      <span v-if="until" class="ms-auto shrink-0 text-p-xs text-ink-muted">
         {{ __('This link stops working {0}', [until]) }}
       </span>
     </div>
 
     <div v-if="loading" class="grid flex-1 place-items-center">
-      <LoadingIndicator class="size-5 text-ink-gray-5" />
+      <LoadingIndicator class="size-5 text-ink-muted" />
     </div>
 
     <!--
@@ -41,8 +41,8 @@
     -->
     <div v-else-if="!link" class="grid flex-1 place-items-center p-6">
       <div class="max-w-sm text-center">
-        <p class="text-base-medium text-ink-gray-8">{{ __('This link is not available') }}</p>
-        <p class="mt-1.5 text-p-base text-ink-gray-6">
+        <p class="text-base-medium text-ink-primary">{{ __('This link is not available') }}</p>
+        <p class="mt-1.5 text-p-base text-ink-secondary">
           {{ __('It may have expired, or been taken back. Ask whoever sent it for a new one.') }}
         </p>
       </div>
@@ -53,8 +53,8 @@
          over to it rather than inventing a second answer. -->
     <div v-else-if="!link.editable" class="grid flex-1 place-items-center p-6">
       <div class="max-w-sm text-center">
-        <p class="text-base-medium text-ink-gray-8">{{ link.title }}</p>
-        <p class="mt-1.5 text-p-base text-ink-gray-6">
+        <p class="text-base-medium text-ink-primary">{{ link.title }}</p>
+        <p class="mt-1.5 text-p-base text-ink-secondary">
           {{ __('This one opens outside the browser.') }}
         </p>
         <Button
@@ -86,11 +86,12 @@
 <script setup>
 import { computed, ref } from 'vue'
 
-import { Badge, Button, LoadingIndicator, dayjsLocal } from '@/ui'
+import { Badge, Button, LoadingIndicator } from '@/ui'
 import SheetEditor from '@/modules/onesheet/components/editor/index.vue'
 import DocEditor from '@/modules/onedoc/components/DocEditor.vue'
 import { workspace } from '@/shared/lib/workspace'
 import { __ } from '@/shared/lib/runtime/translate'
+import { ago } from '@/shared/lib/runtime/format'
 
 // The two kinds an editor can draw. From `onestorage/kinds.py`, which is
 // where the strings are decided.
@@ -105,7 +106,7 @@ const doc = ref(null)
 const loading = ref(true)
 
 const until = computed(() =>
-  link.value?.expires_on ? dayjsLocal(link.value.expires_on).fromNow() : '',
+  link.value?.expires_on ? ago(link.value.expires_on) : '',
 )
 
 function download() {

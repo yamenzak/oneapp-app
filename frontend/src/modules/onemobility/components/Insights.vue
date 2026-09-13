@@ -17,17 +17,18 @@
     same diverging ramp. Two views of one set of numbers should not need
     learning twice.
   -->
-  <div class="h-full min-h-[28rem] w-full overflow-y-auto" data-slot="insights">
+  <div class="h-full min-h-body w-full overflow-y-auto" data-slot="insights">
     <div class="mx-auto flex max-w-7xl flex-col gap-4 p-1">
       <!-- What is being read, and over how long. One row, above everything. -->
       <div class="flex flex-wrap items-center gap-2" data-slot="insights-controls">
-        <FacetBar
+        <Narrow
           v-model="facets"
-          :facets="offered"
+          :fields="offered"
           :unavailable="unavailable"
+          :measure="false"
         />
         <Select v-model="range" :options="rangeOptions" class="w-40" />
-        <span v-if="window" class="ms-auto text-sm text-ink-gray-5">{{ window }}</span>
+        <span v-if="window" class="ms-auto text-sm text-ink-muted">{{ window }}</span>
       </div>
 
       <EmptyState
@@ -51,6 +52,7 @@
             <TabTrigger value="network" :label="__('The network')" icon-left="lucide-route" />
             <TabTrigger value="fleet" :label="__('The fleet')" icon-left="lucide-bus" />
             <TabTrigger value="stops" :label="__('The stops')" icon-left="lucide-map-pin" />
+            <TabTrigger value="events" :label="__('The vehicles')" icon-left="lucide-door-open" />
           </TabList>
 
         <TabPanel value="network" class="flex flex-col gap-4 pt-4">
@@ -63,7 +65,7 @@
              bottom is taller than one with a number in it, and the grid gives
              every cell the height of the shortest unless told otherwise. -->
         <div
-          class="grid auto-rows-[7.5rem] grid-cols-2 gap-3 lg:grid-cols-4"
+          class="grid auto-rows-tile grid-cols-2 gap-3 lg:grid-cols-4"
           data-slot="insights-headline"
         >
           <NumberCard
@@ -283,6 +285,99 @@
             </div>
           </template>
         </TabPanel>
+
+        <!--
+          What the vehicles said about themselves. A fourth subject rather
+          than a fourth chart type, like the three above it: those answer
+          "how did the service run", this answers "how did the equipment
+          behave", and the two have different audiences on the same morning.
+
+          The attention list is first and is not a chart, because it is the
+          only thing on this screen about *now*. Everything else here is a
+          fortnight rolled up; a door that is jammed at this minute belongs
+          above all of it or not on the page at all.
+        -->
+        <TabPanel value="events" class="flex flex-col gap-4 pt-4">
+          <EmptyState
+            v-if="eventsReady && !behaviour.kinds.length"
+            icon="lucide-door-open"
+            :title="__('No vehicle has reported yet')"
+            :description="__('Door states, faults and trip states arrive from a bridge on the vehicle.')"
+          />
+          <template v-else>
+            <!-- Still in force, oldest first. A fault that was fixed has a
+                 later state and is gone from here without anybody closing
+                 it. -->
+            <Panel tone="red" pad="tight" v-if="trouble.rows.length" data-slot="attention" class="flex flex-col gap-1">
+              <p class="text-p-sm font-medium text-ink-primary">
+                {{ __('{0} on {1} vehicles, right now', [troubleWord, trouble.vehicles]) }}
+              </p>
+              <div
+                v-for="one in trouble.rows"
+                :key="one.vehicle + one.kind + one.part"
+                data-slot="attention-row"
+                class="flex flex-wrap items-baseline gap-x-2 text-p-xs"
+              >
+                <span class="font-medium text-ink-primary">{{ one.vehicle }}</span>
+                <span class="text-ink-secondary">{{ one.value }}</span>
+                <span v-if="one.part" class="text-ink-muted">{{ __('part {0}', [one.part]) }}</span>
+                <span class="text-ink-muted">{{ __('for {0} min', [one.minutes]) }}</span>
+                <span class="ms-auto font-mono text-ink-gray-4">{{ one.part_of }}</span>
+              </div>
+            </Panel>
+
+            <div class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <div class="h-96">
+                <!--
+                  Two lines, deliberately. The measured dwell is the doors;
+                  the inferred one is how long the vehicle sat inside a
+                  stop's radius. Drawing only the measured one on a fleet
+                  that half-reports would silently answer for half the
+                  network, and drawing only the inferred one is what this
+                  arc exists to improve on.
+                -->
+                <LineChart
+                  :data="dwell"
+                  x="label"
+                  :y="['measured', 'inferred']"
+                  :title="__('How long the doors are open')"
+                  :subtitle="__('Median seconds by hour')"
+                  :series-config="dwellConfig"
+                  :loading="loadingEvents"
+                />
+              </div>
+              <div class="h-96">
+                <BarChart
+                  :data="behaviour.hours"
+                  x="label"
+                  y="events"
+                  :title="__('What the vehicles report, by hour')"
+                  :subtitle="__('Every state change, all kinds together')"
+                  :palette="[occupancyInk(45)]"
+                  :loading="loadingEvents"
+                />
+              </div>
+            </div>
+
+            <!-- What is actually being reported, and which VDV part it came
+                 from. A count nobody can attribute is a count nobody can
+                 check against their own supplier. -->
+            <div class="flex flex-col gap-1" data-slot="event-kinds">
+              <div
+                v-for="one in behaviour.kinds"
+                :key="one.kind"
+                class="flex flex-wrap items-baseline gap-x-2 border-b border-outline-gray-1 py-1 text-p-xs"
+              >
+                <span class="font-medium text-ink-primary">{{ one.kind }}</span>
+                <span class="text-ink-muted">{{ __('{0} reports', [one.events]) }}</span>
+                <span v-if="one.trouble" class="text-ink-red-3">
+                  {{ __('{0} needing attention', [one.trouble]) }}
+                </span>
+                <span class="ms-auto font-mono text-ink-gray-4">{{ one.part_of }}</span>
+              </div>
+            </div>
+          </template>
+        </TabPanel>
         </Tabs>
       </template>
     </div>
@@ -291,17 +386,18 @@
 
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
 
 import {
   AreaChart, BarChart, HeatmapChart, LineChart, NumberCard, ScatterChart,
   Select, TabList, TabPanel, TabTrigger, Tabs,
 } from '@/ui'
+import Narrow from '@/shared/components/Narrow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { __ } from '@/shared/lib/runtime/translate'
 import { network } from '@/modules/onemobility/lib/api'
+import { useFacets } from '@/modules/onemobility/lib/facets'
 import { delayInk, divergingRamp, occupancyInk } from '@/modules/onemobility/lib/palette'
-import FacetBar from '@/modules/onemobility/components/FacetBar.vue'
+import Panel from '@/shared/components/Panel.vue'
 
 defineProps({
   /** The resolved screen. Unused: this surface reads no records. */
@@ -334,8 +430,11 @@ const answer = ref({})
  * is that a line chosen while looking at the network is still chosen when the
  * fleet tab opens, because it is the same question asked of a different table.
  */
-const facets = ref({})
-const offered = ref([])
+// Shared with the map, Outlook and Timetable, and carried in the URL —
+// `lib/facets.js`. This screen used to keep its own pair and write each facet
+// as its own query key, which is how `?line=U6` came to be a parameter nothing
+// declared.
+const { facets, offered, asJson } = useFacets()
 
 const loadingFleet = ref(false)
 const fleetReady = ref(false)
@@ -344,6 +443,12 @@ const fleetAnswer = ref({})
 const loadingStops = ref(false)
 const stopsReady = ref(false)
 const stopsAnswer = ref({})
+
+const loadingEvents = ref(false)
+const eventsReady = ref(false)
+const eventsAnswer = ref({})
+const doorsAnswer = ref({})
+const troubleAnswer = ref({})
 
 const spread = computed(() => answer.value.spread || [])
 
@@ -356,6 +461,71 @@ const stopped = computed(() => ({
   busiest: stopsAnswer.value.busiest || [],
   bunching: stopsAnswer.value.bunching || [],
   by_hour: stopsAnswer.value.by_hour || [],
+}))
+
+const trouble = computed(() => ({
+  rows: troubleAnswer.value.rows || [],
+  vehicles: troubleAnswer.value.vehicles || 0,
+}))
+
+const troubleWord = computed(() =>
+  trouble.value.rows.length === 1
+    ? __('One thing needs attention')
+    : __('{0} things need attention', [trouble.value.rows.length]),
+)
+
+const behaviour = computed(() => ({
+  kinds: eventsAnswer.value.kinds || [],
+  hours: (eventsAnswer.value.hours || []).map((one) => ({
+    label: `${String(one.hour).padStart(2, '0')}:00`,
+    // Every kind together: the per-kind split is the list underneath, and a
+    // stacked bar of ten thousand door events beside one fault is a chart
+    // where the fault is invisible.
+    events: Object.entries(one).reduce(
+      (total, [key, value]) => (key === 'hour' ? total : total + value),
+      0,
+    ),
+  })),
+}))
+
+/**
+ * The two dwell series on one x axis.
+ *
+ * Joined by hour here rather than on the server because they come off two
+ * different tiers, and an hour present in one and missing from the other is a
+ * real answer — a fleet that reports doors only in the morning should show a
+ * line that stops, not one interpolated across the gap.
+ */
+const dwell = computed(() => {
+  const measured = new Map((doorsAnswer.value.measured || []).map((one) => [one.hour, one.p50]))
+  const inferred = new Map((doorsAnswer.value.inferred || []).map((one) => [one.hour, one.p50]))
+  const hours = [...new Set([...measured.keys(), ...inferred.keys()])].sort((a, b) => a - b)
+  return hours.map((hour) => ({
+    label: `${String(hour).padStart(2, '0')}:00`,
+    measured: measured.get(hour) ?? null,
+    inferred: inferred.get(hour) ?? null,
+  }))
+})
+
+/**
+ * And what each line is, spelled out.
+ *
+ * Two series with no legend is a chart nobody can read, and here the two are
+ * the whole point: one is the doors and one is how long the vehicle sat
+ * inside a stop's radius. They disagree by a factor of three on the fixture,
+ * which is the argument for having built the measured one.
+ */
+const dwellConfig = computed(() => ({
+  measured: {
+    name: 'measured',
+    label: __('At the doors'),
+    color: occupancyInk(70),
+  },
+  inferred: {
+    name: 'inferred',
+    label: __('From positions'),
+    color: occupancyInk(25),
+  },
 }))
 
 /**
@@ -545,7 +715,7 @@ const window = computed(() =>
 
 /** The facets, as the server's endpoints want them: one JSON object. */
 const narrowed = computed(() => ({
-  facets: JSON.stringify(facets.value),
+  facets: asJson(),
   days_back: range.value,
 }))
 
@@ -566,6 +736,26 @@ async function pullFleet() {
   } finally {
     loadingFleet.value = false
     fleetReady.value = true
+  }
+}
+
+async function pullEvents() {
+  loadingEvents.value = true
+  try {
+    // Three at once. They read three tiers and need nothing from each other,
+    // and asking serially spends two round trips drawing a frame with
+    // nothing in it — the same argument `onMounted` already makes below.
+    const [shape, spans, wrong] = await Promise.all([
+      network.behaviour(narrowed.value),
+      network.doorTimes(narrowed.value),
+      network.attention(),
+    ])
+    eventsAnswer.value = shape
+    doorsAnswer.value = spans
+    troubleAnswer.value = wrong
+  } finally {
+    loadingEvents.value = false
+    eventsReady.value = true
   }
 }
 
@@ -603,66 +793,45 @@ watch([facets, range], () => {
   // under the new window's heading.
   if (tab.value !== 'fleet') fleetReady.value = false
   if (tab.value !== 'stops') stopsReady.value = false
-  writeTheUrl()
+  if (tab.value !== 'events') eventsReady.value = false
   pullCurrent()
 }, { deep: true })
 
 watch(tab, () => {
   if (tab.value === 'fleet' && !fleetReady.value) pullFleet()
   if (tab.value === 'stops' && !stopsReady.value) pullStops()
+  if (tab.value === 'events' && !eventsReady.value) pullEvents()
 })
 
-const route = useRoute()
-const router = useRouter()
-
 /**
- * The facets live in the URL as well as in the ref, and both directions matter.
+ * Opened *at* something, so open where that something can be seen.
  *
- * Inwards: `actions.py` puts a "How this line ran" button on a Line, and the
- * engine's screen-action carries the record's name over as one query parameter
- * — so a record hands its identity to the screen that can say how it behaved,
- * without either half knowing anything about the other beyond the name of a
- * facet.
+ * `actions.py` puts a "How this line ran" button on a Line, and the engine's
+ * screen action carries the record over in `narrow` — so a record hands its
+ * identity to the screen that can say how it behaved, without either half
+ * knowing anything about the other beyond the name of a facet. What is left
+ * here is the part only this screen knows: which of its three tabs can answer
+ * for that kind of thing.
  *
- * Outwards: a narrowed view is then a link somebody can send. "Look at U6's
- * punctuality" being a URL rather than a set of instructions is most of what
- * makes a screen like this get used by more than the person who built it.
+ * On arrival only. After that the tab is the reader's to choose.
  */
-function readTheUrl() {
-  const found = {}
-  for (const one of offered.value) {
-    const value = route.query[one.key]
-    if (value) found[one.key] = String(value)
-  }
-  facets.value = found
-
-  // Opened *at* something, so open where that something can be seen. Only on
-  // arrival: after that the tab is the reader's to choose.
-  for (const key of Object.keys(found)) {
+function openWhereItShows() {
+  for (const key of Object.keys(facets.value)) {
     if (HOME_TAB[key]) {
       tab.value = HOME_TAB[key]
-      break
+      return
     }
   }
 }
 
-function writeTheUrl() {
-  const query = { ...route.query }
-  for (const one of offered.value) delete query[one.key]
-  router.replace({ query: { ...query, ...facets.value } }).catch(() => {})
-}
-
 onMounted(async () => {
-  // Together, not one after the other. The vocabulary and the numbers do not
-  // need each other — `resolve` runs on the server against whatever facets the
-  // URL carried, and the bar is drawn from the vocabulary — so asking serially
-  // spent a whole round trip putting the frame on screen with nothing in it.
-  const [choices] = await Promise.all([network.offered(), pull()])
-  offered.value = choices.facets || []
-  readTheUrl()
+  // The vocabulary is the composable's and is already in flight; this asks for
+  // the numbers, against whatever narrowing the URL carried.
+  openWhereItShows()
+  await pull()
 
-  // Only if the URL actually narrowed something, or moved the tab: the first
-  // fetch above already answered the unnarrowed question.
+  // Only if the URL actually narrowed something, or moved the tab: the fetch
+  // above already answered the unnarrowed question.
   if (Object.keys(facets.value).length || tab.value !== 'network') pullCurrent()
 })
 </script>

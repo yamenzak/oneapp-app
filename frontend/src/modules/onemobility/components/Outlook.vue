@@ -17,10 +17,10 @@
     and an operator who catches this screen being certain and wrong once will
     never use it again.
   -->
-  <div class="h-full min-h-[28rem] w-full overflow-y-auto" data-slot="outlook">
+  <div class="h-full min-h-body w-full overflow-y-auto" data-slot="outlook">
     <div class="mx-auto flex max-w-7xl flex-col gap-4 p-1">
       <div class="flex flex-wrap items-center gap-2" data-slot="outlook-controls">
-        <FacetBar v-model="facets" :facets="offered" :unavailable="unavailable" />
+        <Narrow v-model="facets" :fields="offered" :unavailable="unavailable" :measure="false" />
         <Select v-model="day" :options="dayOptions" class="w-44" />
         <Select v-model="hour" :options="hourOptions" class="w-32" />
         <Badge
@@ -30,19 +30,19 @@
           :label="__('Still learning')"
           data-slot="outlook-learning"
         />
-        <span v-if="basisLine" class="ms-auto text-sm text-ink-gray-5">{{ basisLine }}</span>
+        <span v-if="basisLine" class="ms-auto text-sm text-ink-muted">{{ basisLine }}</span>
       </div>
 
       <EmptyState
         v-if="ready && !hours.length"
         icon="lucide-chart-line"
         :title="__('Nothing to go on yet')"
-        :description="__('This reads the nightly roll-up. Once a few days of positions are in, it can say what a Tuesday looks like.')"
+        :description="__('From the nightly roll-up. A few days of positions and it can say what a Tuesday looks like.')"
       />
 
       <template v-else>
         <div
-          class="grid auto-rows-[7.5rem] grid-cols-2 gap-3 lg:grid-cols-4"
+          class="grid auto-rows-tile grid-cols-2 gap-3 lg:grid-cols-4"
           data-slot="outlook-headline"
         >
           <NumberCard
@@ -154,13 +154,10 @@
             />
           </div>
 
-          <div
-            class="flex flex-col gap-2 rounded-6 border border-outline-gray-2 bg-surface-elevation-2 p-4"
-            data-slot="outlook-unusual"
-          >
+          <Panel ground="raised" class="flex flex-col gap-2" data-slot="outlook-unusual">
             <div class="flex items-baseline justify-between gap-2">
-              <p class="text-base font-medium text-ink-gray-8">{{ __('Not like itself') }}</p>
-              <span class="text-xs text-ink-gray-5">{{ __('Today against its own history') }}</span>
+              <p class="text-base font-medium text-ink-primary">{{ __('Not like itself') }}</p>
+              <span class="text-xs text-ink-muted">{{ __('Today against its own history') }}</span>
             </div>
             <!--
               A z-score and not a threshold, which is the only version of this
@@ -168,28 +165,85 @@
               that is always ten minutes late, and never fires on the one that
               has never been late until this morning.
             -->
-            <p v-if="unusualReady && !findings.length" class="py-6 text-center text-sm text-ink-gray-5">
+            <p v-if="unusualReady && !findings.length" class="py-6 text-center text-sm text-ink-muted">
               {{ __('Everything is running the way it usually does.') }}
             </p>
             <ul v-else class="flex flex-col gap-1.5 overflow-y-auto">
-              <li
+              <Row
                 v-for="one in findings"
                 :key="`${one.line}-${one.hour}`"
-                class="flex items-center gap-2 rounded-6 px-2 py-1.5 hover:bg-surface-gray-2"
+                as="li"
+                edge="rounded"
+                pad="tight"
               >
-                <Badge
-                  :theme="one.worse ? 'red' : 'green'"
-                  variant="subtle"
-                  :label="one.worse ? __('Worse') : __('Better')"
-                />
-                <span class="truncate text-sm text-ink-gray-8">{{ one.line }}</span>
-                <span class="text-xs tabular-nums text-ink-gray-5">{{ one.label }}</span>
-                <span class="ms-auto shrink-0 text-xs tabular-nums text-ink-gray-6">
-                  {{ minutes(one.delay_avg) }} · {{ __('usually {0}', [minutes(one.usual_p50)]) }}
+                <template #lead>
+                  <Badge
+                    :theme="one.worse ? 'red' : 'green'"
+                    variant="subtle"
+                    :label="one.worse ? __('Worse') : __('Better')"
+                  />
+                </template>
+                <span class="flex items-center gap-2">
+                  <span class="truncate text-sm text-ink-primary">{{ one.line }}</span>
+                  <span class="text-xs tabular-nums text-ink-muted">{{ one.label }}</span>
                 </span>
-              </li>
+                <template #trail>
+                  <span class="text-xs tabular-nums text-ink-secondary">
+                    {{ minutes(one.delay_avg) }} · {{ __('usually {0}', [minutes(one.usual_p50)]) }}
+                  </span>
+                </template>
+              </Row>
             </ul>
+          </Panel>
+        </div>
+
+        <!--
+          The same day read off the event tier rather than the position tier.
+          Everything above forecasts how the *service* runs; this forecasts how
+          the *equipment* behaves, and an operator planning a shift needs both —
+          a Tuesday that is reliably late at eight and a Tuesday on which a door
+          reliably jams at eight are two different people's problem.
+
+          Drawn only where there is something to draw. A workspace with no
+          bridge on any vehicle has no event tier, and an empty chart captioned
+          "no faults" would be read as good news rather than as no data.
+        -->
+        <div v-if="faultHours.length" class="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div class="h-80">
+            <!--
+              A counted frequency, not a normal tail — see `forecast.faults`.
+              Four Tuesdays out of thirteen is a number somebody can check
+              against their own memory of those four Tuesdays, which is not
+              true of a probability derived from two stored percentiles.
+            -->
+            <BarChart
+              :data="faultHours"
+              x="label"
+              y="chance"
+              :title="__('When things break')"
+              :subtitle="faultSubtitle"
+              :palette="[troubleInk()]"
+              :loading="loadingFaults"
+            />
           </div>
+
+          <Panel ground="raised" class="flex flex-col gap-4" data-slot="outlook-faults">
+            <div class="flex flex-col gap-0.5">
+              <p class="text-base font-medium text-ink-primary">
+                {{ __('What a {0} usually costs', [weekdayName]) }}
+              </p>
+              <p class="text-xs text-ink-muted">{{ faultBasis }}</p>
+            </div>
+            <!-- Three across on anything but a phone, so they read as one
+                 answer in three parts rather than as a wrapped list. -->
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div v-for="one in faultFigures" :key="one.title" class="flex flex-col gap-0.5">
+                <p class="text-xs text-ink-muted">{{ one.title }}</p>
+                <p class="text-xl font-medium tabular-nums text-ink-primary">{{ one.value }}</p>
+                <p class="text-xs text-ink-muted">{{ one.note }}</p>
+              </div>
+            </div>
+          </Panel>
         </div>
 
         <!--
@@ -200,31 +254,27 @@
           deliberately: a scorecard filed somewhere else is a scorecard nobody
           checks against the thing it scores.
         -->
-        <div
-          class="flex flex-wrap items-center gap-3 rounded-6 border
-                 border-outline-gray-2 bg-surface-elevation-2 p-4"
-          data-slot="outlook-accuracy"
-        >
+        <Panel ground="raised" class="flex flex-wrap items-center gap-3" data-slot="outlook-accuracy">
           <div class="flex flex-col gap-0.5">
-            <p class="text-base font-medium text-ink-gray-8">{{ __('Has this been right?') }}</p>
-            <p class="text-xs text-ink-gray-5">{{ scoreNote }}</p>
+            <p class="text-base font-medium text-ink-primary">{{ __('Has this been right?') }}</p>
+            <p class="text-xs text-ink-muted">{{ scoreNote }}</p>
           </div>
           <template v-if="score.scored">
             <div class="flex flex-col gap-0.5 ps-4">
-              <p class="text-xs text-ink-gray-5">{{ __('Inside the range') }}</p>
-              <p class="text-xl font-medium tabular-nums text-ink-gray-8">
+              <p class="text-xs text-ink-muted">{{ __('Inside the range') }}</p>
+              <p class="text-xl font-medium tabular-nums text-ink-primary">
                 {{ score.inside_pct }}%
               </p>
             </div>
             <div class="flex flex-col gap-0.5 ps-4">
-              <p class="text-xs text-ink-gray-5">{{ __('Typical miss') }}</p>
-              <p class="text-xl font-medium tabular-nums text-ink-gray-8">
+              <p class="text-xs text-ink-muted">{{ __('Typical miss') }}</p>
+              <p class="text-xl font-medium tabular-nums text-ink-primary">
                 {{ minutes(score.typical_error_s) }}
               </p>
             </div>
             <div class="flex flex-col gap-0.5 ps-4">
-              <p class="text-xs text-ink-gray-5">{{ __('Hours scored') }}</p>
-              <p class="text-xl font-medium tabular-nums text-ink-gray-8">{{ score.scored }}</p>
+              <p class="text-xs text-ink-muted">{{ __('Hours scored') }}</p>
+              <p class="text-xl font-medium tabular-nums text-ink-primary">{{ score.scored }}</p>
             </div>
             <!--
               Plotted as what *missed* rather than what held, and that is the
@@ -245,7 +295,7 @@
               />
             </div>
           </template>
-        </div>
+        </Panel>
 
         <!--
           Only when a stop has been chosen, because that is the only time there
@@ -254,28 +304,24 @@
           panel that appeared with an empty control in it would be a question
           asked of a reader who had not asked one.
         -->
-        <div
-          v-if="facets.stop"
-          class="flex flex-col gap-3 rounded-6 border border-outline-gray-2 bg-surface-elevation-2 p-4"
-          data-slot="outlook-stop"
-        >
+        <Panel ground="raised" v-if="facets.stop" class="flex flex-col gap-3" data-slot="outlook-stop">
           <div class="flex items-baseline justify-between gap-2">
-            <p class="text-base font-medium text-ink-gray-8">{{ __('At this stop') }}</p>
-            <span class="text-xs text-ink-gray-5">
+            <p class="text-base font-medium text-ink-primary">{{ __('At this stop') }}</p>
+            <span class="text-xs text-ink-muted">
               {{ __('{0} on a {1}', [hourLabel, weekdayName]) }}
             </span>
           </div>
-          <p v-if="stopAnswer.scheduled_only" class="text-sm text-ink-gray-5">
-            {{ __('Nothing has been seen at this stop in this hour yet, so there is no history to read. Until there is, an arrival here is the timetable and the delay the vehicle is already carrying.') }}
+          <p v-if="stopAnswer.scheduled_only" class="text-sm text-ink-muted">
+            {{ __('No history at this stop in this hour yet. An arrival here is the timetable plus the delay so far.') }}
           </p>
           <div v-else class="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <div v-for="one in stopFigures" :key="one.title" class="flex flex-col gap-0.5">
-              <p class="text-xs text-ink-gray-5">{{ one.title }}</p>
-              <p class="text-xl font-medium tabular-nums text-ink-gray-8">{{ one.value }}</p>
-              <p class="text-xs text-ink-gray-5">{{ one.note }}</p>
+              <p class="text-xs text-ink-muted">{{ one.title }}</p>
+              <p class="text-xl font-medium tabular-nums text-ink-primary">{{ one.value }}</p>
+              <p class="text-xs text-ink-muted">{{ one.note }}</p>
             </div>
           </div>
-        </div>
+        </Panel>
       </template>
     </div>
   </div>
@@ -285,11 +331,19 @@
 import { computed, onMounted, ref, watch } from 'vue'
 
 import { Badge, BarChart, LineChart, NumberCard, Select } from '@/ui'
+import Narrow from '@/shared/components/Narrow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { __ } from '@/shared/lib/runtime/translate'
 import { network } from '@/modules/onemobility/lib/api'
-import { delayInk, divergingRamp, occupancyInk } from '@/modules/onemobility/lib/palette'
-import FacetBar from '@/modules/onemobility/components/FacetBar.vue'
+import { useFacets } from '@/modules/onemobility/lib/facets'
+import {
+  delayInk,
+  divergingRamp,
+  occupancyInk,
+  troubleInk,
+} from '@/modules/onemobility/lib/palette'
+import Panel from '@/shared/components/Panel.vue'
+import Row from '@/shared/components/Row.vue'
 
 defineProps({
   /** The resolved screen. Unused: this surface reads no records. */
@@ -309,8 +363,8 @@ const WEEKDAYS = () => [
   __('Friday'), __('Saturday'), __('Sunday'),
 ]
 
-const facets = ref({})
-const offered = ref([])
+// Shared with the map and the charts, and in the URL — `lib/facets.js`.
+const { facets, offered, asJson } = useFacets()
 const day = ref(today())
 const hour = ref('8')
 
@@ -326,6 +380,9 @@ const bunchingAnswer = ref({})
 
 const unusualReady = ref(false)
 const unusualAnswer = ref({})
+
+const loadingFaults = ref(false)
+const faultAnswer = ref({})
 
 const stopAnswer = ref({})
 const scoreAnswer = ref({})
@@ -441,6 +498,55 @@ const basisLine = computed(() => {
 const riskSubtitle = computed(() =>
   __('Chance of passing five minutes late at {0}', [hourLabel.value])
 )
+
+const faultHours = computed(() => faultAnswer.value.hours || [])
+
+const faultSubtitle = computed(() =>
+  __('Share of {0}s with something wrong at this hour', [weekdayName.value])
+)
+
+/**
+ * How many of that weekday this rests on, and whether that is enough to be a
+ * frequency at all. Said in the panel rather than only flagged, because the
+ * difference between "on four Tuesdays in thirteen" and "on one Tuesday in
+ * one" is the whole reliability of the chart beside it.
+ */
+const faultBasis = computed(() => {
+  const days = faultAnswer.value.days || 0
+  if (!days) return ''
+  if (faultAnswer.value.learning) {
+    return __('Only {0} of them so far, so this is still learning', [days])
+  }
+  const { from, to } = faultAnswer.value
+  return __('Across {0} of them, {1} to {2}', [days, from, to])
+})
+
+/** The three figures a shift is planned off. */
+const faultFigures = computed(() => {
+  const hours = faultHours.value
+  if (!hours.length) return []
+  const trouble = hours.reduce((sum, one) => sum + (one.trouble || 0), 0)
+  const events = hours.reduce((sum, one) => sum + (one.events || 0), 0)
+  let worst = null
+  for (const one of hours) if (!worst || one.chance > worst.chance) worst = one
+  return [
+    {
+      title: __('Faults in a day'),
+      value: Math.round(trouble * 10) / 10,
+      note: __('States somebody has to act on'),
+    },
+    {
+      title: __('The hour to staff'),
+      value: worst?.label || '—',
+      note: __('{0}% of them go wrong then', [worst ? Math.round(worst.chance) : 0]),
+    },
+    {
+      title: __('Reports in a day'),
+      value: Math.round(events),
+      note: __('Every state change, all kinds'),
+    },
+  ]
+})
 
 /** Zero is the timetable; five minutes is where late becomes reportable. */
 const lateMarks = computed(() => [
@@ -570,7 +676,7 @@ const scoreNote = computed(() =>
 
 /** What every endpoint here is narrowed by. One object, one place. */
 const narrowed = computed(() => ({
-  facets: JSON.stringify(facets.value),
+  facets: asJson(),
   when: `${day.value} ${String(Number(hour.value)).padStart(2, '0')}:00:00`,
 }))
 
@@ -599,6 +705,22 @@ async function pullRisk() {
     riskAnswer.value = await network.risk(narrowed.value)
   } finally {
     loadingRisk.value = false
+  }
+}
+
+async function pullFaults() {
+  loadingFaults.value = true
+  try {
+    faultAnswer.value = await network.faults({
+      facets: narrowed.value.facets, when: day.value,
+    })
+  } catch {
+    // The event tier is optional — a workspace with no bridge on any vehicle
+    // has no table to read — and a screen about the service should not fail
+    // because the half about the equipment has nothing in it.
+    faultAnswer.value = {}
+  } finally {
+    loadingFaults.value = false
   }
 }
 
@@ -637,6 +759,7 @@ watch([facets, day], () => {
   pullBunching()
   pullStop()
   pullScore()
+  pullFaults()
 })
 watch(hour, () => {
   pullRisk()
@@ -645,11 +768,11 @@ watch(hour, () => {
 })
 
 onMounted(async () => {
-  offered.value = (await network.offered()).facets || []
   pull()
   pullRisk()
   pullBunching()
   pullUnusual()
   pullScore()
+  pullFaults()
 })
 </script>

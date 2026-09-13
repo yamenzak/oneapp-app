@@ -13,13 +13,13 @@
         />
         <!-- Stacked on a phone: side by side, the toggle leaves the recipients
              a box too narrow to read one address in. -->
-        <div class="flex flex-col items-stretch gap-2 sm:flex-row sm:items-end">
+        <div class="flex flex-col items-stretch gap-2 md:flex-row md:items-end">
           <RecipientField v-model="draft.to" class="flex-1" :label="__('To')" />
           <!-- Behind a toggle, because most messages have neither and two empty
                boxes above every one of them is two boxes to skip. -->
           <Button
             variant="ghost"
-            class="self-start sm:self-auto"
+            class="self-start md:self-auto"
             :label="copies ? __('Hide Cc and Bcc') : __('Cc and Bcc')"
             data-slot="mail-copies"
             @click="copies = !copies"
@@ -51,11 +51,8 @@
           being written, and a spinner in the corner would say the dialog is
           busy while the text changed underneath it anyway.
         -->
-        <AiGlow
-          mode="overlay"
-          :active="writing.running.value"
-          class="rounded-6 border border-outline-gray-2 bg-surface-base px-3 py-2"
-        >
+        <Panel pad="bar">
+        <AiGlow mode="overlay" :active="writing.running.value">
           <Editor
             ref="body"
             v-model="draft.content"
@@ -70,6 +67,7 @@
             </template>
           </Editor>
         </AiGlow>
+        </Panel>
 
         <!--
           What just happened to the message, and the way back from it. A
@@ -80,11 +78,11 @@
         -->
         <div
           v-if="writing.running.value || replaced !== null"
-          class="flex items-center gap-2 text-p-xs text-ink-gray-6"
+          class="flex items-center gap-2 text-p-xs text-ink-secondary"
           data-slot="mail-ai-strip"
         >
           <span v-if="writing.running.value">{{ __('Writing') }}</span>
-          <span v-else>{{ __('Written by AI. Read it before you send it.') }}</span>
+          <span v-else>{{ __('Written by {0}. Read it before you send it.', [assistantName]) }}</span>
           <Button
             v-if="writing.running.value"
             variant="ghost"
@@ -109,7 +107,7 @@
           <span
             v-for="one in draft.attachments"
             :key="one.name"
-            class="flex items-center gap-1.5 rounded-6 border border-outline-gray-2 px-2 py-1 text-p-xs text-ink-gray-7"
+            class="flex items-center gap-1.5 rounded-6 border border-outline-gray-2 px-2 py-1 text-p-xs text-ink-secondary"
             data-slot="mail-attachment"
           >
             <Icon name="lucide-paperclip" class="size-3" :aria-hidden="true" />
@@ -192,7 +190,7 @@
         :busy="reading"
         :live="false"
         can-write
-        :said="__('The message will carry what this record says now. What you put in is text, so it does not change afterwards.')"
+        :said="__('The message carries what the record says now, as text. It does not change afterwards.')"
         @insert-field="insertField"
         @insert-table="insertTable"
         @add-source="addSource"
@@ -227,6 +225,7 @@ import {
 } from '@/ui'
 import RecipientField from '@/modules/onemail/components/RecipientField.vue'
 import AiGlow from '@/shared/components/AiGlow.vue'
+import Panel from '@/shared/components/Panel.vue'
 import AiMenu from '@/shared/components/AiMenu.vue'
 import RecordPanel from '@/shared/components/RecordPanel.vue'
 import { useAiRun } from '@/shared/lib/ai/run'
@@ -238,6 +237,7 @@ import { session } from '@/modules/onespace/lib/shell/session'
 import { openSettings } from '@/modules/onespace/lib/shell/settings'
 import { __ } from '@/shared/lib/runtime/translate'
 import { errorText } from '@/shared/lib/runtime/errors'
+import { assistantName } from '@/modules/onespace/lib/shell/assistant'
 
 const props = defineProps({
   /** The addresses this person may send from. The first is the default. */

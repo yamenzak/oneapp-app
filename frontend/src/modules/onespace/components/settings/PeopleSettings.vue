@@ -15,7 +15,7 @@
   />
 
   <SettingsBody :class="PANEL_BODY">
-    <LoadingIndicator v-if="loading && !data" class="size-5 text-ink-gray-5" />
+    <LoadingIndicator v-if="loading && !data" class="size-5 text-ink-muted" />
 
     <!-- The rows are the control plane's, so this is the one panel that has
          somewhere else to be unreachable. Said as what it means rather than as
@@ -23,7 +23,7 @@
          workspace with no people. -->
     <Alert v-else-if="unreachable" theme="amber" :title="__('Cannot reach your account')">
       <template #description>
-        {{ __('Who is in this workspace is kept with your account, and it is not answering. Nobody has lost access; this page is what cannot be read.') }}
+        {{ __('The list is kept with your account, which is not answering. Nobody has lost access.') }}
       </template>
     </Alert>
 
@@ -34,20 +34,20 @@
         </template>
       </Alert>
 
-      <ul class="flex flex-col">
-        <li
-          v-for="person in data.members"
-          :key="person.email"
+      <!-- The frame is `DataList` — §B1. -->
+      <DataList :source="source" :skeleton="4" :search-placeholder="__('Search people')">
+        <template #row="{ row: person }">
+        <div
           data-slot="member-row"
           class="flex items-center gap-3 border-b border-outline-gray-1 py-2.5"
         >
           <Avatar :label="person.full_name || person.email" size="lg" />
 
           <span class="flex min-w-0 flex-1 flex-col">
-            <span class="truncate text-p-sm text-ink-gray-8">
+            <span class="truncate text-sm text-ink-primary">
               {{ person.full_name || person.email }}
             </span>
-            <span class="truncate text-p-xs text-ink-gray-5">{{ person.email }}</span>
+            <span class="truncate text-xs text-ink-muted">{{ person.email }}</span>
           </span>
 
           <!-- The owner is not a level somebody is set to; it is who the
@@ -92,13 +92,14 @@
             :loading="saving === person.email"
             @click="remove(person)"
           />
-        </li>
-      </ul>
+        </div>
+        </template>
+      </DataList>
 
-      <p class="text-p-xs text-ink-gray-5">{{ seatLine }}</p>
+      <p class="text-p-xs text-ink-muted">{{ seatLine }}</p>
 
       <section class="flex flex-col gap-3">
-        <h3 class="text-base-medium text-ink-gray-8">{{ __('Invite somebody') }}</h3>
+        <h3 class="text-base-medium text-ink-primary">{{ __('Invite somebody') }}</h3>
         <div class="grid gap-3 sm:grid-cols-2">
           <FormControl
             v-model="invite.email"
@@ -111,7 +112,7 @@
         <!-- Said rather than hidden: an invitation is not an account yet, and
              a person who tries to sign in immediately should know why it does
              not work. How long, not what runs — see `docs/LANGUAGE.md`. -->
-        <p class="text-p-xs text-ink-gray-5">
+        <p class="text-p-xs text-ink-muted">
           {{ __('They can sign in within about fifteen minutes.') }}
         </p>
       </section>
@@ -137,6 +138,8 @@ import {
   Alert, Avatar, Badge, Button, ErrorMessage, FormControl, LoadingIndicator,
   SettingsHeader, SettingsBody,
 } from '@/ui'
+import DataList from '@/shared/components/DataList.vue'
+import { staticSource } from '@/shared/lib/list/source'
 import MemberRoles from '@/modules/onespace/components/settings/MemberRoles.vue'
 import { PANEL_BODY, PANEL_FOOTER, PANEL_HEADER } from '@/modules/onespace/components/settings/geometry'
 import { workspace } from '@/shared/lib/workspace'
@@ -158,6 +161,28 @@ const seatLine = computed(() =>
     ? __('{0} of {1} seats in use.', [seats.value.used, seats.value.quota])
     : '',
 )
+
+/**
+ * Everybody in the workspace, and what this panel can do with them — §B1.
+ *
+ * Search, and only search. A workspace on a seated plan can run to a hundred
+ * people and finding one of them by scrolling is the thing a box fixes; the
+ * order is the server's, which puts the owner first, and a sort control would
+ * be a way to lose that.
+ */
+const source = computed(() => staticSource({
+  rows: data.value?.members || [],
+  key: (person) => person.email,
+  search: (person, asked) => {
+    const said = asked.toLowerCase()
+    return `${person.full_name || ''} ${person.email}`.toLowerCase().includes(said)
+  },
+  empty: {
+    icon: 'lucide-users',
+    title: __('Nobody else yet'),
+    description: __('Invite somebody below and they appear here.'),
+  },
+}))
 
 const accessOptions = computed(() =>
   (data.value?.access_levels || []).map((one) => ({ label: __(one), value: one })),

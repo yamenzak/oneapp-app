@@ -50,6 +50,39 @@ test('the record menu offers duplicate, copy link and reload', async ({ page }, 
   expectNoRealErrors(errors)
 })
 
+test('a record can be deleted from the record you are looking at', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'the menu is the same; the pane is not')
+  const errors = collectConsoleErrors(page)
+
+  // Made here rather than reused: this test destroys what it opens, and a
+  // fixture row the other specs read would be gone for the rest of the run.
+  await page.goto(COMPLIANCE)
+  await page.getByRole('button', { name: 'New' }).first().click()
+  const dialog = page.locator('[role="dialog"]')
+  // `ZZ ` because that is the prefix the fixture's own sweep looks for: a run
+  // that fails between creating this and deleting it leaves a row behind, and
+  // two of those later this test is counting somebody else's litter.
+  const doomed = `ZZ Delete me ${Date.now()}`
+  await dialog.getByLabel('Title').fill(doomed)
+  await dialog.getByRole('button', { name: 'Create', exact: true }).click()
+  await page.locator('[data-slot="record-controls"]').waitFor({ timeout: 20_000 })
+
+  // Delete is in the record's own menu, last and in red. It used to be only in
+  // the selection bar, so deleting one record meant closing it, finding its
+  // row and ticking a box.
+  await page.locator('[data-slot="record-more"]').click()
+  await page.getByRole('menuitem', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Delete for ever', exact: true }).last().click()
+
+  // The pane shuts, because what it was drawing is gone — and the list behind
+  // it has one row fewer, which is the half a plain close would have missed.
+  await expect(page.locator('[data-slot="record-controls"]')).toBeHidden({ timeout: 20_000 })
+  await expect(page.locator('[data-slot="list-row"]', { hasText: doomed }))
+    .toHaveCount(0)
+
+  expectNoRealErrors(errors)
+})
+
 test('duplicating opens a draft holding what the record held', async ({ page }, info) => {
   test.skip(info.project.name === 'mobile', 'the menu is the same; the pane is not')
   const errors = collectConsoleErrors(page)
@@ -58,7 +91,7 @@ test('duplicating opens a draft holding what the record held', async ({ page }, 
   // Scoped to the pane. The list beside it draws a quick-filter box per column,
   // and one of them is called Title too — a box with a placeholder rather than
   // a value, which is not what this is asking about.
-  const pane = page.locator('[data-slot="record-pane"]')
+  const pane = page.locator('[data-slot="object-pane"]')
   const title = await pane.getByRole('textbox', { name: 'Title' }).inputValue()
 
   await page.locator('[data-slot="record-more"]').click()

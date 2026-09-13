@@ -74,23 +74,18 @@
         the whole of "where has this thing been" and is a question a dispatcher
         asks before any other.
       -->
-      <div
-        v-if="chosen"
-        class="pointer-events-auto absolute bottom-[11.5rem] end-4 z-10 w-64 rounded-6 border
-               border-outline-gray-2 bg-surface-elevation-2 p-3 shadow-lg"
-        data-slot="network-vehicle"
-      >
+      <Panel ground="raised" pad="tight" elevation="floating" v-if="chosen" class="pointer-events-auto absolute bottom-scrubber end-4 z-10 w-64" data-slot="network-vehicle">
         <div class="flex items-start gap-2">
           <span
             class="mt-0.5 inline-flex h-5 shrink-0 items-center rounded-4 px-1.5 text-xs font-semibold text-white"
             :style="{ backgroundColor: inkOfLine(chosen.line) }"
           >{{ shortNameOf(chosen.line) }}</span>
           <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-medium text-ink-gray-8">
+            <p class="truncate text-sm font-medium text-ink-primary">
               <span v-if="emojiOfLine(chosen.line)">{{ emojiOfLine(chosen.line) }}</span>
               {{ chosen.vehicle }}
             </p>
-            <p class="truncate text-xs text-ink-gray-5">{{ nameOfLine(chosen.line) }}</p>
+            <p class="truncate text-xs text-ink-muted">{{ nameOfLine(chosen.line) }}</p>
           </div>
           <Button
             variant="ghost"
@@ -101,10 +96,23 @@
           />
         </div>
 
+        <!-- Above how full it is, because a door that will not close outranks
+             a bus that is busy. `part_of` names the VDV part the state came
+             from, which is what lets an operator check it against their own
+             supplier rather than take our word for it. -->
+        <Panel tone="red" pad="bar" v-if="chosenFault" data-slot="network-vehicle-fault" class="mt-3 flex flex-wrap items-baseline gap-x-1.5 text-xs">
+          <span class="font-medium text-ink-red-3">{{ chosenFault.value }}</span>
+          <span v-if="chosenFault.part" class="text-ink-secondary">
+            {{ __('part {0}', [chosenFault.part]) }}
+          </span>
+          <span class="text-ink-secondary">{{ __('for {0} min', [chosenFault.minutes]) }}</span>
+          <span class="ms-auto font-mono text-ink-gray-4">{{ chosenFault.part_of }}</span>
+        </Panel>
+
         <div class="mt-3 flex flex-col gap-1">
           <div class="flex items-baseline justify-between text-xs">
-            <span class="text-ink-gray-5">{{ __('How full') }}</span>
-            <span class="font-medium text-ink-gray-8">{{ occupancyOf(chosen) }}</span>
+            <span class="text-ink-muted">{{ __('How full') }}</span>
+            <span class="font-medium text-ink-primary">{{ occupancyOf(chosen) }}</span>
           </div>
           <!-- A bar rather than a number alone: a percentage of capacity is a
                proportion, and a proportion drawn is read faster than one read. -->
@@ -121,14 +129,14 @@
 
         <div class="mt-3 grid grid-cols-2 gap-2">
           <div class="rounded-4 bg-surface-gray-1 p-2">
-            <p class="text-xs text-ink-gray-5">{{ __('Against the timetable') }}</p>
+            <p class="text-xs text-ink-muted">{{ __('Against the timetable') }}</p>
             <p class="tabular-nums text-sm font-medium" :style="{ color: delayInk(chosen.delay_s) }">
               {{ delayLabel(chosen.delay_s) }}
             </p>
           </div>
           <div class="rounded-4 bg-surface-gray-1 p-2">
-            <p class="text-xs text-ink-gray-5">{{ __('Last heard') }}</p>
-            <p class="tabular-nums text-sm font-medium text-ink-gray-8">
+            <p class="text-xs text-ink-muted">{{ __('Last heard') }}</p>
+            <p class="tabular-nums text-sm font-medium text-ink-primary">
               {{ chosen.stale ? __('Stale') : __('Just now') }}
             </p>
           </div>
@@ -153,17 +161,14 @@
             @click="isolate({ kind: 'vehicle', name: chosen.vehicle, label: chosen.vehicle })"
           />
         </div>
-      </div>
+      </Panel>
 
       <!--
         The clock. Past on the left, now on the right, one control — and a
         track that says where the day has service in it, so dragging is aimed
         rather than blind.
       -->
-      <div
-        class="pointer-events-auto absolute inset-x-4 bottom-4 z-10 flex flex-col gap-2 rounded-6 border border-outline-gray-2 bg-surface-elevation-2 px-3 py-2.5 shadow-lg"
-        data-slot="network-clock"
-      >
+      <Panel ground="raised" pad="bar" elevation="floating" class="pointer-events-auto absolute inset-x-4 bottom-4 z-10 flex flex-col gap-2" data-slot="network-clock">
         <div class="flex flex-wrap items-center gap-2">
           <Button
             :variant="livemode ? 'solid' : 'subtle'"
@@ -193,14 +198,15 @@
           />
           <!--
             The same bar Insights carries, and the same server-side vocabulary
-            behind it — see `FacetBar.vue`. The map used to take a line and
+            behind it — see `shared/components/Narrow.vue`. The map took a line and
             Insights took a line separately, which is how one filter becomes
             two slightly different filters nobody notices disagreeing.
           -->
-          <FacetBar
+          <Narrow
             v-model="facets"
-            :facets="offered"
+            :fields="offered"
             :unavailable="unavailable"
+            :measure="false"
           />
 
           <div class="ms-auto flex items-center gap-3">
@@ -209,7 +215,7 @@
                  folds away on a phone and the count does not: a hundred pixels
                  of stacked colour is the first thing to lose when there is no
                  room, and how many vehicles are out there is the last. -->
-            <div class="hidden items-center sm:flex" data-slot="network-mix">
+            <div class="hidden items-center md:flex" data-slot="network-mix">
               <div class="flex h-2 w-24 overflow-hidden rounded-full bg-surface-gray-2">
                 <div
                   v-for="part in mix"
@@ -220,7 +226,7 @@
                 />
               </div>
             </div>
-            <span class="tabular-nums text-xs text-ink-gray-5">
+            <span class="tabular-nums text-xs text-ink-muted">
               {{ __('{0} vehicles', [String(drawn.length)]) }}
             </span>
 
@@ -251,8 +257,8 @@
           data-slot="network-frozen"
           class="flex flex-wrap items-center gap-3 rounded-6 bg-surface-gray-2 px-3 py-2"
         >
-          <Icon name="lucide-history" class="size-4 shrink-0 text-ink-gray-5" />
-          <span class="min-w-0 flex-1 text-p-xs text-ink-gray-7">
+          <Icon name="lucide-history" class="size-4 shrink-0 text-ink-muted" />
+          <span class="min-w-0 flex-1 text-p-xs text-ink-secondary">
             {{ __('This day is in cold storage. Summaries still cover it — the detail behind the map does not.') }}
           </span>
           <Button
@@ -337,7 +343,7 @@
             >{{ tick }}</span>
           </div>
         </div>
-      </div>
+      </Panel>
     </template>
   </div>
 </template>
@@ -346,13 +352,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { Badge, Button, Icon, Select, toast } from '@/ui'
+import { Badge, Button, Icon, Select } from '@/ui'
+import Narrow from '@/shared/components/Narrow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { __ } from '@/shared/lib/runtime/translate'
 import { network } from '@/modules/onemobility/lib/api'
+import { useFacets } from '@/modules/onemobility/lib/facets'
 import { basemap } from '@/shared/lib/runtime/boot'
 import { settings } from '@/shared/lib/workspace/settings'
-import FacetBar from '@/modules/onemobility/components/FacetBar.vue'
 import MapControls from '@/modules/onemobility/components/MapControls.vue'
 import MapLegend from '@/modules/onemobility/components/MapLegend.vue'
 import {
@@ -379,8 +386,11 @@ import {
   occupancyBand,
   occupancyInk,
   OCCUPANCY,
+  troubleInk,
 } from '@/modules/onemobility/lib/palette'
 import { tokenInk } from '@/modules/onespace/lib/screen/ink'
+import Panel from '@/shared/components/Panel.vue'
+import { notifyError, notifySuccess } from '@/shared/lib/runtime/notify'
 import {
   attribution,
   preferred,
@@ -428,8 +438,11 @@ const day = ref('')
  * of the network dims around it — and two sources of truth for "which line" is
  * the bug this bar exists to remove.
  */
-const facets = ref({})
-const offered = ref([])
+// The space's own narrowing, shared with Insights, Outlook and Timetable and
+// carried in the URL — `lib/facets.js`. It was four refs and four fetches, and
+// the map taking a line while Insights took its own is how one filter becomes
+// two that nobody notices disagreeing.
+const { facets, offered, asJson } = useFacets()
 const unavailable = ref([])
 // Whether the moment on screen is a day the database no longer holds. The
 // server answers it, because only the server knows both the window and what is
@@ -522,6 +535,22 @@ const livemode = ref(true)
 const position = ref(1000)
 const drawn = ref([])
 const service = ref([])
+/**
+ * What each vehicle is reporting wrong about itself, keyed by vehicle.
+ *
+ * `events.attention` is the same read the Insights screen draws as a list, and
+ * it is here because a fault a person has to go to another screen to find is a
+ * fault they find tomorrow. The map already knows where every vehicle is; the
+ * only thing it was missing is which of them somebody should walk towards.
+ *
+ * A minute rather than the five seconds the positions get. These are states
+ * that have lasted long enough to be worth a person's attention — a door on
+ * emergency release does not become urgent between two polls, and asking
+ * twelve times a minute for an answer that changes hourly is a scan of the
+ * event tier for nothing.
+ */
+const faults = ref(new Map())
+const FAULTS_EVERY = 60000
 const selected = ref('')
 /** The workspace's mode-to-shape mapping, for the picker. Fetched once. */
 const markerStyles = ref([])
@@ -540,7 +569,7 @@ const mapStyles = computed(() => Object.keys(basemap?.styles || {}))
 /** Our own layers, which a basemap preference must never hide. */
 const OURS = [
   'surface', 'lines-casing', 'lines', 'trail', 'stops', 'stops-interchange',
-  'demand', 'ghosts', 'vehicles-chosen', 'vehicles',
+  'demand', 'ghosts', 'vehicles-chosen', 'vehicles-trouble', 'vehicles',
 ]
 
 /**
@@ -622,6 +651,7 @@ const drawnGhosts = ref(0)
 let map = null
 let library = null
 let poller = null
+let faulter = null
 let ticker = null
 let frame = null
 let sizes = null
@@ -718,6 +748,9 @@ const dayLabel = computed(() => day.value || __('Replay'))
 
 /** The vehicle whose card is open, as the row the last poll returned for it. */
 const chosen = computed(() => drawn.value.find((one) => one.vehicle === selected.value) || null)
+
+/** What the open vehicle is reporting wrong, if anything. */
+const chosenFault = computed(() => faults.value.get(selected.value) || null)
 
 /** Every hour of the service window, as a bar on the track. */
 const density = computed(() => {
@@ -856,7 +889,7 @@ function moment() {
  */
 async function pullAhead() {
   const when = moment()
-  const facetted = JSON.stringify(facets.value)
+  const facetted = asJson()
   try {
     // Two reads, and they answer different halves of the same question: what
     // the hour is expected to cost each line, and where each trip is due to
@@ -980,9 +1013,9 @@ async function bringBack() {
   thawing.value = true
   try {
     await network.thaw({ day: day.value })
-    toast.success(__('Bringing that day back. It appears on the map as it lands.'))
+    notifySuccess(__('Bringing that day back. It appears on the map as it lands.'))
   } catch (raised) {
-    toast.error(raised?.messages?.[0] || __('That day could not be brought back.'))
+    notifyError(raised)
   } finally {
     thawing.value = false
   }
@@ -998,7 +1031,7 @@ async function pull() {
   try {
     const answer = await network.at({
       when: moment(),
-      facets: JSON.stringify(facets.value),
+      facets: asJson(),
     })
     unavailable.value = answer.unavailable || []
     frozen.value = !!answer.frozen
@@ -1022,6 +1055,26 @@ async function pull() {
   } catch {
     // A dropped poll is not an error worth a toast: the next one is five
     // seconds away and the map still shows the last known truth.
+  }
+}
+
+/**
+ * Who is in trouble, as the map wants it: one row per vehicle, worst first.
+ *
+ * A vehicle can be reporting two things at once — a jammed door *and* off
+ * route — and the marker has one ring. The oldest wins, which is the same
+ * order the attention list is sorted in, so the ring and the list never
+ * disagree about which fault a vehicle is showing.
+ */
+async function pullFaults() {
+  try {
+    const answer = await network.attention()
+    const found = new Map()
+    for (const one of answer.rows || []) if (!found.has(one.vehicle)) found.set(one.vehicle, one)
+    faults.value = found
+  } catch {
+    // Same as a dropped position poll: the ring stays as it was, which is the
+    // last thing we actually knew rather than a claim that all is well.
   }
 }
 
@@ -1066,6 +1119,7 @@ function paint() {
         mode: coarseFor(markerOf(latest.line)),
         shape: markerOf(latest.line),
         chosen: vehicle === selected.value ? 1 : 0,
+        trouble: faults.value.has(vehicle) ? 1 : 0,
       },
     })
 
@@ -1155,7 +1209,7 @@ function onZoomed() {
 const BASE_LAYERS = {
   routes: ['lines-casing', 'lines'],
   stops: ['stops', 'stops-interchange'],
-  vehicles: ['vehicles', 'vehicles-chosen'],
+  vehicles: ['vehicles', 'vehicles-chosen', 'vehicles-trouble'],
 }
 
 /**
@@ -1407,7 +1461,7 @@ const shapesHere = computed(() => {
  */
 async function pullOverlay() {
   const one = overlayNow.value
-  const params = { facets: JSON.stringify(facets.value) }
+  const params = { facets: asJson() }
   if (one.kind === 'surface') {
     gridNow = gridFor(map?.getZoom() ?? 11)
     surfaceNow.value = await network.surface({ ...params, kind: one.key, precision: gridNow })
@@ -1735,6 +1789,28 @@ async function draw() {
       'circle-stroke-opacity': 0.5,
     },
   })
+  // And the ring around one that is reporting a fault. Under the marker rather
+  // than a badge on it: the silhouette is carrying occupancy already, and a
+  // second thing drawn *on* it is two scales fighting over sixteen pixels.
+  //
+  // Deliberately a different shape from the chosen ring — filled and tighter,
+  // not a wide translucent halo — because the two can be on the same vehicle
+  // and a reader has to be able to tell "this is the one I clicked" from
+  // "this one is broken".
+  map.addLayer({
+    id: 'vehicles-trouble',
+    type: 'circle',
+    source: 'vehicles',
+    filter: ['==', ['get', 'trouble'], 1],
+    paint: {
+      'circle-radius': 13,
+      'circle-color': troubleInk(),
+      'circle-opacity': 0.18,
+      'circle-stroke-width': 2,
+      'circle-stroke-color': troubleInk(),
+      'circle-stroke-opacity': 0.9,
+    },
+  })
   map.addLayer({
     id: 'vehicles',
     type: 'symbol',
@@ -1876,27 +1952,33 @@ function stopCard(hit) {
     ? `<p class="text-2xs text-ink-amber-3">${escapeHtml(__('Nobody declared this stop'))}</p>`
     : ''
   return `<div class="flex flex-col gap-0.5">
-    <p class="text-xs font-medium text-ink-gray-8">
+    <p class="text-xs font-medium text-ink-primary">
       ${escapeHtml(hit.properties.emoji || '')} ${escapeHtml(hit.properties.label || '')}
     </p>
-    <p class="text-2xs text-ink-gray-5">${escapeHtml(lines)}</p>${inferred}</div>`
+    <p class="text-2xs text-ink-muted">${escapeHtml(lines)}</p>${inferred}</div>`
 }
 
 function vehicleCard(hit) {
   const line = lines.value.find((one) => one.name === hit.properties.line)
   const found = drawn.value.find((one) => one.vehicle === hit.properties.vehicle)
+  const fault = faults.value.get(hit.properties.vehicle) || null
   const band = occupancyBand(found?.occupancy)
   return `<div class="flex flex-col gap-0.5">
-    <p class="text-xs font-medium text-ink-gray-8">
+    <p class="text-xs font-medium text-ink-primary">
       ${escapeHtml(line?.emoji || '')} ${escapeHtml(hit.properties.vehicle || '')}
     </p>
-    <p class="text-2xs text-ink-gray-5">${escapeHtml(line?.line_name || '')}</p>
-    <p class="flex items-center gap-1 text-2xs text-ink-gray-6">
+    <p class="text-2xs text-ink-muted">${escapeHtml(line?.line_name || '')}</p>
+    <p class="flex items-center gap-1 text-2xs text-ink-secondary">
       <span style="background:${escapeHtml(bandInk(band))}"
             class="inline-block size-1.5 rounded-full"></span>
       ${escapeHtml(band.label())}
       ${found ? `&middot; ${escapeHtml(delayLabel(found.delay_s))}` : ''}
-    </p></div>`
+    </p>
+    ${fault ? `<p class="text-2xs font-medium" style="color:${escapeHtml(troubleInk())}">
+      ${escapeHtml(fault.value)}${fault.part ? ` ${escapeHtml(__('part {0}', [fault.part]))}` : ''}
+      &middot; ${escapeHtml(__('for {0} min', [fault.minutes]))}
+    </p>` : ''}
+    </div>`
 }
 
 function lineCard(hit) {
@@ -1904,13 +1986,13 @@ function lineCard(hit) {
   if (!line) return ''
   const running = drawn.value.filter((one) => one.line === line.name).length
   return `<div class="flex flex-col gap-0.5">
-    <p class="flex items-center gap-1.5 text-xs font-medium text-ink-gray-8">
+    <p class="flex items-center gap-1.5 text-xs font-medium text-ink-primary">
       <span style="background:${escapeHtml(hit.properties.colour || '#888')}"
             class="inline-block size-2 rounded-full"></span>
       ${escapeHtml(line.emoji || '')}
       ${escapeHtml(line.short_name || '')} ${escapeHtml(line.line_name || '')}
     </p>
-    <p class="text-2xs text-ink-gray-5">${escapeHtml(
+    <p class="text-2xs text-ink-muted">${escapeHtml(
       __('{0} out right now', [running]),
     )}</p></div>`
 }
@@ -1983,14 +2065,13 @@ watch(playing, (on) => {
 
 onMounted(async () => {
   try {
-    const [drawnNetwork, when, choices, styles] = await Promise.all([
-      network.shape(), network.days(), network.offered(), network.markerStyles(),
+    const [drawnNetwork, when, styles] = await Promise.all([
+      network.shape(), network.days(), network.markerStyles(),
     ])
     lines.value = drawnNetwork.lines || []
     stops.value = drawnNetwork.stops || []
     days.value = when.days || []
     day.value = days.value[0]?.day || ''
-    offered.value = choices.facets || []
     markerStyles.value = styles.styles || []
     mayStyle.value = !!styles.may_write
 
@@ -2017,6 +2098,12 @@ onMounted(async () => {
       .then((answer) => { service.value = answer.service_by_hour || [] })
       .catch(() => {})
 
+    // Not awaited, and not a reason for the map to be late: a ring appearing a
+    // second after the vehicles do is fine, a blank map while we ask the event
+    // tier is not.
+    pullFaults()
+    faulter = setInterval(pullFaults, FAULTS_EVERY)
+
     // Nothing running right now — night, a weekend, or a workspace whose feed
     // has stopped. Rather than an empty map with a Live badge on it, drop into
     // replay at the busiest part of the most recent day it has. An operator
@@ -2042,6 +2129,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   sizes?.disconnect()
   clearInterval(poller)
+  clearInterval(faulter)
   clearInterval(ticker)
   clearTimeout(scrubbing)
   cancelAnimationFrame(frame)

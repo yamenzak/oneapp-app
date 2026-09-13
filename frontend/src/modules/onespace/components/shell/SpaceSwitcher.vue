@@ -37,15 +37,13 @@
           class="truncate text-base"
         />
         <template v-if="!collapsed" #suffix>
-          <Icon name="lucide-chevrons-up-down" class="size-4 shrink-0 text-ink-gray-5" />
+          <Icon name="lucide-chevrons-up-down" class="size-4 shrink-0 text-ink-muted" />
         </template>
       </Button>
     </template>
 
     <template #default="{ close }">
-      <div
-        class="w-[392px] rounded-6 border border-outline-gray-2 bg-surface-elevation-2 p-3 shadow-2xl"
-      >
+      <Panel ground="raised" pad="tight" elevation="floating" class="w-[392px]">
         <!--
           The way to the full list sits on the group it belongs to rather than
           in a footer under everything. A footer row reads as another
@@ -57,7 +55,7 @@
                are its spaces, the corner no longer says which workspace you
                are in, and a heading is somewhere to say it that costs no
                row. -->
-          <p class="truncate text-p-xs text-ink-gray-5">{{ workspace.label }}</p>
+          <p class="truncate text-xs text-ink-muted">{{ workspace.label }}</p>
           <Button
             variant="ghost"
             size="sm"
@@ -98,7 +96,7 @@
         -->
         <template v-if="apps.length">
           <Divider class="my-3" />
-          <p class="px-1 pb-2 text-p-xs text-ink-gray-5">{{ __('Apps') }}</p>
+          <p class="px-1 pb-2 text-p-xs text-ink-muted">{{ __('Apps') }}</p>
 
           <div :class="GRID">
             <router-link
@@ -140,17 +138,17 @@
             target="_blank"
             rel="noopener"
             data-slot="my-workspaces"
-            class="flex items-center gap-2 rounded-4 px-2 py-1.5 hover:bg-surface-gray-2"
+            :class="['flex items-center gap-2 rounded-4 px-2 py-1.5', HOVER]"
             @click="close()"
           >
-            <Icon name="lucide-building-2" class="size-4 shrink-0 text-ink-gray-6" />
-            <span class="flex-1 truncate text-p-sm text-ink-gray-8">
+            <Icon name="lucide-building-2" class="size-4 shrink-0 text-ink-secondary" />
+            <span class="flex-1 truncate text-sm text-ink-primary">
               {{ __('My workspaces') }}
             </span>
-            <Icon name="lucide-arrow-up-right" class="size-4 shrink-0 text-ink-gray-5" />
+            <Icon name="lucide-arrow-up-right" class="size-4 shrink-0 text-ink-muted" />
           </a>
         </template>
-</div>
+</Panel>
     </template>
   </Popover>
 </template>
@@ -167,6 +165,8 @@ import { session } from '@/modules/onespace/lib/shell/session'
 import { useNav } from '@/modules/onespace/lib/shell/nav'
 import { useSidebar } from '@/modules/onespace/lib/shell/sidebar'
 import { __ } from '@/shared/lib/runtime/translate'
+import { HOVER } from '@/shared/lib/rowstate'
+import Panel from '@/shared/components/Panel.vue'
 
 /*
  * The launcher's tile, which is one shape used twice.
@@ -190,9 +190,12 @@ import { __ } from '@/shared/lib/runtime/translate'
  * exactly — a launcher whose columns do not fit its width has a ragged edge.
  */
 const GRID = 'grid grid-cols-4'
-const TILE = 'flex h-[100px] flex-col items-center gap-1.5 rounded-4 px-0.5 pt-3 hover:bg-surface-gray-2'
+// A tile is not a row, and it still lights up the same way one does: the
+// hover fill is the product's, from `lib/rowstate.js`, and not a second
+// opinion about how hard a hovered thing should glow.
+const TILE = `flex h-[100px] flex-col items-center gap-1.5 rounded-4 px-0.5 pt-3 ${HOVER}`
 const FACE = 'h-12 shrink-0'
-const CAPTION = 'line-clamp-2 w-full text-center text-p-xs leading-tight text-ink-gray-7'
+const CAPTION = 'line-clamp-2 w-full text-center text-p-xs leading-tight text-ink-secondary'
 
 const route = useRoute()
 const router = useRouter()

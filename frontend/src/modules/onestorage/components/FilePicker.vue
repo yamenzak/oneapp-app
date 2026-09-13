@@ -24,36 +24,21 @@
             data-slot="picker-library"
             class="flex h-96 flex-col gap-3 py-4"
           >
-            <FormControl
-              v-model="search"
-              type="text"
-              :placeholder="__('Search files')"
-              @input="onSearch"
-            />
-
-            <div v-if="loading" class="flex flex-col gap-2">
-              <Skeleton v-for="n in 6" :key="n" class="h-11 w-full" />
-            </div>
-
-            <EmptyState
-              v-else-if="!files.length"
-              icon="lucide-folder-open"
-              :title="__('Nothing to choose from')"
-              :description="
-                kind
-                  ? __('No {0} files here yet — upload one instead.', [labelForKind(kind).toLowerCase()])
-                  : __('No files here yet — upload one instead.')
-              "
-            />
-
-            <div v-else class="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <FileRow
-                v-for="file in files"
-                :key="file.name"
-                :file="file"
-                @open="choose"
-              />
-            </div>
+            <!-- The frame is `DataList` over `fileSource` — §B1. The same
+                 query the Drive reads, over every file this person can see
+                 rather than one folder. -->
+            <DataList
+              ref="library"
+              :source="source"
+              :skeleton="6"
+              :page-length="PAGE"
+              body-class="min-h-0 flex-1 overflow-y-auto"
+              :search-placeholder="__('Search files')"
+            >
+              <template #row="{ row: file }">
+                <FileRow :file="file" @open="choose" />
+              </template>
+            </DataList>
           </div>
 
           <!-- This device -->
@@ -64,15 +49,10 @@
           >
             <div
               data-slot="picker-dropzone"
-              class="flex w-full flex-col items-center gap-3 rounded-6 border border-dashed py-12"
-              :class="dragging ? 'border-outline-gray-4 bg-surface-gray-1' : 'border-outline-gray-2'"
-              @dragenter.prevent="onDragEnter"
-              @dragover.prevent
-              @dragleave.prevent="onDragLeave"
-              @drop.prevent="onDrop"
+              class="flex w-full flex-col items-center gap-3 rounded-6 border border-dashed border-outline-gray-2 py-12"
+              v-drop-files="send"
             >
-              <LoadingIndicator v-if="sending" class="size-8 text-ink-gray-4" />
-              <Icon v-else name="lucide-upload-cloud" class="size-8 text-ink-gray-4" />
+              <Icon name="lucide-upload-cloud" class="size-8 text-ink-gray-4" />
 
               <!-- frappe-ui's FileUploader is deliberately not used here: it
                    posts the whole body to Frappe, which is the thing a large
@@ -89,17 +69,20 @@
               >
               <Button
                 variant="solid"
-                :label="sending ? __('Uploading {0}%', [progress]) : __('Choose a file')"
-                :loading="sending"
+                :label="__('Choose a file')"
                 @click="chooser?.click()"
               />
-              <p class="text-p-xs text-ink-gray-5">
+              <p class="text-p-xs text-ink-muted">
                 {{
                   multiple
                     ? __('Drop files here, or choose them from this device. They go into your files and get used here.')
                     : __('Drop a file here, or choose one from this device. It goes into your files and gets used here.')
                 }}
               </p>
+              <!-- The ceiling, before it is hit rather than after — §D3. Empty
+                   on a site that sends straight to storage, where the only
+                   thing that refuses a large file is the quota. -->
+              <p v-if="ceiling" class="text-p-xs text-ink-muted">{{ ceiling }}</p>
             </div>
           </div>
 
@@ -120,21 +103,14 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import {
-  Button,
-  Dialog,
-  ErrorMessage,
-  FormControl,
-  Icon,
-  LoadingIndicator,
-  Skeleton,
-  Tabs,
-} from '@/ui'
+import { Button, Dialog, ErrorMessage, Icon, Tabs } from '@/ui'
 import CameraCapture from '@/modules/onestorage/components/CameraCapture.vue'
-import EmptyState from '@/shared/components/EmptyState.vue'
+import DataList from '@/shared/components/DataList.vue'
+import { PAGE, fileSource } from '@/shared/lib/list/files'
 import FileRow from '@/modules/onestorage/components/FileRow.vue'
 import { labelForKind } from '@/modules/onestorage/lib/files'
-import { putFile } from '@/modules/onestorage/lib/attach'
+import { ceilingNote, withinCeiling } from '@/shared/lib/files/limits'
+import { useUploads } from '@/shared/composables/useUploads'
 import { errorText } from '@/shared/lib/runtime/errors'
 import { workspace } from '@/shared/lib/workspace'
 import { __ } from '@/shared/lib/runtime/translate'
@@ -170,16 +146,17 @@ const props = defineProps({
 const open = defineModel({ type: Boolean, default: false })
 const emit = defineEmits(['picked'])
 
+const uploads = useUploads()
+
 const tab = ref(0)
-const files = ref([])
-const search = ref('')
-const loading = ref(false)
 const error = ref('')
+const library = ref(null)
 
 const chooser = ref(null)
-const dragging = ref(0)
-const sending = ref(false)
-const progress = ref(0)
+
+//: Said under the control rather than after the upload — §D3. Empty on a site
+//: whose bytes go straight to storage.
+const ceiling = ceilingNote()
 
 const accept = computed(() => {
   if (props.extensions.length) return props.extensions.map((one) => `.${one}`).join(',')
@@ -193,33 +170,28 @@ function allowed(file) {
   return props.extensions.some((one) => name.toLowerCase().endsWith(`.${one}`))
 }
 
-async function load() {
-  loading.value = true
-  error.value = ''
-  try {
-    const found = await workspace.driveList({
-      // Every file this person can see, not the root folder: almost every file
-      // in a workspace is an attachment and lives in `Home/Attachments`.
-      place: 'all',
-      kind: props.kind,
-      search: search.value,
-      limit: 50,
-    })
-    // Folders are not a thing you can attach. The picker is flat on purpose,
-    // and search is how you reach into a folder.
-    files.value = (found?.files || []).filter((one) => !one.is_folder && allowed(one))
-  } catch (e) {
-    error.value = errorText(e)
-  } finally {
-    loading.value = false
-  }
-}
-
-let typing = null
-function onSearch() {
-  clearTimeout(typing)
-  typing = setTimeout(load, 300)
-}
+/**
+ * What there is to choose from — §B1.
+ *
+ * `place: 'all'` and not the root folder: almost every file in a workspace is
+ * an attachment and lives in `Home/Attachments`, so a picker that opened at
+ * the root would open on almost nothing.
+ *
+ * Flat on purpose, which is why folders are dropped rather than shown — you
+ * cannot attach one — and search is how you reach into one.
+ */
+const source = computed(() => fileSource({
+  place: 'all',
+  kind: props.kind,
+  keep: (one) => !one.is_folder && allowed(one),
+  empty: {
+    icon: 'lucide-folder-open',
+    title: __('Nothing to choose from'),
+    description: props.kind
+      ? __('No {0} files here yet — upload one instead.', [labelForKind(props.kind).toLowerCase()])
+      : __('No files here yet — upload one instead.'),
+  },
+}))
 
 async function choose(file) {
   // Picking, when the picker is on a record, has to end where uploading ends:
@@ -247,32 +219,32 @@ async function choose(file) {
 // --------------------------------------------------------------------------
 
 /**
- * Send what was chosen, dropped or photographed. Serial: two at a time is not
- * twice as fast on one connection and is twice as likely to trip the quota
- * check halfway.
+ * Send what was chosen, dropped or photographed.
+ *
+ * Onto the shell's queue rather than awaited here — §D3. It used to be a
+ * `putFile` per file with a percentage on the button, so attaching a 200 MB
+ * video meant sitting in front of a dialog that could not be closed while it
+ * went. The queue is serial, survives navigating away, keeps a failure with a
+ * Retry beside it rather than toasting it, and counts in one place wherever
+ * the upload was started.
+ *
+ * What the caller loses is the file arriving before the dialog shuts, which
+ * is why `then` exists: the field fills when the bytes land.
  */
-async function send(...chosenFiles) {
-  if (sending.value) return
+function send(...chosenFiles) {
   error.value = ''
   const list = usable(chosenFiles.flat().filter(Boolean))
   if (!list.length) return
 
-  sending.value = true
-  progress.value = 0
-  try {
-    for (const file of list) {
-      const made = await putFile(file, {
-        attachTo: props.attachedTo,
-        onProgress: ({ percent }) => { progress.value = percent },
-      })
-      emit('picked', made)
-    }
-    open.value = false
-  } catch (e) {
-    error.value = errorText(e)
-  } finally {
-    sending.value = false
-  }
+  const { good, why } = withinCeiling(list)
+  if (why) error.value = why
+  if (!good.length) return
+
+  uploads.add(good, {
+    attachTo: props.attachedTo,
+    then: (made) => emit('picked', made),
+  })
+  open.value = false
 }
 
 function chosen(event) {
@@ -296,31 +268,15 @@ function usable(list) {
   return good
 }
 
-// Counted rather than toggled: dragging over a child fires `dragleave` on the
-// parent, so a boolean flickers the whole time the pointer is inside.
-function onDragEnter() {
-  dragging.value += 1
-}
-
-function onDragLeave() {
-  dragging.value = Math.max(0, dragging.value - 1)
-}
-
-function onDrop(event) {
-  dragging.value = 0
-  const list = Array.from(event.dataTransfer?.files || [])
-  // A directory arrives as a zero-byte `File` with no type, and uploading that
-  // produces an empty file named after the folder.
-  send(list.filter((one) => one.size || one.type))
-}
 
 // Loaded when the dialog opens rather than on mount: a picker behind every
 // Attach field on a form would be one request per field on every record.
 watch(open, (showing) => {
   if (showing) {
-    search.value = ''
     error.value = ''
-    load()
+    // `reset` and not `read`: reopened rather than remounted, so the frame
+    // still holds whatever was typed in it last time.
+    library.value?.reset()
   }
 })
 </script>

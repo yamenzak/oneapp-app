@@ -30,7 +30,7 @@ const openList = async (page) => {
 const openRecord = async (page) => {
   await openList(page)
   await page.getByText(SEEDED).first().click()
-  await expect(page.locator('[data-slot="record-pane"]')).toBeVisible()
+  await expect(page.locator('[data-slot="object-pane"]')).toBeVisible()
 }
 
 // The record the link picker is asked about, and why it is not the ToDo above.
@@ -51,7 +51,7 @@ const openCompliance = async (page) => {
   await page.goto('/one/space/zzmock?screen=compliance')
   await expect(page.locator('[data-slot="list-row"]').first()).toBeVisible()
   await page.getByText(COMPLIANCE).first().click()
-  await expect(page.locator('[data-slot="record-pane"]')).toBeVisible()
+  await expect(page.locator('[data-slot="object-pane"]')).toBeVisible()
 }
 
 // What each column's fieldtype maps to.
@@ -152,10 +152,17 @@ test('every row carries its age, its comments and a heart', async ({ page }) => 
     .first()
     .locator('[data-slot="list-cell"]')
     .last()
-  // Relative, and without the "ago": a column of ages, not a sentence repeated
-  // down the page. Singular included — dayjs says "a minute", and a row this
-  // suite edited a moment ago is exactly the row that reads that way.
-  await expect(meta).toContainText(/second|minute|hour|day|month|year/)
+  // Under a week, relative and without the "ago": a column of ages, not a
+  // sentence repeated down the page. Singular included — dayjs says "a
+  // minute", and a row this suite edited a moment ago reads that way.
+  //
+  // Over a week it is the date instead, in the workspace's own format —
+  // "eight months" is less useful than the day it happened, and that one rule
+  // is why the same column is no longer relative on one surface and absolute
+  // on another. Either shape passes here because which one a seeded row gets
+  // depends on how long ago the fixture was written.
+  // `docs/UNIFICATION.md` §D1.
+  await expect(meta).toContainText(/second|minute|hour|day|month|year|\d{4}-\d{2}-\d{2}/)
   await expect(meta.getByRole('button', { name: /favourites/ })).toBeVisible()
   expectNoRealErrors(errors)
 })
@@ -308,9 +315,9 @@ test('a box per field, above the list', async ({ page }, info) => {
   // title field. How many of them are *drawn* is the row measuring itself —
   // the title box is the sixth here and does not fit, so it is behind the same
   // chevron a phone has always used.
-  expect(await page.locator('button[role="combobox"]').allInnerTexts()).toEqual(
-    expect.arrayContaining(['Status', 'Priority']),
-  )
+  expect(
+    await page.locator('[data-slot="narrow"] button[data-slot="trigger"]').allInnerTexts(),
+  ).toEqual(expect.arrayContaining(['Status', 'Priority']))
   await expect(page.getByPlaceholder('Description')).toBeHidden()
   await page.getByRole('button', { name: 'More filters' }).click()
 
@@ -453,7 +460,7 @@ test('a Link field offers the records it may point at', async ({ page }, info) =
   // the SPA made up.
   expect(asked.length).toBeGreaterThan(0)
 
-  const dialog = page.locator('[data-slot="record-pane"]')
+  const dialog = page.locator('[data-slot="object-pane"]')
   // frappe-ui's Combobox is a text input with role=combobox and a chevron that
   // opens the list — not a Select's listbox button.
   const combo = dialog.locator('input[role="combobox"]').first()
@@ -473,12 +480,21 @@ test('a link search asks the server, and Create is offered only where it is allo
 }, info) => {
   const errors = collectConsoleErrors(page)
   await openCompliance(page)
-  const dialog = page.locator('[data-slot="record-pane"]')
+  const dialog = page.locator('[data-slot="object-pane"]')
 
   // `Renews` points at this record's own doctype, which the space grants, so
   // it may be created from.
+  //
+  // Emptied first, and not because the field is expected to hold anything: an
+  // empty picker offers "Create a new X" and a searched one offers
+  // `Create "<what you typed>"`, so the row asserted below exists only while
+  // the box is blank. `renews` is also the compliance tree's parent field, so
+  // tree.spec.js writes it on this very record — in the other project, running
+  // beside this one. Typing into the box is search, not a value, so this
+  // establishes the precondition without touching what is stored.
   const renews = dialog.getByLabel('Renews', { exact: true })
   await renews.click()
+  await renews.fill('')
   await expect(
     page.getByRole('option', { name: /Create a new Compliance Document/ }),
   ).toBeVisible()
@@ -526,7 +542,7 @@ test('a record can be created from the picker and is adopted as the value', asyn
   const errors = collectConsoleErrors(page)
   const made = `ZZ Picker ${Date.now()}`
   await openCompliance(page)
-  const dialog = page.locator('[data-slot="record-pane"]')
+  const dialog = page.locator('[data-slot="object-pane"]')
 
   const renews = dialog.getByLabel('Renews', { exact: true })
   await renews.click()
@@ -551,7 +567,7 @@ test('a fieldtype with no counterpart is shown and never offered', async ({ page
   const errors = collectConsoleErrors(page)
   await openRecord(page)
 
-  const dialog = page.locator('[data-slot="record-pane"]')
+  const dialog = page.locator('[data-slot="object-pane"]')
   // The value is readable; there is nothing to type into. frappe-ui has no
   // colour picker, so the field is read-only until it does — and it says so by
   // being read-only rather than by apologising underneath, which is a sentence
@@ -564,7 +580,7 @@ test('a fieldtype with no counterpart is shown and never offered', async ({ page
 test('every fieldtype reaches its own control, not a text box', async ({ page }, info) => {
   const errors = collectConsoleErrors(page)
   await openRecord(page)
-  const dialog = page.locator('[data-slot="record-pane"]')
+  const dialog = page.locator('[data-slot="object-pane"]')
 
   // The regression this pins: FormControl answers a type it does not recognise
   // with a plain TextInput and logs nothing, so a whole form of the wrong
@@ -611,7 +627,7 @@ test('the record shows every field, not the columns someone chose', async ({ pag
   await expect(page.getByRole('columnheader', { name: 'Priority' })).toHaveCount(0)
 
   await page.getByText(SEEDED).first().click()
-  await expect(page.locator('[data-slot="record-pane"]').getByText('Priority', { exact: true })).toBeVisible()
+  await expect(page.locator('[data-slot="object-pane"]').getByText('Priority', { exact: true })).toBeVisible()
   expectNoRealErrors(errors)
 })
 
@@ -619,7 +635,7 @@ test('one timeline holds what was said and what changed', async ({ page }, info)
   const errors = collectConsoleErrors(page)
   await openRecord(page)
 
-  const dialog = page.locator('[data-slot="record-pane"]')
+  const dialog = page.locator('[data-slot="object-pane"]')
   await dialog.getByRole('tab', { name: /^Activity/ }).click()
   await expect(dialog.getByPlaceholder('Add a comment')).toBeVisible()
 
@@ -647,7 +663,7 @@ test('a comment can be added and shows up in the count', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await openRecord(page)
 
-  const dialog = page.locator('[data-slot="record-pane"]')
+  const dialog = page.locator('[data-slot="object-pane"]')
   const tab = dialog.getByRole('tab', { name: /^Activity/ })
   const count = async () => Number((await tab.innerText()).replace(/\D/g, '') || 0)
 
@@ -779,9 +795,9 @@ test('rows can be selected and deleted together', async ({ page, baseURL }, info
   })
 
   // Deleting is the one thing here that does not come back, so it asks first.
-  await page.getByRole('button', { name: 'Delete 1' }).click()
+  await page.getByRole('button', { name: 'Delete 1 for ever' }).click()
   await expect(page.getByText('This cannot be undone.', { exact: false })).toBeVisible()
-  await page.locator('[role="dialog"]').getByRole('button', { name: 'Delete' }).click()
+  await page.locator('[role="dialog"]').getByRole('button', { name: 'Delete for ever' }).click()
 
   await expect(page.getByText(doomed)).toHaveCount(0)
   await expect(page.getByText('1 selected')).toHaveCount(0)
@@ -799,7 +815,7 @@ test('select-all ticks the page', async ({ page }) => {
   await page.locator('[data-slot="list-header-checkbox"]').click()
   await expect(page.getByText(`${count} selected`)).toBeVisible()
 
-  await page.getByRole('button', { name: 'Clear' }).click()
+  await page.getByRole('button', { name: 'Clear the selection' }).click()
   await expect(page.getByText('selected')).toHaveCount(0)
   expectNoRealErrors(errors)
 })

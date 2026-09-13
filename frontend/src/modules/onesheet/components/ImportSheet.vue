@@ -30,8 +30,8 @@
   <Dialog v-model="working" :title="__('Importing')">
     <template #default>
       <div class="flex flex-col items-center gap-3 py-8">
-        <LoadingIndicator v-if="!error" class="size-6 text-ink-gray-5" />
-        <p v-if="!error" class="text-p-sm text-ink-gray-6">{{ step }}</p>
+        <LoadingIndicator v-if="!error" class="size-6 text-ink-muted" />
+        <p v-if="!error" class="text-p-sm text-ink-secondary">{{ step }}</p>
 
         <Alert v-else class="w-full" theme="red" :title="__('This could not be imported')">
           <template #description>{{ error }}</template>
@@ -53,6 +53,7 @@ import { fetchFile } from '@/modules/onestorage/lib/files'
 import { workspace } from '@/shared/lib/workspace'
 import { errorText } from '@/shared/lib/runtime/errors'
 import { __ } from '@/shared/lib/runtime/translate'
+import { number as count } from '@/shared/lib/runtime/format'
 
 /** What `headless.js` can actually read, as the picker wants them. */
 const EXTENSIONS = ['xlsx', 'xlsm', 'csv']
@@ -99,7 +100,7 @@ async function build(file) {
     const title = (file.file_name || bytes.name).replace(/\.[^.]+$/, '')
     const made = await workspace.sheetMake({ title, folder: file.folder || '' })
 
-    step.value = __('Saving {0} cells…', [read.cells.toLocaleString()])
+    step.value = __('Saving {0} cells…', [count(read.cells, 0)])
     await saveWorkbook(made.name, title, read.payload)
 
     working.value = false

@@ -94,21 +94,27 @@ test('a sub-item says it is active by weight, not by a second pill', async ({ pa
   expectNoRealErrors(errors)
 })
 
-test('the trail is a house, a screen, and what you are looking at', async ({ page }, info) => {
+test('the trail is the space, and then the screen', async ({ page }, info) => {
   const errors = collectConsoleErrors(page)
   await page.goto('/one/space/zzmock?screen=notes')
 
-  // Frappe CRM's shape. The space is the house's tooltip rather than a word:
-  // the rail already says which space this is, and the line has one place to
-  // spend.
+  // §C1's shape. The root *is* the place — the space — rather than a crumb
+  // beside it: the switcher in the corner already says which space this is
+  // and is the only way to another, so the name was a second answer to a
+  // question answered two inches to its left.
   const trail = page.getByRole('navigation', { name: 'Breadcrumb' })
-  await expect(page.getByRole('link', { name: 'MockSpace home' })).toBeVisible()
+  await expect(trail.getByRole('link', { name: /home$/ })).toBeVisible()
+  // By role and exact: the house's own accessible name is "MockSpace home",
+  // so a text match finds the space's name in the trail whether or not there
+  // is a crumb carrying it. What went is the *crumb*.
+  await expect(trail.getByRole('link', { name: 'MockSpace', exact: true })).toHaveCount(0)
   await expect(trail.getByText('Notes')).toBeVisible()
-  // The last crumb is the view, not the screen's name a second time.
+  // The view is beside the trail rather than the last crumb in it: it is a
+  // control, and a crumb is a place.
   await expect(page.getByRole('group', { name: 'Saved views' })).toContainText('List')
 
-  // The house goes to the space's first screen.
-  await page.getByRole('link', { name: 'MockSpace home' }).click()
+  // And the house goes to the space's first screen.
+  await trail.getByRole('link', { name: /home$/ }).click()
   await expect(page).toHaveURL(/screen=tasks/)
 
   await info.attach(`crumbs-${info.project.name}`, {
@@ -118,14 +124,59 @@ test('the trail is a house, a screen, and what you are looking at', async ({ pag
   expectNoRealErrors(errors)
 })
 
+/**
+ * The same first crumb, everywhere — `docs/UNIFICATION.md` §C1.
+ *
+ * Nine surfaces built their own trail and disagreed about its root: the
+ * engine's was the space, the Drive's was Files, Mail's was Mail, the
+ * assistant's was its own name, and OneDoc's was wherever you happened to
+ * have come from. This is the assertion that makes the fix a fact rather
+ * than nine coincidences: walk the workspace-level places and find the same
+ * house at the front of each.
+ *
+ * What it does *not* assert any more is that they all go to one address. The
+ * house goes to the place you are in, which is the whole of the change: from
+ * a space it is that space, from the Drive it is the Drive's root. The one
+ * way to another space is the switcher, and it is also the way back to the
+ * list of them.
+ */
+test('every surface opens with the same root, and it goes to its place', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+
+  const places = {
+    '/one/space/zzmock': /\/one\/space\/zzmock/,
+    '/one/files': /\/one\/files/,
+    '/one/mail': /\/one\/mail/,
+    '/one/calendar': /\/one\/calendar/,
+    '/one/account': /\/one\/account/,
+  }
+  for (const [where, goes] of Object.entries(places)) {
+    await page.goto(where)
+    const trail = page.getByRole('navigation', { name: 'Breadcrumb' })
+    const root = trail.getByRole('link', { name: /home$/ })
+    await expect(root, `${where} has no root crumb`).toBeVisible()
+    const href = await root.getAttribute('href')
+    expect(href, `${where}'s root does not go to its own place`).toMatch(goes)
+  }
+
+  // And it is a link somebody can actually press.
+  await page.goto('/one/files?folder=Home')
+  await page.getByRole('navigation', { name: 'Breadcrumb' })
+    .getByRole('link', { name: /home$/ })
+    .click()
+  await expect(page).toHaveURL(/\/one\/files/)
+
+  expectNoRealErrors(errors)
+})
+
 test('an open record is in the URL, and in the trail', async ({ page }, info) => {
   const errors = collectConsoleErrors(page)
   await page.goto('/one/space/zzmock')
   await expect(page.locator('[data-slot="list-row"]').first()).toBeVisible()
 
   await page.getByText('Chase the Halloway invoice').first().click()
-  await expect(page.locator('[data-slot="record-pane"]')).toBeVisible()
-  await expect(page).toHaveURL(/record=/)
+  await expect(page.locator('[data-slot="object-pane"]')).toBeVisible()
+  await expect(page).toHaveURL(/at=record:/)
 
   // Where the record's trail is, which is not the same place on both. On a
   // desktop the chrome splits when a record opens — the left half keeps saying
@@ -153,14 +204,14 @@ test('an open record is in the URL, and in the trail', async ({ page }, info) =>
   // A record is a link: a reload comes back to it, without the list it was
   // opened from.
   await page.reload()
-  await expect(page.locator('[data-slot="record-pane"]')).toBeVisible()
+  await expect(page.locator('[data-slot="object-pane"]')).toBeVisible()
 
   // And closing it puts the URL back. The X and not Escape: a pane is not
   // modal, and the controls inside it do not mark their own Escape as handled
   // — so closing a link picker with it closed the record underneath.
   await page.getByRole('button', { name: 'Close the record' }).click()
-  await expect(page.locator('[data-slot="record-pane"]')).toHaveCount(0)
-  await expect(page).not.toHaveURL(/record=/)
+  await expect(page.locator('[data-slot="object-pane"]')).toHaveCount(0)
+  await expect(page).not.toHaveURL(/at=record:/)
   expectNoRealErrors(errors)
 })
 
@@ -203,7 +254,7 @@ test('a record opens and saves', async ({ page }, info) => {
   // Scoped to the dialog: the quick filter row above the list has a box with
   // the same label, and on a phone that one is hidden.
   await expect(
-    page.locator('[data-slot="record-pane"]').getByText('Priority', { exact: true }),
+    page.locator('[data-slot="object-pane"]').getByText('Priority', { exact: true }),
   ).toBeVisible()
   await info.attach(`record-${info.project.name}`, {
     body: await page.screenshot(), contentType: 'image/png' })
@@ -212,11 +263,11 @@ test('a record opens and saves', async ({ page }, info) => {
   // calling a `workspace.saveAppRecord` that no longer existed, so Save threw
   // where nothing was watching — a dialog test that only reads the form would
   // never have noticed.
-  const dialog = page.locator('[data-slot="record-pane"]')
+  const dialog = page.locator('[data-slot="object-pane"]')
   // The fields are in the pane; Save is not. A record's actions teleport into
   // the top bar with the rest of the page's header, so a pane-scoped lookup
   // waits out the test on a button that is on screen and outside the pane.
-  const save = page.getByRole('button', { name: 'Save' })
+  const save = page.getByRole('button', { name: 'Save', exact: true })
   const changed = `Chase the Halloway invoice ${Date.now() % 1000}`
   await dialog.getByLabel('Description').fill(changed)
   await save.click()

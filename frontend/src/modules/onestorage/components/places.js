@@ -7,9 +7,24 @@
  *
  * Every one of them is the same query with a different `where`; there is no
  * second store behind any. That is why the rail is cheap, and why Templates
- * — the sixth — is a `where` on the flag rather than a folder somebody has to
- * be taught to file things into. `onestorage/query.py` holds the
- * other half of this list, and a test keeps them in step.
+ * is a `where` on the flag rather than a folder somebody has to be taught to
+ * file things into. `onestorage/query.py` holds the other half of this list,
+ * and a test keeps them in step.
+ *
+ * Documents and Workbooks are what somebody *made* here rather than uploaded,
+ * which is `custom_kind` and therefore one `where` each. They are where a
+ * person who wants to see their documents goes, and until §E2+E3 there was no
+ * such door — the kinds were first-class and nothing listed them. The server
+ * derives both from `kinds.PLACE_FOR`, so a third editor gets its place by
+ * declaring the kind.
+ *
+ * Records is the one that is a *tree* rather than a filter — a directory per
+ * kind of record and one per record inside it — and it is still no second
+ * store: the levels are made out of the attachment rows at the moment they are
+ * asked for. It is the same tree a mounted `doctype:Quotation` presents over
+ * WebDAV, out of the same resolver, because a rail place and a mount that
+ * disagreed about what a record has on it would be two answers to one
+ * question. `onestorage/scopes.py`, and `docs/UNIFICATION.md` §E1.
  */
 import { __ } from '@/shared/lib/runtime/translate'
 
@@ -18,7 +33,11 @@ export const PLACES = [
   { value: 'recents', label: __('Recent'), icon: 'lucide-clock' },
   { value: 'favourites', label: __('Favourites'), icon: 'lucide-heart' },
   { value: 'shared', label: __('Shared with me'), icon: 'lucide-users' },
+  { value: 'documents', label: __('Documents'), icon: 'lucide-file-text' },
+  { value: 'workbooks', label: __('Workbooks'), icon: 'lucide-table' },
+  { value: 'code', label: __('Code'), icon: 'lucide-code-xml' },
   { value: 'templates', label: __('Templates'), icon: 'lucide-bookmark' },
+  { value: 'records', label: __('Records'), icon: 'lucide-boxes' },
   { value: 'trash', label: __('Bin'), icon: 'lucide-trash-2' },
 ]
 

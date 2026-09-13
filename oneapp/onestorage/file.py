@@ -12,12 +12,86 @@ arrangement for its own attachments. See `onespace.site`.
 
 import frappe
 from frappe.core.doctype.file.file import File
+from frappe.utils import cint
 
 from oneapp.onespace import site
 from oneapp.onestorage import r2
+from oneapp.onestorage.kinds import STATUS_FIELD, TRASHED
+from oneapp.onestorage.query import ROOT
 
 
 class OneSpaceFile(File):
+	def validate_attachment_limit(self):
+		"""Frappe's own check, over the files that are actually *on* the record.
+
+		A doctype may cap its attachments — ERPNext's Project allows four — and
+		the framework counts every `File` row pointing at the record. Our bin
+		does not delete a row, it marks it, so four files thrown away filled
+		the cap for good: the record's Files tab showed nothing, and the fifth
+		upload was refused with "Maximum Attachment Limit of 4 has been
+		reached" and nothing visible to remove.
+
+		So the count is over what is *visible*, which is the same set the Files
+		tab and the Drive already read. A restore can then take a file back and
+		put the record one over its limit, which is the right way round: the
+		alternative is a file somebody asked for back and did not get.
+
+		Frappe's own refusal is still Frappe's — the message, the exception and
+		the title come from `super()` — this only decides whether to reach it.
+		"""
+		from oneapp.onestorage.query import _visible
+
+		if not (self.attached_to_doctype and self.attached_to_name):
+			return
+		if self.get(STATUS_FIELD) == TRASHED:
+			return
+
+		limit = cint(frappe.get_meta(self.attached_to_doctype).max_attachments)
+		if not limit:
+			return
+
+		here = frappe.db.count("File", {
+			"attached_to_doctype": self.attached_to_doctype,
+			"attached_to_name": self.attached_to_name,
+			**_visible(),
+		})
+		if here >= limit:
+			super().validate_attachment_limit()
+
+	def set_folder_name(self):
+		"""An attachment belongs to its record, not to a bucket.
+
+		Frappe's own version puts every file with an `attached_to_doctype` into
+		one folder — `Home/Attachments` — so a workspace with four thousand
+		quotations has four thousand files in a single folder nobody browses,
+		sitting *beside* the folder tree somebody made rather than inside it.
+		That flat bucket is a default rather than a decision, and since §E1
+		there is something better in its place: the Records tree, which is the
+		same rows read through `attached_to_*` and needs no `folder` at all.
+
+		So an attachment is left folderless. `query.py`'s Home excludes it from
+		the top of the drive — without that, dropping the bucket would surface
+		every attachment in the workspace at the root, which is worse than the
+		bucket was. A file that is *both* attached and filed into a folder
+		somebody named keeps that folder: the caller asked for one, and "it can
+		have both" is what makes the Files tab a filter rather than a second
+		store.
+
+		`Home` is cleared rather than kept, which looks like overriding a
+		choice and is not: Frappe's `upload_file` defaults the field to `Home`
+		when the caller sends none, so an attachment arriving with `Home` on it
+		has not been filed anywhere — it is the default wearing the name of the
+		root. Nothing in this product attaches a file to a record *and* files
+		it at the top of the drive; the Drive's own upload, which does mean
+		`Home`, attaches to nothing.
+		"""
+		if self.attached_to_doctype and (self.folder or ROOT) == ROOT:
+			self.folder = None
+			return
+		if self.folder:
+			return
+		return super().set_folder_name()
+
 	def after_insert(self):
 		super_after = getattr(super(), "after_insert", None)
 		if super_after:

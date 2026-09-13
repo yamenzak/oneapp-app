@@ -31,11 +31,11 @@
               v-if="!disabled"
               :editor="editor"
               :items="documentToolbar"
-              class="shrink-0 overflow-x-auto border-b border-outline-gray-1 px-3 py-1.5"
+              class="shrink-0 overflow-x-auto overflow-y-hidden border-b border-outline-gray-1 px-3 py-1.5"
             />
             <EditorTableMenu v-if="!disabled" :editor="editor" />
             <div class="max-h-[65vh] overflow-y-auto px-6 py-6">
-              <div class="mx-auto w-full max-w-[48rem]">
+              <div class="mx-auto w-full max-w-page">
                 <EditorContent
                   :editor="editor"
                   :aria-label="label"

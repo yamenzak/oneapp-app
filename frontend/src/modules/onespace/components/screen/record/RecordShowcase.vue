@@ -64,14 +64,14 @@
       its shape rather than turning back into a row.
     -->
     <div
-      class="relative flex flex-col gap-6 p-4 sm:flex-row sm:items-end sm:gap-10 sm:p-6"
-      :class="compact ? 'min-h-48' : 'min-h-64 sm:min-h-96'"
+      class="relative flex flex-col gap-6 p-4 md:flex-row md:items-end md:gap-10 md:p-6"
+      :class="compact ? 'min-h-48' : 'min-h-64 md:min-h-96'"
     >
       <div class="flex min-w-0 flex-1 flex-col justify-end gap-3">
         <span
           v-if="eyebrow"
           data-slot="showcase-eyebrow"
-          class="truncate text-p-xs uppercase tracking-widest text-white/70"
+          class="truncate text-xs uppercase tracking-widest text-white/70"
         >
           {{ eyebrow }}
         </span>
@@ -125,7 +125,7 @@
       -->
       <div
         v-if="images.length > 1"
-        class="absolute end-4 top-4 z-10 flex items-center gap-1.5 rounded-full bg-black/40 px-2 py-1.5 backdrop-blur-sm sm:end-6 sm:top-6"
+        class="absolute end-4 top-4 z-10 flex items-center gap-1.5 rounded-full bg-black/40 px-2 py-1.5 backdrop-blur-sm md:end-6 md:top-6"
       >
         <!--
           An eight-pixel dot. `Button` is a control with a height, a padding and
@@ -161,7 +161,7 @@
       <div
         v-if="children.length && !compact"
         data-slot="showcase-children"
-        class="flex w-full shrink-0 flex-col gap-2 rounded-6 bg-black/50 p-3 backdrop-blur-sm sm:w-80"
+        class="flex w-full shrink-0 flex-col gap-2 rounded-6 bg-black/50 p-3 backdrop-blur-sm md:w-80"
       >
         <div class="flex items-center gap-2">
           <Icon v-if="childIcon" :name="childIcon" class="size-4 text-white/70" />
@@ -198,41 +198,49 @@
           <div class="flex flex-col">
             <!--
               The row is the control. `Button` would bring its own height,
-              padding and label layout to a thing that is a square and two lines
-              of type.
+              padding and label layout to a thing that is a square and two
+              lines of type.
+
+              `ground="overlay"` because this sits on the record's own image
+              or brand colour: a grey hover over a photograph is mud, so the
+              fill is white alpha. That is the one thing about this row that
+              is not the same as every other row in the product, and it is a
+              prop rather than a class so it stays the only one.
             -->
-            <!-- eslint-disable-next-line vue/no-restricted-html-elements -->
-            <button
+            <Row
               v-for="one in children"
               :key="one.name"
-              type="button"
               data-slot="showcase-child"
               :data-name="one.name"
-              class="flex items-center gap-3 rounded-4 p-2 text-start transition-colors hover:bg-white/15"
+              ground="overlay"
+              edge="rounded"
+              pad="tight"
               @click="emit('open', { screen: childScreen, name: one.name })"
             >
-              <span
-                class="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-4 bg-white/10"
-              >
-                <img
-                  v-if="one.image"
-                  :src="one.image"
-                  :alt="one.label"
-                  class="size-full object-cover"
-                />
-                <span v-else class="text-p-sm font-medium uppercase text-white/50">
-                  {{ one.label.slice(0, 1) }}
+              <template #lead>
+                <span
+                  class="flex size-9 items-center justify-center overflow-hidden rounded-4 bg-white/10"
+                >
+                  <img
+                    v-if="one.image"
+                    :src="one.image"
+                    :alt="one.label"
+                    class="size-full object-cover"
+                  />
+                  <span v-else class="text-p-sm font-medium uppercase text-white/50">
+                    {{ one.label.slice(0, 1) }}
+                  </span>
                 </span>
-              </span>
+              </template>
               <span class="flex min-w-0 flex-col">
-                <span dir="auto" class="truncate text-p-sm font-medium text-white">
+                <span dir="auto" class="truncate text-sm font-medium text-white">
                   {{ one.label }}
                 </span>
-                <span class="truncate text-p-xs text-white/50">
+                <span class="truncate text-xs text-white/50">
                   {{ one.detail || one.name }}
                 </span>
               </span>
-            </button>
+            </Row>
           </div>
         </div>
       </div>
@@ -244,6 +252,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 
 import { Button, Icon } from '@/ui'
+import Row from '@/shared/components/Row.vue'
 import StateBadge from '@/modules/onespace/components/screen/fields/StateBadge.vue'
 import { cellText } from '@/modules/onespace/lib/screen/cells'
 import { session } from '@/modules/onespace/lib/shell/session'

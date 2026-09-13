@@ -53,7 +53,7 @@ Reference data, which a person opens and talks about:
 
 | | |
 |---|---|
-| **Source** | Where feeds come from — an SFTP host, an upload folder, an endpoint, a socket. A workspace connects several. |
+| **Source** | Where feeds come from — a connected folder, an upload, an endpoint, a socket. A workspace connects several. |
 | **Feed** | One delivery from one source at one moment. Everything traces back to a feed, which is what makes a wrong number answerable. |
 | **Agency** | Who runs the service. |
 | **Line** | What a rider calls "the 12". GTFS says route; riders and staff say line, so we say line. |
@@ -301,17 +301,56 @@ into two products, and the whole pitch is that they are the same view.
 
 ---
 
-## 5. Four doors, one pipeline
+## 5. Three doors, one pipeline
 
 A workspace connects any of:
 
-* **Upload** — drag a folder of files in, through OneStorage. The demo path,
-  and the one a manager tries first.
-* **SFTP** — how VDV planning data actually arrives, and counting data with
-  it. A host, a key, a folder, a schedule.
+* **Folder** — where nearly everything arrives. A folder in Files: upload
+  into it, or connect it to an SFTP, FTP, SMB or WebDAV host first. It makes
+  no difference which, because `onestorage/walk.py` addresses both the same
+  way — which is the whole reason there is one door here where there used to
+  be two. The credentials, where there are any, are the mount's: a drop
+  folder on an authority's host is the Drive's noun, browsable in the file
+  manager (`docs/DRIVE.md` §11), so somebody debugging a poll can *look at
+  the folder*.
 * **HTTP** — poll an endpoint, or receive a webhook.
-* **Socket** — a subscription that pushes positions. VDV 453/454's real-time
+* **Stream** — a subscription that pushes positions. VDV 453/454's real-time
   interfaces, GTFS-Realtime, SIRI, and VDV 457-2 for counted occupancy.
+
+### A source is a folder, and that is the whole of the configuration
+
+It used to be four kinds and three fields — `Upload` for a file somebody
+dragged in, `Folder` for a mount plus a path, and a `format` dropdown naming a
+specification — and all three were asking the customer to do work the machine
+can do.
+
+**Upload folded into Folder.** An upload had its own kind because it had
+nowhere to land. It lands in a Drive folder now, and a Drive folder and a
+mounted drop folder are one noun.
+
+**The format dropdown is gone.** Not defaulted to Detect among nine options —
+gone. Detection is what happens; see below. A stream is the one exception and
+has to be, because the handshake differs per protocol and there is nothing to
+open and look at until we have already said which one we are speaking.
+
+**The folder is walked whole, and what has been taken is remembered per
+file.** The old door took the *newest* file on each poll and moved a watermark
+past it, which quietly lost two things: every delivery that arrived out of
+order, and the entire backlog a newly connected source was pointed at. Now
+every file under the folder is a delivery of its own, and the ledger is the
+feeds themselves — path, size, and the host's own write time, one row per
+file. A late arrival is still taken. A supplier re-dropping a corrected export
+under the same name is taken again, because a number moved. Oldest first, and
+twenty-five per fetch, so a folder pointed at four years of nightly drops
+works forward through the backlog over successive polls rather than dying in
+one job.
+
+**A directory that is itself one feed is one delivery.** Somebody drags an
+unzipped GTFS export in and it is `agency.txt` and eight siblings; reading
+each of those on its own would refuse nine files instead of loading one. So
+`sniff.group` looks at the *set* of names in each directory before anything is
+read, `sniff.pack` zips a set that makes a feed, and every reader below still
+takes bytes and never learns there was a directory.
 
 **How full it is, measured.** Every other dialect reports occupancy as a word
 somebody's threshold produced — `Auslastung` has three, GTFS-Realtime six.
@@ -354,9 +393,9 @@ stop and day alone. A reader that insisted on a timestamp would silently ignore
 every corrected journey — which is the half of the interface an operator's
 numbers actually come from.
 
-**Nobody has to name the format.** A source may declare one and may equally
-leave it on `Detect`; either way the delivery is opened and identified from
-what is inside it — `sniff.py`. A GTFS feed is its member names, a VDV 452
+**Nobody names the format, because there is nowhere left to name it.** The
+delivery is opened and identified from what is inside it — `sniff.py`. A GTFS
+feed is its member names, a VDV 452
 delivery is its own `tbl;` lines, an XML document is its root element, and
 GTFS-Realtime is a protobuf field tag, because it carries no name at all. The
 extension is consulted last and only to break a tie: it is the field most
@@ -374,7 +413,7 @@ recognises is refused with what was *found* in it, which is the one outcome
 worth reading: "this contains agency.txt and stops.txt but no routes.txt"
 beats "could not read".
 
-Behind all four is **one pipeline**: fetch → parse → normalise → resolve →
+Behind all three is **one pipeline**: fetch → parse → normalise → resolve →
 commit, with a watermark. That is `onespace/importer.py`, which already exists,
 is already idempotent, incremental, resumable, answerable and rehearsable, and
 was deliberately written as an engine over a *plan* rather than as RUA's script.
@@ -430,6 +469,58 @@ feed at all: one body per connection, several connections per window.
 
 ---
 
+## 5a. The VDV shelf, and the column nobody else writes down
+
+VDV is not one specification. It is a shelf of them, written by different
+committees over thirty years, and the single most expensive moment in a German
+integration project is week six, when it turns out the part the customer meant
+is not the part that was built. So the shelf is written down — `vdv.py`, drawn
+on the **Protocols** screen — and every row says three things: what the part
+carries, whether we read it, and **which door it arrives through**.
+
+That third column is the one that earns the screen.
+
+| | |
+|---|---|
+| `folder` | A file, in a drop folder or an upload. The ÖPNV-Datenmodell family (451, 452, 455), NeTEx (462), and 457-3's corrected counts. |
+| `stream` | A subscription between two systems. The Ist-Daten family (453, 454) and 457-2's counted occupancy. |
+| `vehicle` | A service on the vehicle's own network. **All of IBIS-IP (301).** |
+
+A part's number tells you nothing about which of those it is, and the three
+are three different acquisition problems. "Do you support VDV 301-2-15" sounds
+like a question about a parser; it is a question about a **bridge on every
+vehicle**, because IBIS-IP is device-to-device on one bus and a workspace
+never sees it directly. Something on the vehicle has to relay it out, and
+`live.report` is where it lands. Answering yes without saying that is how a
+project loses a quarter, which is why the door is a column and not a footnote.
+
+**What a row claims.** `read` means bytes in this format become rows in our
+model today. `recognised` means `sniff.py` identifies it and says there is no
+reader — a customer told "not yet" rather than shown a parse error. `declared`
+means it is named so a conversation starts from the same page. `unknown` means
+the part exists and we have not established what it says; those are listed
+anyway, because a gap somebody can see is worth more than a list that quietly
+stops at 457.
+
+**And whether to believe the row.** Each carries `verified`, true only where
+it was written with the published document open — 451, 452, 455, 462, 430,
+431 and the whole of 301 were, and the screen says so and links the PDF. The
+unverified rows are exactly the set to re-read before writing a parser against
+one, which is §1's warning made into a field rather than a paragraph.
+
+The registry is also the *source* of `sources.LOADERS`: two lists of which
+parts have a reader is one list too many, and the day a reader ships the row
+and the table have to move together or the screen tells a customer something
+about their own feed that is not true. A test reads both back.
+
+One filter in it is load-bearing rather than tidy. `sources.deliver`
+dispatches `load(feed, content)`; a stream part's reader is `streaming.py`,
+which has no such function. So only `folder` parts reach the loader table, and
+a 454 document saved into a drop folder is refused with "this arrives over a
+subscription" rather than dispatched into a stack trace.
+
+---
+
 ## 6. Duplicates are a conflict, not magic
 
 "Connect all your sources and the system smartly handles duplicates" is the
@@ -460,7 +551,7 @@ nobody able to say why. `CLAIMED` names the fields a source is actually
 answering for.
 
 **Precedence is live.** A customer who reorders their sources expects the map
-to change now, not after the next delivery — which for an SFTP drop folder is
+to change now, not after the next delivery — which for a drop folder is
 tomorrow. Changing the number re-settles every key that source claims.
 
 **Agreeing is a third verdict.** Two sources stating the same values are not a
@@ -1076,6 +1167,104 @@ ever.
 
 ---
 
+## 7e. What the vehicle says about itself
+
+Everything above this point is about where a vehicle *is*. This is about what
+it *did*: a door opened, a door jammed, the trip ended, the counter broke, the
+GPS lost its fix. Between them they answer most of what an operator actually
+asks after a bad Tuesday, and none of it fits in `observation` — a position is
+a sample and these are changes.
+
+So there is a third raw tier, `vehicleEvent`, and one rule holds it up.
+
+**Edges, not samples.** A door state service will answer "closed" every second
+for eight hours, and a reader that writes that down has not built an event
+tier — it has built a worse copy of `observation`, and it will not look broken,
+it will look slow, a quarter later. A row is written only where the state
+*changed* (`vdv301.changed`), so a three-door bus calling at sixty stops writes
+a few hundred rows a day rather than a quarter of a million. Five hundred
+vehicles is under two hundred thousand rows a day — a tenth of what
+`observation` takes at the same fleet size, which is why this tier is kept
+sixty days rather than thirty.
+
+The one exception is silence. An unchanged state is written again after
+fifteen minutes, because otherwise a vehicle parked overnight writes nothing
+and a reader cannot tell "unchanged" from "the bridge died at 22:40".
+
+**One table, not one per service.** `kind` / `part` / `value` / `number`,
+where `part` is the `DoorID` or the device id and `value` is the enumerated
+state. IBIS-IP alone has twenty-three services in its own
+`ServiceNameEnumeration`; a column per service would make "read the next one"
+a migration. The cost is that a value is a string, and the check that it is a
+*known* string is applied where it is drawn rather than where it is stored —
+because a vehicle reporting something we have never seen is news, not an
+error, and dropping it loses the one row worth reading.
+
+**The vocabulary is VDV's own.** `AllDoorsClosed`, `EmergencyRelease`,
+`offroute`, `Sabotage` — copied out of VDV 301-2-1 chapters 3.x rather than
+tidied into snake case, because a legend is only honest if its values are the
+ones the operator's own supplier uses.
+
+**Trouble is a column.** `EmergencyRelease`, `offroute`, `defective`,
+`Sabotage` and the rest of `vdv301.TROUBLE` stamp a flag on the row as it is
+written. The attention list is then a filter on an indexed column rather than
+a scan with an `IN` list of pairs — the same argument that put `hour` on the
+observation instead of deriving it.
+
+**Edges turn back into durations at the read.** "Door 3 was open for fourteen
+seconds" is not a row, it is the gap between two rows, and `vdv301.spans` is
+what makes it one. `vdv301.dwell` is the union of the open-door spans rather
+than their sum, because a vehicle with two doors open at once stood there
+once — and that number is the **measured** dwell, which closes a loop
+`stopEvent.dwell_s` has had a comment about since it was written: the inferred
+dwell is the time inside a stop's radius, honest to the feed's resolution and
+no finer, and a counted visit overwrites it with the door timings.
+
+**How it arrives.** `live.relay`, one vehicle per call — which is what lets
+the reader hold that vehicle's last state and drop a repeat. Not `live.report`,
+which takes positions and may span a fleet: they are different claims, stored
+differently and kept for different lengths, and sharing a writer would be a
+branch at the top of every line of it. The relay itself is on the vehicle, and
+that is the real work: 301 is a LAN protocol, so `vdv.py` marks the whole
+family `vehicle` and the parser is the small end of it.
+
+**Where it is drawn, and the one rule the four surfaces share.** Every one of
+them attributes its number to a VDV part, because a count nobody can trace
+back to `301-2-15` is a count nobody can check against their own supplier.
+
+*Insights, "The vehicles".* The attention list first, and it is the only thing
+on that screen about *now* — a fortnight rolled up sits under it, and a door
+jammed at this minute belongs above all of it or not on the page. Then the
+measured dwell drawn beside the inferred one rather than replacing it, so a
+fleet that half-reports can see which half; then state changes by hour; then
+the kinds, each with the part it came from.
+
+*The map.* A vehicle reporting a fault gets a red ring under its marker —
+`events.attention` keyed by vehicle, polled once a minute rather than with the
+positions, because a state that has lasted forty minutes does not change
+between two five-second polls. Under the marker rather than badged on it: the
+silhouette is already carrying occupancy, and a second scale drawn *on* it is
+two things fighting over sixteen pixels. Deliberately a different shape from
+the chosen ring, since both can be on one vehicle. Opening that vehicle names
+the fault and its age above how full it is, because a door that will not close
+outranks a bus that is busy.
+
+*Outlook.* `forecast.faults` reads `eventHour` forward the way `outlook` reads
+`serviceHour` forward — same lookup, different subject: how the *equipment*
+behaves rather than how the *service* runs, and a shift planner needs both. One
+thing differs from every other reading in that module, and it is the honest
+direction: **the chance is counted, not a tail.** A delay is continuous and all
+we keep is its p50 and p95, so a probability there comes out of a normal CDF.
+A fault either happened in an hour or it did not, and the tier holds one row
+per hour per day — so the answer is "on four Tuesdays in the last thirteen",
+which needs no distributional assumption and is checkable against somebody's
+memory of those four Tuesdays. Counting is also what keeps the per-day figures
+honest: the divisor is the number of days the tier *has rows for*, not the
+number of Tuesdays in the calendar window, which would understate a workspace
+whose feed started three weeks ago by a factor of four.
+
+---
+
 ## 8. What the engine was missing, and what it now has
 
 Three of the five gaps below were OneSpace's rather than OneMobility's, and
@@ -1191,9 +1380,9 @@ Each ships something a person can look at. **Done** is done and in the fixture.
    data is abundant and it proves the model is not VDV-shaped. **Done.**
 2. **The map view type**, in the engine, over Geolocation. Stops on a map, and
    every other space gets it too. **Done**, with the basemap under it.
-3. **VDV 452 over SFTP.** The real acquisition path, on the pipeline stage 1
-   proved. **Done:** the SFTP door takes the newest file in a drop folder and
-   `vdv452.py` reads it — the `tbl`/`atr`/`rec` interchange, a zip of `.x10`
+3. **VDV 452 over a drop folder.** The real acquisition path, on the pipeline
+   stage 1 proved. **Done:** the door walks the drop folder and
+   `vdv452.py` reads what it finds — the `tbl`/`atr`/`rec` interchange, a zip of `.x10`
    files or a bare one, into the same nouns GTFS lands on. The planning tables
    GTFS has no word for are skipped rather than stored and ignored, and the two
    things that can be quietly wrong — columns are positional against the `atr`

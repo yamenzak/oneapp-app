@@ -11,16 +11,17 @@
     Same transcript, same composer. `ChatPanel` is both.
   -->
   <PageHeader>
-    <nav data-slot="breadcrumb" aria-label="Breadcrumb" class="flex min-w-0 items-center">
-      <Breadcrumbs :items="crumbs" />
-    </nav>
+    <!-- The crumb says the assistant's name and the transcript carries its
+         face — a face beside the house here would be two identities in one
+         row, and the root goes first (§C1). -->
+    <Trail :items="crumbs" />
 
     <div class="flex items-center gap-2">
       <Button
         v-if="session"
         variant="ghost"
         icon-left="lucide-trash-2"
-        :label="__('Delete')"
+        :label="__('Delete for ever')"
         data-slot="chat-forget"
         @click="forget"
       />
@@ -45,7 +46,10 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Breadcrumbs, Button, PageHeader } from '@/ui'
+import { KIND, atOf, writeAt } from '@/shared/lib/url/at'
+import { Button, PageHeader } from '@/ui'
+import Trail from '@/shared/components/Trail.vue'
+import { useCrumbs } from '@/shared/composables/useCrumbs'
 import ChatPanel from '@/modules/onespace/components/chat/ChatPanel.vue'
 import { assistant as state, assistantName, loadAssistant } from '@/modules/onespace/lib/shell/assistant'
 import { workspace } from '@/shared/lib/workspace'
@@ -58,10 +62,13 @@ const router = useRouter()
 // reloaded — the same reason a record is. Writing to it navigates, which is how
 // the first question of a new thread gives itself an address.
 const session = computed({
-  get: () => route.query.chat || '',
+  get: () => atOf(route.query, KIND.CHAT),
   set: (name) => {
-    if (name === (route.query.chat || '')) return
-    router.replace({ name: 'Chat', ...(name ? { query: { chat: name } } : {}) })
+    if (name === atOf(route.query, KIND.CHAT)) return
+    router.replace({
+      name: 'Chat',
+      ...(name ? { query: { at: writeAt(KIND.CHAT, name) } } : {}),
+    })
   },
 })
 
@@ -69,12 +76,14 @@ const current = computed(() =>
   state.sessions.find((one) => one.name === session.value) || null,
 )
 
-const crumbs = computed(() => [
-  { label: assistantName.value, route: { name: 'Chat' } },
-  ...(current.value?.title
+// The assistant is a place in the workspace like Mail is, and the
+// conversation is where you are inside it — §C1.
+const crumbs = useCrumbs(
+  () => ({ label: assistantName.value, route: { name: 'Chat' } }),
+  () => (current.value?.title
     ? [{ label: current.value.title, route: route.fullPath }]
     : []),
-])
+)
 
 loadAssistant()
 

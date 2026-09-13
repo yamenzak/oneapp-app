@@ -7,12 +7,12 @@
     Space. It is reached from the Drive, from an attachment on a record, or
     from a link somebody sent — and none of those knows which Space you were in.
 
-    There is no `PageHeader` here, and that is the point. The editor is
-    Frappe's, vendored whole (`lib/sheets/VENDORED.md`), and it brings its own
-    identity bar, formula bar, toolbar and tab strip — four rows of chrome that
-    a fifth would only crowd. What OneSpace has to say about a sheet that a
-    standalone spreadsheet cannot — that it is a file, that it can be the one
-    everybody starts from — goes into the editor's own File menu instead.
+    The bar above the grid is `shared/components/EditorChrome.vue`, the same
+    one the document editor draws — §E2/E3. It replaces the identity bar the
+    vendored editor brought with it (`lib/sheets/VENDORED.md`), so the row
+    count is unchanged and what it buys is the trail: a sheet is a file, and
+    the product's most immersive surface had no way home from it. The formula
+    bar, the toolbar and the tab strip are still the vendored editor's.
   -->
   <!-- The editor and, beside it, what this workbook reads. The rail is the
        document editor's, unchanged: a workbook reads the same set of records
@@ -25,6 +25,7 @@
       ref="editor"
       :id="name"
       :host-menu="hostMenu"
+      :crumbs="crumbs"
       class="min-w-0 flex-1"
       @close="close"
     />
@@ -63,7 +64,7 @@
     until it is not is a panel in the way of a grid. `onesheet/intelligence.py`
     is why the answer is a plan and not cells.
   -->
-  <Dialog v-model="asking" :title="__('Ask AI')">
+  <Dialog v-model="asking" :title="__('Ask {0}', [assistantName])">
     <template #default>
       <div class="flex flex-col gap-3">
         <FormControl
@@ -84,10 +85,10 @@
           :lines="2"
           class="rounded-6 bg-surface-gray-1 p-3"
         />
-        <p v-else-if="planning.text.value" class="text-p-sm text-ink-gray-7">
+        <p v-else-if="planning.text.value" class="text-p-sm text-ink-secondary">
           {{ planning.text.value }}
         </p>
-        <p class="text-p-xs text-ink-gray-5">
+        <p class="text-p-xs text-ink-muted">
           {{ __('It writes formulas rather than numbers, so the sheet keeps working. One Undo takes the whole change back.') }}
         </p>
         <ErrorMessage v-if="planning.error.value" :message="planning.error.value" />
@@ -138,8 +139,10 @@ import { useAiRun } from '@/shared/lib/ai/run'
 import { writingVerbs } from '@/shared/lib/ai/verbs'
 import { workspace } from '@/shared/lib/workspace'
 import { cameFrom } from '@/modules/onespace/lib/screen/returnTo'
+import { useCrumbs } from '@/shared/composables/useCrumbs'
 import { notifySuccess } from '@/shared/lib/runtime/notify'
 import { __ } from '@/shared/lib/runtime/translate'
+import { assistantName } from '@/modules/onespace/lib/shell/assistant'
 
 const props = defineProps({
   name: { type: String, required: true },
@@ -152,6 +155,19 @@ const route = useRoute()
 // `lib/screen/returnTo.js` — a sheet made off a quotation's line items used to
 // close to the Drive's root, with the quotation gone.
 const back = computed(() => cameFrom(route))
+
+/*
+ * Where this sits, for the bar above the grid — the document editor's own
+ * trail, from the same composable, because a workbook and a document are both
+ * files and a person who found their way out of one should find it in the
+ * same place in the other. Files is the place either way; where you came from
+ * is a crumb after it when there is one.
+ */
+// The root, and nothing else: `Trail` collapses a trail that draws a subject,
+// and the subject here is the workbook's own name. Where you came from was a
+// crumb for a stage and it was the crumb nobody read — a person in a sheet
+// wants the sheet's name and one press out of it.
+const crumbs = useCrumbs({ label: __('Files'), route: { name: 'Drive' } })
 
 // Read once, on open. The editor owns the workbook and never tells anybody
 // about the File behind it, so this is the one thing the host has to ask for
@@ -440,7 +456,7 @@ const hostMenu = computed(() => [{
     },
     ...(ai.live
       ? [{
-        label: __('Ask AI…'),
+        label: __('Ask {0}…', [assistantName]),
         icon: 'lucide-sparkles',
         onClick: () => { instruction.value = ''; steps.value = []; planning.reset(); asking.value = true },
       }]

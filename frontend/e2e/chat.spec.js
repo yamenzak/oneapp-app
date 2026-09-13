@@ -74,7 +74,7 @@ test('an answer shows what it looked at, and the working is not a message',
     const errors = collectConsoleErrors(page)
     const session = await thread(page, [ASKED, LOOKED, ANSWERED, REPLY])
 
-    await page.goto(`/one/chat?chat=${session}`)
+    await page.goto(`/one/chat?at=chat:${session}`)
     const turns = page.locator('[data-slot="chat-turn"]')
     await expect(turns).toHaveCount(2)
 
@@ -93,7 +93,7 @@ test('a run that stopped without answering says why', async ({ page }) => {
                                       { role: 'assistant', content: '' }],
                                { stopped: 'budget_spent' })
 
-  await page.goto(`/one/chat?chat=${session}`)
+  await page.goto(`/one/chat?at=chat:${session}`)
   // The one case where a turn with no text is still drawn: silence is what the
   // reader would otherwise be given, and the reason is the message.
   await expect(page.locator('[data-slot="chat-turn"]').last())
@@ -112,14 +112,14 @@ test('the rail lists the threads and opening one puts it in the URL',
     const row = page.locator('[data-slot="chat-thread"]').filter({ hasText: asked })
     await row.first().click()
 
-    await expect(page).toHaveURL(new RegExp(`chat=${session}`))
+    await expect(page).toHaveURL(new RegExp(`at=chat:${session}`))
     await expect(page.locator('[data-slot="chat-turn"]').first()).toContainText(asked)
   })
 
 test('a conversation can be deleted and stops being listed', async ({ page }) => {
   const session = await thread(page, [ASKED, REPLY])
 
-  await page.goto(`/one/chat?chat=${session}`)
+  await page.goto(`/one/chat?at=chat:${session}`)
   await page.locator('[data-slot="chat-forget"]').click()
 
   // Back to a blank thread, and the server has forgotten it.
@@ -152,7 +152,7 @@ test('the assistant opens as a panel over the page, not by leaving it',
     // so a spec that names one is a spec that passes on a fixture seeded as
     // many times as the day it was written and fails on a fresh site.
     const project = await anyProject(page)
-    await page.goto(`/one/space/rua?screen=projects&type=list&record=${project}`)
+    await page.goto(`/one/space/rua?screen=projects&type=list&at=record:${project}`)
     // For the record, not for the rail: the panel names what it is scoped to
     // out of the space's own manifest, so clicking the moment the rail appears
     // can beat the screen it is meant to be describing.
@@ -163,7 +163,7 @@ test('the assistant opens as a panel over the page, not by leaving it',
     // have made you leave the thing you wanted to ask about.
     const panel = page.locator('[data-slot="assistant-panel"]')
     await expect(panel).toBeVisible()
-    await expect(page).toHaveURL(new RegExp(`record=${project}`))
+    await expect(page).toHaveURL(new RegExp(`at=record:${project}`))
 
     // And it says what it is scoped to before anybody asks anything, rather
     // than leaving it to be inferred from an answer that turned out narrow.
@@ -177,12 +177,22 @@ test('the assistant opens as a panel over the page, not by leaving it',
 test('closing the panel leaves the page where it was', async ({ page }, info) => {
   test.skip(info.project.name === 'mobile', 'the phone has one surface')
   await page.goto('/one/space/rua?screen=projects&type=list')
+  // The rows first. What this checks is that the page is *still* where it was,
+  // and a page that had not finished arriving before the panel opened cannot
+  // say anything about that — which is how this failed once in a full run and
+  // passed on the retry.
+  await expect(page.locator('[data-slot="list-row"]').first()).toBeVisible({
+    timeout: 20_000,
+  })
+
   await page.locator('[data-slot="chat-link"]').click()
   await expect(page.locator('[data-slot="assistant-panel"]')).toBeVisible()
 
   await page.locator('[data-slot="assistant-close"]').click()
   await expect(page.locator('[data-slot="assistant-panel"]')).toHaveCount(0)
-  await expect(page.locator('[data-slot="list-row"]').first()).toBeVisible()
+  await expect(page.locator('[data-slot="list-row"]').first()).toBeVisible({
+    timeout: 20_000,
+  })
 })
 
 test('the panel hands its conversation to the page', async ({ page }, info) => {
@@ -317,7 +327,7 @@ test('a change is a card with the diff on it, and nothing happens until Apply',
     await proposed(page, session, made,
                    { custom_location: 'Jumeirah' }, { custom_location: 'Deira' })
 
-    await page.goto(`/one/chat?chat=${session}`)
+    await page.goto(`/one/chat?at=chat:${session}`)
     const card = page.locator('[data-slot="suggestion"]')
     await expect(card).toHaveCount(1)
 
@@ -344,7 +354,7 @@ test('discarding leaves the record alone and the card in the thread',
     await proposed(page, session, made,
                    { custom_location: 'Jumeirah' }, { custom_location: 'Deira' })
 
-    await page.goto(`/one/chat?chat=${session}`)
+    await page.goto(`/one/chat?at=chat:${session}`)
     const card = page.locator('[data-slot="suggestion"]')
     await card.locator('[data-slot="suggestion-discard"]').click()
 
@@ -371,7 +381,7 @@ test('a record that moved since is refused rather than overwritten',
     })
     expect(moved.ok()).toBe(true)
 
-    await page.goto(`/one/chat?chat=${session}`)
+    await page.goto(`/one/chat?at=chat:${session}`)
     const card = page.locator('[data-slot="suggestion"]')
     await card.locator('[data-slot="suggestion-apply"]').click()
 

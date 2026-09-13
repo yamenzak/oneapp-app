@@ -15,22 +15,23 @@
     the same list the sidebar draws, so the two cannot drift.
   -->
   <PageHeader>
-    <nav data-slot="breadcrumb" aria-label="Breadcrumb" class="flex min-w-0 items-center gap-1">
+    <Trail :items="crumbs">
       <!--
         The folder, and how you change it. On a phone a dropdown, because there
-        is no rail to pick from; on a desktop the rail is the picker, so this
-        says where you are and nothing more.
+        is no rail to pick from; on a desktop the rail is the picker, so the
+        trail says where you are and nothing more.
       -->
-      <Dropdown v-if="isMobile" :options="folderOptions">
-        <Button
-          data-slot="mail-folders"
-          icon-right="lucide-chevron-down"
-          variant="ghost"
-          :label="folderName"
-        />
-      </Dropdown>
-      <Breadcrumbs v-else :items="crumbs" />
-    </nav>
+      <template v-if="isMobile" #before>
+        <Dropdown :options="folderOptions">
+          <Button
+            data-slot="mail-folders"
+            icon-right="lucide-chevron-down"
+            variant="ghost"
+            :label="folderName"
+          />
+        </Dropdown>
+      </template>
+    </Trail>
   </PageHeader>
 
   <!--
@@ -47,17 +48,23 @@
       second state to keep in step.
     -->
     <div
-      class="relative flex w-full shrink-0 flex-col rounded-6 bg-surface-base sm:w-96"
-      :class="chosen ? 'hidden sm:flex' : 'flex'"
+      class="relative flex w-full shrink-0 flex-col rounded-6 bg-surface-base md:w-96"
+      :class="chosen ? 'hidden md:flex' : 'flex'"
     >
       <div class="flex items-center gap-2 border-b border-outline-gray-1 p-2">
-        <FormControl
+        <!--
+          The same box the lists have, and the same 300ms behind it: this
+          screen had already arrived at that number on its own, in a watcher
+          under the script. The `/` that focuses it and the Escape that
+          clears it are the box's now.
+        -->
+        <!-- The frame's search, drawn here beside Write: the box belongs in
+             the strip over the list, not above the rows — §B1. -->
+        <ListSearch
           v-model="search"
           class="flex-1"
-          type="text"
           :placeholder="__('Search mail')"
-          data-slot="mail-search"
-          @keyup.enter="load()"
+          @changed="list?.read()"
         />
         <!-- Write sits over the list rather than in the rail: an action
              belongs to the thing it acts on. -->
@@ -69,31 +76,26 @@
         />
       </div>
 
-      <LoadingText v-if="loading" class="py-8" :text="__('Loading')" />
-
-      <EmptyState
-        v-else-if="!threads.length"
-        icon="lucide-inbox"
-        :title="__('No mail yet')"
-        :description="
-          addresses.length
-            ? __('New mail for this address arrives here.')
-            : __('Nobody has given you an address yet. An admin can add one in Settings.')
-        "
-      />
-
-      <div v-else class="min-h-0 flex-1 overflow-y-auto">
+      <!-- The frame is `DataList` over `threadSource` — §B1. -->
+      <DataList
+        ref="list"
+        v-model:searched="search"
+        :source="source"
+        :skeleton="8"
+        skeleton-class="h-14 w-full"
+        class="min-h-0 flex-1 overflow-y-auto"
+      >
         <!--
           A conversation is a place, so it is a link and it is in the URL: that
           is what makes the back button close a thread and a reload keep one
           open. It is also why these are `router-link`.
         -->
-        <RouterLink
-          v-for="one in threads"
-          :key="one.key"
-          :to="{ name: 'Mail', query: { folder, thread: one.key } }"
-          class="flex w-full flex-col gap-0.5 border-b border-outline-gray-1 px-3 py-2.5 text-start hover:bg-surface-gray-2"
-          :class="chosen === one.key ? 'bg-surface-gray-2' : ''"
+        <template #row="{ row: one, picked: ticked, toggle }">
+        <Row
+          :to="{ name: 'Mail', query: { folder, at: writeAt(KIND.THREAD, one.key) } }"
+          layout="bare"
+          class="flex flex-col gap-0.5"
+          :open="chosen === one.key"
           data-slot="mail-thread"
         >
           <div class="flex items-center gap-2">
@@ -111,10 +113,10 @@
             -->
             <span
               class="flex shrink-0 items-center"
-              @click.stop="pick(one, $event)"
+              @click.stop="toggle($event)"
             >
               <Checkbox
-                :model-value="picked.has(one.key)"
+                :model-value="ticked"
                 data-slot="mail-pick"
                 :aria-label="__('Select {0}', [one.subject])"
               />
@@ -125,9 +127,9 @@
               class="min-w-0 flex-1 text-p-sm"
               :sender="one.sender"
               :who="one.who"
-              :name-class="one.unread ? 'font-semibold text-ink-gray-9' : 'text-ink-gray-7'"
+              :name-class="one.unread ? 'font-semibold text-ink-gray-9' : 'text-ink-secondary'"
             />
-            <span class="shrink-0 text-p-xs tabular-nums text-ink-gray-5">
+            <span class="shrink-0 text-p-xs tabular-nums text-ink-muted">
               {{ when(one.at) }}
             </span>
             <!-- `.prevent` because the whole row is a link: without it,
@@ -144,28 +146,16 @@
             />
           </div>
           <span
-            class="truncate text-p-sm"
-            :class="one.unread ? 'font-medium text-ink-gray-8' : 'text-ink-gray-6'"
+            class="truncate text-sm"
+            :class="one.unread ? 'font-medium text-ink-primary' : 'text-ink-secondary'"
           >
             {{ one.subject }}
             <span v-if="one.count > 1" class="text-ink-gray-4">({{ one.count }})</span>
           </span>
-          <span class="truncate text-p-xs text-ink-gray-5">{{ one.preview }}</span>
-        </RouterLink>
-
-        <!-- The list held the first fifty messages and stopped, which on a real
-             mailbox is not a limit but a broken screen. -->
-        <div v-if="more" class="p-2">
-          <Button
-            class="w-full"
-            variant="subtle"
-            :label="loadingMore ? __('Loading…') : __('Older conversations')"
-            :loading="loadingMore"
-            data-slot="mail-more"
-            @click="loadMore()"
-          />
-        </div>
-      </div>
+          <span class="truncate text-xs text-ink-muted">{{ one.preview }}</span>
+        </Row>
+        </template>
+      </DataList>
 
       <!--
         What a selection is for. The same bar the record lists draw, in the same
@@ -173,16 +163,16 @@
         with them" is one idea.
       -->
       <SelectionBar
-        v-if="picked.size"
-        :count="picked.size"
+        v-if="chosenCount"
+        :count="chosenCount"
         :total="threads.length"
-        @clear="picked.clear()"
-        @all="pickAll"
+        @clear="list?.clearChosen()"
+        @all="list?.toggleAll()"
       >
         <!-- Icons, not labels: the list column is 384px, and four labelled
              buttons pushed the count off the left edge. -->
         <Button variant="ghost" icon="lucide-archive" :label="__('Archive')" :tooltip="__('Archive')" @click="act('archive')" />
-        <Button variant="ghost" icon="lucide-trash-2" :label="__('Delete')" :tooltip="__('Move to Trash')" @click="act('bin')" />
+        <Button variant="ghost" icon="lucide-trash-2" :label="__('Move to the bin')" :tooltip="__('Move to the bin')" @click="act('bin')" />
         <Button variant="ghost" icon="lucide-mail" :label="__('Unread')" :tooltip="__('Mark unread')" @click="act('unread')" />
         <Button variant="ghost" icon="lucide-star" :label="__('Star')" :tooltip="__('Star')" @click="act('star')" />
       </SelectionBar>
@@ -191,7 +181,7 @@
     <!-- What it says -->
     <div
       class="flex min-w-0 flex-1 flex-col rounded-6 bg-surface-base"
-      :class="chosen ? 'flex' : 'hidden sm:flex'"
+      :class="chosen ? 'flex' : 'hidden md:flex'"
     >
       <EmptyState
         v-if="!chosen"
@@ -201,10 +191,10 @@
       />
 
       <div v-else class="min-h-0 flex-1 overflow-y-auto p-5">
-        <!-- The phone has no second column to go back to. `sm:hidden` because
+        <!-- The phone has no second column to go back to. `md:hidden` because
              on a desktop the list never left. -->
         <RouterLink
-          class="sm:hidden"
+          class="md:hidden"
           :to="{ name: 'Mail', query: { folder } }"
           data-slot="mail-back"
         >
@@ -218,7 +208,7 @@
           whole conversation. Up here they sit against the thing they act on,
           which is the title of the conversation.
         -->
-        <div class="mt-2 flex items-start justify-between gap-3 sm:mt-0">
+        <div class="mt-2 flex items-start justify-between gap-3 md:mt-0">
           <h2 class="min-w-0 text-lg font-semibold text-ink-gray-9">{{ openSubject }}</h2>
           <!-- Icons, not labels: four labelled buttons beside a subject line
                is a second heading competing with the first. -->
@@ -234,8 +224,8 @@
             <Button
               variant="ghost"
               icon="lucide-trash-2"
-              :label="__('Delete')"
-              :tooltip="__('Move to Trash')"
+              :label="__('Move to the bin')"
+              :tooltip="__('Move to the bin')"
               data-slot="mail-delete"
               @click="act('bin')"
             />
@@ -317,7 +307,7 @@
             :empty="!summary.text.value"
             class="rounded-6 bg-surface-gray-1 p-3"
           >
-            <p class="whitespace-pre-line text-p-sm text-ink-gray-7">{{ summary.text.value }}</p>
+            <p class="whitespace-pre-line text-p-sm text-ink-secondary">{{ summary.text.value }}</p>
           </AiGlow>
           <!--
             One line, because that is all a filing answer is: what it filed
@@ -327,7 +317,7 @@
           -->
           <p
             v-if="placing.text.value"
-            class="text-p-sm text-ink-gray-6"
+            class="text-p-sm text-ink-secondary"
             data-slot="mail-filed"
           >
             {{ placing.text.value }}
@@ -439,27 +429,26 @@
       `send_after`. "Archived 11" is the note `bulk` handed back, which
       `restore` reads.
     -->
-    <div
-      v-if="note"
-      class="fixed inset-x-0 bottom-8 z-20 mx-auto flex w-fit items-center gap-3 rounded-6 border border-outline-gray-2 bg-surface-elevation-2 px-4 py-2 shadow-xl"
-      data-slot="mail-undo"
-    >
-      <span class="text-p-sm text-ink-gray-8">{{ note.text }}</span>
+    <Panel ground="raised" pad="bar" elevation="over" v-if="note" class="fixed inset-x-0 bottom-8 z-20 mx-auto flex w-fit items-center gap-3" data-slot="mail-undo">
+      <span class="text-p-sm text-ink-primary">{{ note.text }}</span>
       <!-- Only where there is something to undo: mail that arrived on a routed
            address was in no folder to begin with. -->
       <Button v-if="note.run" variant="ghost" size="sm" :label="__('Undo')" @click="undo()" />
-    </div>
+    </Panel>
 
     <!-- Every shortcut this screen answers to, because one nobody can find is
          one nobody uses. `?` opens it, which is itself in the list. -->
     <ShortcutsDialog v-model="showingKeys" :groups="SHORTCUTS" />
 
     <!--
-      An attachment opens in the Drive's own previewer, because a mail
-      attachment *is* a Drive file — the same `File` row, the same permission
-      check on the way to the bytes.
+      An attachment opens in the Drive's own pane, because a mail attachment
+      *is* a Drive file — the same `File` row, the same permission check on the
+      way to the bytes, and since §C2 the same placement: beside the message
+      you are reading rather than over it. Three drawings sent with a quotation
+      are three things you look at in turn, and a modal made that
+      open-look-close-open.
     -->
-    <FilePreview v-model="preview" :file="previewing" />
+    <FilePane v-model="preview" :file="previewing" />
 
     <MailComposer
       ref="composer"
@@ -474,26 +463,27 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import {
-  Breadcrumbs,
   Button,
   Checkbox,
   Dropdown,
-  FormControl,
   ErrorMessage,
-  LoadingText,
   PageHeader,
-  dayjsLocal,
-  debounce,
 } from '@/ui'
 import AiGlow from '@/shared/components/AiGlow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
+import DataList from '@/shared/components/DataList.vue'
+import { threadSource } from '@/shared/lib/list/threads'
+import Trail from '@/shared/components/Trail.vue'
+import { useCrumbs } from '@/shared/composables/useCrumbs'
+import Row from '@/shared/components/Row.vue'
+import ListSearch from '@/modules/onespace/components/screen/views/ListSearch.vue'
 import SuggestionCard from '@/shared/components/SuggestionCard.vue'
 import SelectionBar from '@/modules/onespace/components/screen/bodies/SelectionBar.vue'
 import ShortcutsDialog from '@/modules/onemail/components/ShortcutsDialog.vue'
 import SenderChip from '@/modules/onemail/components/SenderChip.vue'
 import MailComposer from '@/modules/onemail/components/MailComposer.vue'
 import Thread from '@/modules/onemail/components/Thread.vue'
-import FilePreview from '@/modules/onestorage/components/FilePreview.vue'
+import FilePane from '@/modules/onestorage/components/FilePane.vue'
 import { onDoctypeChange } from '@/shared/lib/runtime/socket'
 import { MOD, useShortcuts } from '@/modules/onespace/lib/shell/shortcuts'
 import { useIsMobile } from '@/modules/onespace/lib/shell/breakpoint'
@@ -502,48 +492,48 @@ import { writingVerbs } from '@/shared/lib/ai/verbs'
 import { loadMail, mail } from '@/modules/onespace/lib/shell/mail'
 import { __ } from '@/shared/lib/runtime/translate'
 import { workspace } from '@/shared/lib/workspace'
-
-const loading = ref(true)
+import Panel from '@/shared/components/Panel.vue'
+import { ago } from '@/shared/lib/runtime/format'
+import { KIND, atOf, writeAt } from '@/shared/lib/url/at'
 
 const route = useRoute()
 const router = useRouter()
 
-const threads = ref([])
 const addresses = ref([])
-const cursor = ref(0)
-const more = ref(false)
-const loadingMore = ref(false)
 
-/** Two pages of conversations as one list, the older half folded into the newer. */
-function merge(have, next) {
-  const by = new Map(have.map((one) => [one.key, one]))
-  for (const one of next) {
-    const already = by.get(one.key)
-    if (!already) {
-      by.set(one.key, one)
-      continue
-    }
-    already.count += one.count
-    already.unread += one.unread
-  }
-  return [...by.values()]
-}
-
-async function loadMore() {
-  loadingMore.value = true
-  try {
-    await load({ append: true })
-  } finally {
-    loadingMore.value = false
-  }
-}
+// The frame, and the rows it is holding. The selection, the keyboard and the
+// eight bulk verbs are all over *these* — every page read, not the last one.
+const list = ref(null)
+const threads = computed(() => list.value?.rows || [])
 const search = ref('')
+
+/**
+ * The mailbox — §B1.
+ *
+ * Two things here that no other source needs, and both are why the contract
+ * has the shapes it has: a mailbox pages by a cursor rather than an offset,
+ * and a conversation can straddle the boundary with half its messages on each
+ * page. `threadSource` owns both; the frame only says "the next one".
+ */
+const source = computed(() => threadSource({
+  folder,
+  empty: {
+    icon: 'lucide-inbox',
+    title: __('No mail yet'),
+    description: addresses.value.length
+      ? __('New mail for this address arrives here.')
+      : __('Nobody has given you an address yet. An admin can add one in Settings.'),
+  },
+}))
+
+/** Read the folder again, from the top or one page further down. */
+const load = ({ append = false } = {}) => list.value?.read({ append })
 const messages = ref([])
 
 // Both read from the URL rather than kept beside it, so a link pasted into the
 // address bar opens exactly what the person who sent it saw.
 const folder = computed(() => String(route.query.folder || 'all'))
-const chosen = computed(() => String(route.query.thread || ''))
+const chosen = computed(() => atOf(route.query, KIND.THREAD))
 
 // Which attachment is being looked at, and therefore whether the previewer is
 // open — one ref rather than two kept in step by hand.
@@ -607,13 +597,16 @@ const folderName = computed(
 
 /** The trail. `All mail` is the root and a folder is under it — one level,
  *  because a mail folder tree is one level here. */
-const crumbs = computed(() => [
+// One root, then the place, then the folder — §C1. On a phone the crumbs
+// collapse to the last two on their own, so the picker beside them does not
+// have to take the place's own crumb away to fit.
+const crumbs = useCrumbs(
   { label: __('Mail'), route: { name: 'Mail' } },
-  ...(folder.value === 'all' ? [] : [{
+  () => (folder.value === 'all' ? [] : [{
     label: folderName.value,
     route: { name: 'Mail', query: { folder: folder.value } },
   }]),
-])
+)
 
 /** The message a reply or a forward is built from: the last one in the thread. */
 const last = computed(() => messages.value[messages.value.length - 1] || null)
@@ -662,34 +655,14 @@ async function toggleStar(one) {
 // --- a selection ------------------------------------------------------------
 //
 // Reading a morning's post is the same three actions forty times, which is why
-// every row can be ticked.
-
-/** The conversations ticked, by key. */
-const picked = ref(new Set())
-
-/** The last one ticked, so shift can take everything between. */
-let anchor = ''
-
-function pick(one, event) {
-  const keys = threads.value.map((row) => row.key)
-  const at = keys.indexOf(one.key)
-
-  // Shift takes the run: without it a list of fifty is fifty clicks, and the
-  // reason people fall back to the mouse and the menu.
-  if (event?.shiftKey && anchor && keys.includes(anchor)) {
-    const from = keys.indexOf(anchor)
-    const [start, end] = from < at ? [from, at] : [at, from]
-    keys.slice(start, end + 1).forEach((key) => picked.value.add(key))
-  } else if (picked.value.has(one.key)) {
-    picked.value.delete(one.key)
-  } else {
-    picked.value.add(one.key)
-  }
-
-  anchor = one.key
-}
-
-const pickAll = () => threads.value.forEach((row) => picked.value.add(row.key))
+// every row can be ticked — and the ticking is the frame's, §B1. This page
+// held its own `Set`, its own shift-anchor and its own select-all, all three
+// of which the Drive also held and the record engine also held. What is left
+// here is reading it back, because the verbs are Mail's.
+const picked = computed(() => new Set(
+  (list.value?.picked || []).map((one) => one.key),
+))
+const chosenCount = computed(() => list.value?.chosen?.size || 0)
 
 /** What the bar says afterwards, and what pressing it again would mean. */
 const WORDS = {
@@ -735,7 +708,7 @@ async function act(what) {
 
   const address = owner.value
   const done = await workspace.mailBulk(what, keys, address, folder.value)
-  picked.value.clear()
+  list.value?.clearChosen()
 
   const count = done?.done || keys.length
   const said = keys.length > 1 ? WORDS_MANY[what](count) : WORDS[what]
@@ -787,7 +760,7 @@ const writing = ref(false)
 
 
 // The same relative wording the record timeline uses, from the same helper.
-const when = (value) => (value ? dayjsLocal(value).fromNow() : '')
+const when = (value) => (value ? ago(value) : '')
 
 async function boot() {
   // The rail is the shell's sidebar and fetches the same list, so this reads it
@@ -796,26 +769,6 @@ async function boot() {
   addresses.value = found.addresses || []
   await load()
 }
-
-async function load({ append = false } = {}) {
-  if (!append) loading.value = true
-  try {
-    const found = await workspace.mailThreads(
-      folder.value,
-      append ? cursor.value : 0,
-      search.value,
-    )
-    // Merged by key rather than concatenated: a conversation can straddle two
-    // pages, and appending blindly would show it twice with half its messages
-    // in each.
-    threads.value = append ? merge(threads.value, found.threads || []) : (found.threads || [])
-    cursor.value = found.next || 0
-    more.value = !!found.more
-  } finally {
-    loading.value = false
-  }
-}
-
 
 
 async function read() {
@@ -985,7 +938,7 @@ const SHORTCUTS = [
     title: __('Filing'),
     keys: [
       [['E'], __('Archive')],
-      [['#'], __('Move to Trash')],
+      [['#'], __('Move to the bin')],
       [['U'], __('Mark unread')],
       [['S'], __('Star')],
     ],
@@ -1019,11 +972,14 @@ function step(by) {
   if (!keys.length) return false
   const at = keys.indexOf(chosen.value)
   const next = keys[Math.min(Math.max(at + by, 0), keys.length - 1)]
-  router.push({ name: 'Mail', query: { folder: folder.value, thread: next } })
+  router.push({
+    name: 'Mail',
+    query: { folder: folder.value, at: writeAt(KIND.THREAD, next) },
+  })
 }
 
 function escape() {
-  if (picked.value.size) picked.value.clear()
+  if (picked.value.size) list.value?.clearChosen()
   else if (chosen.value) router.push({ name: 'Mail', query: { folder: folder.value } })
   else return false
 }
@@ -1031,9 +987,6 @@ function escape() {
 useShortcuts({
   j: () => step(1),
   k: () => step(-1),
-  // The search box is found rather than held in a ref: `FormControl` renders
-  // the control it is told to and the attribute rides down to it.
-  '/': () => document.querySelector('[data-slot="mail-search"]')?.focus(),
   escape,
   '?': () => { showingKeys.value = true },
 
@@ -1050,9 +1003,9 @@ useShortcuts({
   x: () => {
     const row = threads.value.find((one) => one.key === chosen.value)
     if (!row) return false
-    pick(row)
+    list.value?.toggle(row)
   },
-  'mod+a': pickAll,
+  'mod+a': () => list.value?.toggleAll(),
   'mod+z': () => (note.value ? undo() : false),
 })
 
@@ -1061,12 +1014,6 @@ boot()
 
 watch(folder, () => load())
 
-/**
- * Search, once the typing stops. This was a full-text query over subject and
- * body on every keystroke, so "quotation" was nine searches and the answer you
- * saw was whichever raced home last.
- */
-watch(search, debounce(() => load(), 300))
 watch([chosen, folder], read, { immediate: true })
 
 // --- mail arriving ----------------------------------------------------------
@@ -1081,7 +1028,7 @@ const arrived = onDoctypeChange('Communication', () => {
   pending = setTimeout(() => {
     // Only the first page. Somebody who has paged back four screens and is
     // reading does not want the list to collapse under them.
-    if (cursor.value <= PAGE_ONE) load()
+    if ((source.value.cursor.value || 0) <= PAGE_ONE) load()
   }, 400)
 })
 

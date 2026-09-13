@@ -50,7 +50,10 @@ test('the drive lists the workspace files, and every place in the rail loads', a
   // Each place is its own query and each one has its own empty state, so the
   // pass is "it settled on something", not "it found rows". A place that never
   // settles is the failure worth catching: it means the filter threw.
-  for (const label of ['Recent', 'Favourites', 'Shared with me', 'Bin', 'All files']) {
+  for (const label of [
+    'Recent', 'Favourites', 'Shared with me', 'Documents', 'Workbooks', 'Records', 'Bin',
+    'All files',
+  ]) {
     await goToPlace(page, label)
     await expect(
       page.locator('[data-slot="drive-file"], [data-slot="empty-state"]').first(),
@@ -83,7 +86,7 @@ test('opening a file opens a pane, and the pane offers a link', async ({ page })
   // A pane beside the list, not a dialog over it: looking at a photograph is
   // how you decide which photograph, and a modal makes that open-look-close
   // rather than a walk down the list.
-  const preview = page.locator('[data-slot="record-pane"]')
+  const preview = page.locator('[data-slot="object-pane"]')
   await expect(preview).toBeVisible()
   await expect(preview.getByRole('button', { name: 'Download' })).toBeVisible()
 
@@ -99,7 +102,7 @@ test('opening a file opens a pane, and the pane offers a link', async ({ page })
   // Opening it is what makes it recent, so Recents has something in it now.
   // Nothing called the endpoint that stamps this, so the rail's second place
   // was empty on every site and looked like a place nobody used.
-  await page.locator('[data-slot="drive-pane-close"]').click()
+  await page.locator('[data-slot="file-pane-close"]').click()
   await expect(preview).toHaveCount(0)
   await goToPlace(page, 'Recent')
   await expect(page.locator('[data-slot="drive-file"]').first()).toBeVisible({
@@ -201,6 +204,110 @@ test('a file uploaded on a record belongs to the record', async ({ page }) => {
   expect(before).toBeTruthy()
 })
 
+/**
+ * An upload outlives the surface it was started from — `docs/UNIFICATION.md` §D3.
+ *
+ * The tray was rendered in exactly one place, `Drive.vue`, so the queue that
+ * survives a navigation existed only if you happened to have started in the
+ * Drive. Attaching a large file to a record worked — that was the earlier
+ * arc's win — and you watched it inside a dialog you could not close, with
+ * nothing to come back to. It is in the shell now, and this is the half of
+ * that claim a unit test cannot make: start somewhere that is not the Drive,
+ * leave, and find it still counting.
+ */
+/**
+ * The Drive, from wherever this viewport keeps it.
+ *
+ * On a desktop it is a link in the sidebar. On a phone there is no sidebar and
+ * an open record is a full-screen sheet over the whole shell, so the route is
+ * the one a person has: close the record, then More. Reaching it by `goto`
+ * would be a page load, which throws away the upload tray this is about.
+ */
+const goToFiles = async (page) => {
+  // The column's own, by its marker rather than by role: `SurfaceLink` is a
+  // `RouterLink` wrapping a `Button`, so the accessible name belongs to the
+  // button and the anchor around it is a link with no name.
+  const inColumn = page.locator('[data-slot="files-link"]').first()
+  if (await inColumn.isVisible().catch(() => false)) {
+    await inColumn.click()
+    return
+  }
+  // The phone's route: close the record, then the More sheet. `exact` on More
+  // because the screen also offers "More filters" and "More for this record",
+  // and a loose match opens one of those instead — silently, since a dropdown
+  // opening is not an error.
+  await page.getByRole('button', { name: /Close (the record|and go back)/ }).first().click()
+  // Until the record has actually gone — the *sheet*, not the address. On a
+  // phone the record is a full-screen overlay that animates out, and the URL
+  // loses its `at=record:` at the start of that rather than the end: clicking
+  // then waits on a control inside a transforming ancestor until the test
+  // times out. Measured rather than assumed — the bar does not move once the
+  // overlay is gone.
+  await expect(page.locator('[data-slot="object-pane"]')).toHaveCount(0, {
+    timeout: 15_000,
+  })
+
+  // The bottom bar's own More, by its marker. By role it is ambiguous — the
+  // screen also offers "More filters" and "More for this record", and the
+  // desktop chrome is mounted-and-hidden rather than absent, so even an exact
+  // name resolves to a control nobody can press.
+  await page.locator('[data-slot="mobile-nav-item"][aria-label="More"]').click()
+  // The same marker: the sheet draws the surfaces with the same `SurfaceLink`
+  // the column does, which is the point of that component.
+  await inColumn.click()
+}
+
+test('an upload started on a record survives leaving the record', async ({ page }) => {
+  await page.goto('/one/space/rua?screen=projects')
+
+  const missing = await page
+    .getByText('Nothing here', { exact: false })
+    .isVisible()
+    .catch(() => false)
+  test.skip(missing, 'this tenant has no ERPNext, so the space is not seeded')
+
+  await page.locator('[data-slot="list-row"]').first().waitFor({ timeout: 25_000 })
+  await page.locator('[data-slot="list-row"]').first().click()
+  await page.getByRole('tab', { name: 'Files' }).click()
+
+  // What earlier runs left. Frappe caps a doctype's attachments — Project's
+  // limit is four — and this test uploads one and does not take it away, so
+  // the fifth run got "Maximum Attachment Limit of 4 has been reached" instead
+  // of an upload. The sibling below already clears the same record for the
+  // same reason; doing it here too is what makes either one runnable twice.
+  const existing = page.locator('[data-slot="drive-file"]')
+  await page.waitForTimeout(1_000)
+  if (await existing.count()) {
+    await existing.first().locator('input[type=checkbox]').check()
+    const bar = page.locator('[data-slot="selection-bar"]')
+    const all = bar.getByRole('button', { name: 'Select all' })
+    if (await all.count()) await all.click()
+    await bar.getByRole('button', { name: 'Move to the bin' }).click()
+    await expect(existing).toHaveCount(0, { timeout: 20_000 })
+  }
+
+  await page.getByRole('button', { name: 'Attach a file' }).click()
+
+  const picker = page.getByRole('dialog')
+  await picker.getByRole('tab', { name: 'This device' }).click()
+
+  const stamp = Date.now()
+  await picker.locator('input[name="picker-upload"]').setInputFiles([
+    { name: `ZZ away-${stamp}.txt`, mimeType: 'text/plain', buffer: Buffer.from('away') },
+  ])
+
+  // The dialog stops being the thing you have to sit in front of.
+  await expect(picker).toHaveCount(0, { timeout: 20_000 })
+  const tray = page.locator('[data-slot="upload-tray"]')
+  await expect(tray).toBeVisible()
+
+  // Somewhere else entirely, and the tray is still there and still counting.
+  await goToFiles(page)
+  await expect(page.locator('[data-slot="drive-dropzone"]')).toBeVisible()
+  await expect(tray).toContainText(`ZZ away-${stamp}.txt`)
+  await expect(tray).toContainText('1 file uploaded', { timeout: 30_000 })
+})
+
 test('a file can be hearted, and the heart is what Favourites lists', async ({ page }) => {
   const errors = collectConsoleErrors(page)
   await page.goto('/one/files?place=all')
@@ -240,18 +347,18 @@ test('choosing files offers what can be done to all of them at once', async ({ p
 
   // Nothing chosen, no bar: a control for an empty selection is a control
   // that does nothing.
-  await expect(page.locator('[data-slot="drive-selection"]')).toHaveCount(0)
+  await expect(page.locator('[data-slot="selection-bar"]')).toHaveCount(0)
 
   await page.locator('[data-slot="drive-file"] input[type=checkbox]').first().check()
   await page.locator('[data-slot="drive-file"] input[type=checkbox]').nth(1).check()
 
-  const bar = page.locator('[data-slot="drive-selection"]')
+  // The same bar a record list and a mailbox draw — the Drive's own was a
+  // third spelling of it until §B1's selection moved into the frame.
+  const bar = page.locator('[data-slot="selection-bar"]')
   await expect(bar.getByRole('button', { name: 'Move', exact: true })).toBeVisible()
-  // The count is above the list on a phone, where repeating it in the bar is
-  // what pushes the buttons onto a second line.
-  await expect(page.locator('body')).toContainText(
-    onDesktop(page) ? '2 things chosen' : '2 of',
-  )
+  await expect(bar).toContainText('2 selected')
+  // And the count above the list still says it the other way round.
+  await expect(page.locator('body')).toContainText('2 of')
 
   await bar.getByRole('button', { name: 'Clear the selection' }).click()
   await expect(bar).toHaveCount(0)
@@ -266,7 +373,7 @@ test('a file can be shared with a colleague, and the bin says what it promises',
   await page.goto('/one/files?place=all')
   await page.locator('[data-slot="drive-file"]').first().waitFor({ timeout: 20_000 })
 
-  await page.locator('[data-slot="drive-more"]').first().click()
+  await page.locator('[data-slot="row-menu"]').first().click()
   await page.getByRole('menuitem', { name: 'Share' }).click()
   const share = page.getByRole('dialog')
   await expect(share.getByText('Everyone on this workspace')).toBeVisible()
@@ -302,6 +409,177 @@ test("a record's files are the Drive's own rows", async ({ page }) => {
 
   expectNoRealErrors(errors)
 })
+
+/**
+ * A record's Files tab ticks two files and bins both — `docs/UNIFICATION.md`
+ * §B1's checkpoint.
+ *
+ * It is here rather than as a feature because nothing about it is new. The
+ * ticks are `DataList`'s, the bar is the one a record list and a mailbox
+ * already drew, and the verb is the `driveTrash` the row menu has always
+ * called. Before the selection moved into the frame this tab had no bulk at
+ * all, and giving it one would have been a fourth copy of a `Set`, a shift
+ * anchor and a prune.
+ */
+test("two files on a record are ticked and binned together", async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await page.goto('/one/space/rua?screen=projects')
+
+  const missing = await page
+    .getByText('Nothing here', { exact: false })
+    .isVisible()
+    .catch(() => false)
+  test.skip(missing, 'this tenant has no ERPNext, so the space is not seeded')
+
+  await page.locator('[data-slot="list-row"]').first().waitFor({ timeout: 25_000 })
+  await page.locator('[data-slot="list-row"]').first().click()
+  await page.getByRole('tab', { name: 'Files' }).click()
+
+  const rows = page.locator('[data-slot="drive-file"]')
+  const bar = page.locator('[data-slot="selection-bar"]')
+  const rowFor = (name) => rows.filter({ hasText: name })
+
+  // Clear what earlier runs left, which is also the first half of the thing
+  // being checked: tick everything, bin it in one go.
+  //
+  // Not tidiness. Frappe caps a doctype's attachments — Project's limit is
+  // four — and every spec that uploads to this record leaves its file behind,
+  // so the fifth run gets "Maximum Attachment Limit of 4 has been reached"
+  // instead of a row. Everything here is a stamped leftover of a spec, and the
+  // bin is reversible for thirty days either way.
+  await page.waitForTimeout(1_000)
+  if (await rows.count()) {
+    await rows.first().locator('input[type=checkbox]').check()
+    // Only where there is more than one. `SelectionBar` offers Select all
+    // when the count is short of the total, and with a single row left the
+    // tick above already *is* all of them.
+    const all = bar.getByRole('button', { name: 'Select all' })
+    if (await all.count()) await all.click()
+    await bar.getByRole('button', { name: 'Move to the bin' }).click()
+    await expect(rows).toHaveCount(0, { timeout: 20_000 })
+  }
+
+  // Then two of its own, so what is ticked next is nobody else's.
+  const stamp = Date.now()
+  const names = [`bulk-a-${stamp}.txt`, `bulk-b-${stamp}.txt`]
+
+  // One at a time, and waited for as a *row* rather than as text on screen:
+  // the upload tray prints the name whether the upload worked or not, so a
+  // `getByText` here passed on a failed upload and the rest of the spec then
+  // ticked the previous run's leftovers.
+  for (const name of names) {
+    await page.getByRole('button', { name: 'Attach a file' }).click()
+    const picker = page.getByRole('dialog')
+    await picker.getByRole('tab', { name: 'This device' }).click()
+    await picker.locator('input[name="picker-upload"]').setInputFiles([
+      { name, mimeType: 'text/plain', buffer: Buffer.from(name) },
+    ])
+    await expect(rowFor(name)).toHaveCount(1, { timeout: 30_000 })
+    await page.keyboard.press('Escape')
+  }
+  await rowFor(names[0]).locator('input[type=checkbox]').check()
+  await rowFor(names[1]).locator('input[type=checkbox]').check()
+
+  await expect(bar).toContainText('2 selected')
+
+  await bar.getByRole('button', { name: 'Move to the bin' }).click()
+
+  // Both gone, and the bar with them: the frame drops rows a reload took away,
+  // which is the half that used to be written per surface and forgotten.
+  for (const name of names) {
+    await expect(rowFor(name)).toHaveCount(0, { timeout: 20_000 })
+  }
+  await expect(bar).toHaveCount(0)
+
+  expectNoRealErrors(errors)
+})
+
+/**
+ * The Records place: a directory per kind of record, then per record, then its
+ * files — `docs/UNIFICATION.md` §E1.
+ *
+ * The same tree a mounted `doctype:Quotation` presents over WebDAV, out of the
+ * same resolver, because a rail place and a mount that disagreed about what a
+ * record has on it would be two answers to one question. Nothing here is a
+ * `File` row until the third level: a directory per record would be a row per
+ * record, which is the thing §E1 refused.
+ */
+test('records are a place, three levels deep, and nothing is a folder', async ({ page }) => {
+  test.skip(!onDesktop(page), 'the rail is a desktop sidebar')
+  const errors = collectConsoleErrors(page)
+
+  await page.goto('/one/files?place=records')
+
+  // A kind of record, and only the kinds that have a file on them — a
+  // directory per doctype on the site would be two hundred empty ones.
+  const kind = page.locator('[data-slot="drive-file"]').filter({ hasText: 'Project' })
+  await expect(kind).toHaveCount(1, { timeout: 20_000 })
+
+  // Walking in keeps the place, which is what the link says. It was
+  // `place=home` for every folder while every folder was a real row, and a row
+  // here that said so would walk straight out of the tree on the first click.
+  await expect(kind.locator('[data-slot="drive-open"]')).toHaveAttribute(
+    'href', /place=records&folder=Project/,
+  )
+
+  // The second level is the records themselves, named for the record.
+  await page.goto('/one/files?place=records&folder=Project')
+  const record = page.locator('[data-slot="drive-file"]').first()
+  await expect(record).toBeVisible({ timeout: 20_000 })
+  const name = (await record.innerText()).split('\n')[0].trim()
+  expect(name).toMatch(/^PROJ-/)
+
+  // And the third is the record's own files — the same rows its Files tab
+  // draws, because it is the same query.
+  await page.goto(`/one/files?place=records&folder=Project%2F${name}`)
+  await expect(
+    page.locator('[data-slot="drive-file"], [data-slot="data-list-empty"]').first(),
+  ).toBeVisible({ timeout: 20_000 })
+
+  // Nothing is made here, and the control says so rather than vanishing —
+  // §F1's middle state. A file gets onto a record by being attached to it, and
+  // a New menu that disappeared in one place is a New menu people stop looking
+  // for everywhere.
+  await expect(page.getByRole('button', { name: 'New', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Upload', exact: true })).toBeDisabled()
+
+  expectNoRealErrors(errors)
+})
+
+/**
+ * Documents and Workbooks — `docs/UNIFICATION.md` §E2/E3.
+ *
+ * Each is one `where custom_kind = ...` over the same listing every other
+ * place uses, which is why this costs a rail entry and a filter rather than a
+ * screen: the thing a person calls "my documents" was already a column.
+ */
+for (const [place, label, kind] of [
+  ['documents', 'Documents', 'Doc'],
+  ['workbooks', 'Workbooks', 'Sheet'],
+]) {
+  test(`${label} is a place, and it holds only that kind`, async ({ page }) => {
+    const errors = collectConsoleErrors(page)
+
+    await page.goto(`/one/files?place=${place}`)
+
+    const rows = page.locator('[data-slot="drive-file"]')
+    await expect(rows.first()).toBeVisible({ timeout: 20_000 })
+
+    // Every row, not the first: a place that is a filter is only worth having
+    // if the filter holds all the way down the page.
+    const kinds = await rows.evaluateAll((found) =>
+      found.map((one) => one.getAttribute('data-kind')),
+    )
+    expect(kinds.length).toBeGreaterThan(0)
+    expect([...new Set(kinds)]).toEqual([kind])
+
+    // The drive's own root is a file row, and a place that listed it would
+    // offer a folder that walks out of the place on the first click.
+    await expect(rows.filter({ hasText: 'Home' })).toHaveCount(0)
+
+    expectNoRealErrors(errors)
+  })
+}
 
 test('the storage screen says which file and not only which kind', async ({ page }) => {
   test.skip(
@@ -343,14 +621,24 @@ test('a link made here is a link a stranger can follow', async ({ page, browser 
   const file = page.locator('button[data-slot="drive-open"]')
   await file.first().waitFor({ timeout: 20_000 })
   await file.first().click()
-  await page.locator('[data-slot="record-pane"]')
+  await page.locator('[data-slot="object-pane"]')
     .getByRole('button', { name: 'Share a link' }).click()
 
   // Links this file already has, from earlier runs. The dialog draws them
   // before the new one exists, so waiting for "a row" would read whichever was
   // already on screen — and reading a revoked one is a 403 that looks like a
   // broken guest route rather than a racing test.
+  //
+  // Settled first, and that is not belt and braces: the list arrives a request
+  // *after* the dialog, so counting immediately reads a number that is about
+  // to grow on its own. Every run leaves a link behind, so the window widens
+  // with the fixture — this failed at three links and passed at one.
   const rows = page.locator('[data-slot="file-link"]')
+  await expect(async () => {
+    const seen = await rows.count()
+    await page.waitForTimeout(250)
+    expect(await rows.count()).toBe(seen)
+  }).toPass({ timeout: 10_000 })
   const before = await rows.count()
   await page.getByRole('button', { name: 'Make a link' }).click()
   await expect(rows).toHaveCount(before + 1, { timeout: 15_000 })
@@ -589,4 +877,30 @@ test('a place can be put in an order, and it is the server that orders it', asyn
   await page.reload()
   await page.locator('[data-slot="drive-file"]').first().waitFor({ timeout: 20_000 })
   await expect(page.locator('[data-slot="drive-order"]')).toContainText('Name')
+})
+
+test('the order and the view are in the link, not in the browser', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'the order menu is desktop chrome')
+  const errors = collectConsoleErrors(page)
+
+  // They used to live only in `localStorage`, so a Drive link sent to a
+  // colleague arrived in whatever order *their* browser last used while a
+  // screen link arrived exactly as sent. `docs/UNIFICATION.md` §C4.
+  await page.goto('/one/files?place=all')
+  await page.locator('[data-slot="drive-file"]').first().waitFor({ timeout: 20_000 })
+
+  await page.getByRole('button', { name: 'Show as a grid' }).click()
+  await expect.poll(() => new URL(page.url()).searchParams.get('as')).toBe('grid')
+
+  // And back: the list is the default, so it is an absent key rather than
+  // `as=list` — a plain link stays plain.
+  await page.getByRole('button', { name: 'Show as a list' }).click()
+  await expect.poll(() => new URL(page.url()).searchParams.get('as')).toBe(null)
+
+  // A link that names an order arrives in it, whoever opens it.
+  await page.goto('/one/files?place=all&sort=file_size&desc=1&as=grid')
+  await page.locator('[data-slot="drive-file"]').first().waitFor({ timeout: 20_000 })
+  await expect(page.getByRole('button', { name: 'Show as a list' })).toBeVisible()
+
+  expectNoRealErrors(errors)
 })

@@ -2,7 +2,7 @@
   <ScreenHeader
     :spec="spec"
     :crumbs="crumbs"
-    :record-crumb="recordCrumb"
+    :subject="subject"
     :view-label="viewLabel"
     :status-value="statusValue"
     :doc-state="docState"
@@ -37,7 +37,7 @@
    -->
    <div v-show="!asPage" class="flex min-w-0 flex-1 flex-col rounded-6 bg-surface-base p-5">
     <div v-if="loading" class="grid place-items-center py-20">
-      <LoadingIndicator class="size-5 text-ink-gray-5" />
+      <LoadingIndicator class="size-5 text-ink-muted" />
     </div>
 
     <EmptyState
@@ -99,6 +99,7 @@
           v-model:expanded="quickExpanded"
           class="min-w-0 flex-1"
           :spec="spec"
+          :space-code="spaceCode"
           @changed="onQuickFilters"
           @overflow="quickOverflow = $event"
         />
@@ -247,7 +248,7 @@
            surface below clips its own overflow, so the bar has to be anchored
            outside it. -->
       <div v-else class="relative flex min-h-0 flex-1 flex-col">
-        <div :class="SURFACE">
+        <Panel pad="none" class="flex min-h-0 flex-1 flex-col overflow-hidden">
           <!--
             The body: how this screen is being looked at. A list today; a board
             or a calendar is a sibling component rather than a change here,
@@ -279,6 +280,8 @@
             :overrides="dashboardAsked"
             @open="open"
             @like="like"
+            @duplicate="duplicateRow"
+            @remove="removeRow"
             @sort="sortBy"
             @resize="resizeColumn"
             @favourites="toggleFavourites"
@@ -307,7 +310,7 @@
             @columns="openSettings"
             @export="exportRows()"
           />
-        </div>
+        </Panel>
 
         <SelectionBar
           v-if="selection.length"
@@ -379,7 +382,7 @@
             v-if="spec.can_delete"
             theme="red"
             icon-left="lucide-trash-2"
-            :label="__('Delete {0}', [selection.length])"
+            :label="__('Delete {0} for ever', [selection.length])"
             :loading="deleting"
             @click="confirmDelete = true"
           />
@@ -419,7 +422,7 @@
       @apply="bulkAssign"
     />
 
-    <RecordPane v-if="shownRecord && spec?.doctype" :page="asPage">
+    <ObjectPane v-if="shownRecord && spec?.doctype" :page="asPage">
       <template #body="{ phone }">
         <RecordView
           :record="shownRecord"
@@ -432,13 +435,14 @@
           @saved="recordSaved"
           @reload="reloadRecord"
           @close="closeRecord"
+          @removed="recordRemoved"
           @renamed="recordRenamed"
           @open="openElsewhere"
           @surface="setSurface"
           @add="addChild"
         />
       </template>
-    </RecordPane>
+    </ObjectPane>
 
     <!--
       A record opened *from* the one on screen: a variation from the job it
@@ -459,6 +463,7 @@
         @saved="peekSaved"
         @reload="loadPeek"
         @close="closePeek"
+        @removed="peekRemoved"
         @renamed="peekRenamed"
         @open="openElsewhere"
         @expand="expandPeek"
@@ -474,7 +479,7 @@
       ? __('Cancel this record?')
       : __('Cancel {0} records?', [selection.length])"
   >
-    <p class="text-p-base text-ink-gray-7">
+    <p class="text-p-base text-ink-secondary">
       {{ __('Cancelling unwinds what submitting wrote. Anything that will not cancel is named.') }}
     </p>
     <template #actions>
@@ -493,10 +498,10 @@
   <Dialog
     v-model="confirmDelete"
     :title="selection.length === 1
-      ? __('Delete this record?')
-      : __('Delete {0} records?', [selection.length])"
+      ? __('Delete this record for ever?')
+      : __('Delete {0} records for ever?', [selection.length])"
   >
-    <p class="text-p-base text-ink-gray-7">
+    <p class="text-p-base text-ink-secondary">
       {{ __('This cannot be undone. Anything still linked to elsewhere is kept, and named.') }}
     </p>
     <template #actions>
@@ -504,7 +509,7 @@
         theme="red"
         variant="solid"
         :loading="deleting"
-        :label="__('Delete')"
+        :label="__('Delete for ever')"
         @click="removeSelected"
       />
     </template>
@@ -561,7 +566,7 @@ import {
 import EmptyState from '@/shared/components/EmptyState.vue'
 import ScreenHeader from '@/modules/onespace/components/screen/views/ScreenHeader.vue'
 import CreateDialog from '@/modules/onespace/components/screen/record/CreateDialog.vue'
-import RecordPane from '@/modules/onespace/components/screen/record/RecordPane.vue'
+import ObjectPane from '@/shared/components/ObjectPane.vue'
 import RecordView from '@/modules/onespace/components/screen/record/RecordView.vue'
 import RecordDrawer from '@/modules/onespace/components/screen/record/RecordDrawer.vue'
 import FilterPanel from '@/modules/onespace/components/screen/views/FilterPanel.vue'
@@ -575,9 +580,11 @@ import SelectionBar from '@/modules/onespace/components/screen/bodies/SelectionB
 import ScreenActions from '@/modules/onespace/components/screen/views/ScreenActions.vue'
 import BulkEditDialog from '@/modules/onespace/components/screen/views/BulkEditDialog.vue'
 import BulkAssignDialog from '@/modules/onespace/components/screen/views/BulkAssignDialog.vue'
+import Panel from '@/shared/components/Panel.vue'
 import { useBulkActions } from '@/shared/composables/useBulkActions'
 import { useCreating } from '@/shared/composables/useCreating'
 import { useCrumbs } from '@/shared/composables/useCrumbs'
+import { useSubject } from '@/shared/composables/useSubject'
 import { useListFollow } from '@/shared/composables/useListFollow'
 import { usePeek } from '@/shared/composables/usePeek'
 import { useRecordSurface } from '@/shared/composables/useRecordSurface'
@@ -589,6 +596,8 @@ import { useScreenLayout } from '@/shared/composables/useScreenLayout'
 import { useSorting } from '@/shared/composables/useSorting'
 import { session } from '@/modules/onespace/lib/shell/session'
 import { workspace } from '@/shared/lib/workspace'
+import { KIND, atOf } from '@/shared/lib/url/at'
+import { notifyError } from '@/shared/lib/runtime/notify'
 import { CARD_VIEW_TYPES, bodyFor } from '@/modules/onespace/lib/screen/viewTypes'
 import { applyTheme, clearTheme } from '@/modules/onespace/lib/shell/theme'
 import { DRAWER, PAGE, PANE } from '@/modules/onespace/lib/screen/surfaces'
@@ -643,12 +652,6 @@ const custom = computed(() => {
   return name ? screenComponent(name) : null
 })
 
-// The list's own chrome, kept out of the template so the token audit reads it:
-// one hidden in a string the audit cannot see is how `bg-surface-white`
-// rendered a transparent column for a week. `rounded-6` is the panel radius.
-const SURFACE =
-  'flex min-h-0 flex-1 flex-col overflow-hidden rounded-6 border border-outline-gray-2 bg-surface-base'
-
 // Making a record — `composables/useCreating.js`. The reloads are thunks
 // throughout this file: the rows and the screen are resolved further down.
 const {
@@ -667,7 +670,7 @@ const {
 // both read `shownRecord`.
 const {
   shownRecord, asPage, setSurface,
-  open, openElsewhere, openRecord, closeRecord,
+  open, openElsewhere, openRecord, closeRecord, recordRemoved,
   reloadRecord, recordSaved, recordRenamed,
 } = useRecordSurface({
   spaceCode: props.spaceCode,
@@ -680,7 +683,7 @@ const {
 // A record opened from inside another one — `composables/usePeek.js`.
 const {
   peeked, peekSpec,
-  loadPeek, closePeek, peekSaved, expandPeek, peekRenamed,
+  loadPeek, closePeek, peekSaved, expandPeek, peekRenamed, peekRemoved,
 } = usePeek({
   spaceCode: props.spaceCode,
   spec,
@@ -747,6 +750,34 @@ const {
 })
 
 // The three writes a body makes — `composables/useRowWrites.js`.
+/**
+ * The two row verbs that need the screen rather than the row.
+ *
+ * Duplicating asks the server which values may be carried over — the same
+ * endpoint the open record's own Duplicate uses, so the two cannot drift —
+ * and then opens the create dialog on them.
+ *
+ * Deleting selects the row and goes through the path that already exists.
+ * There is no second delete: the dialog says "this record" for one and
+ * counts for several, the server refuses what it must, and the row menu is a
+ * shorter way in rather than a different one. `docs/UNIFICATION.md` §B3.
+ */
+const duplicateRow = async (row) => {
+  let values = {}
+  try {
+    values = (await workspace.duplicateRecord(props.spaceCode, spec.value.screen, row.name)) || {}
+  } catch (raised) {
+    notifyError(raised)
+    return
+  }
+  newWith(values)
+}
+
+const removeRow = (row) => {
+  selection.value = [row.name]
+  confirmDelete.value = true
+}
+
 const { writeField, quickCreate, like } = useRowWrites({
   spaceCode: props.spaceCode,
   spec,
@@ -788,11 +819,45 @@ const { layout } = views
 // The order the list is in — `composables/useSorting.js`.
 const { sortBy } = useSorting({ order, spec, onChange: () => changed() })
 
-// Where the reader is, as the header draws it — `composables/useCrumbs.js`.
-const { viewLabel, crumbs, recordCrumb, statusValue, docState } = useCrumbs({
-  spaceCode: props.spaceCode,
+/**
+ * Where the reader is, and what they are looking at — §C1.
+ *
+ * Two things now, because they are two things. The trail is
+ * `composables/useCrumbs.js`, the same one Mail and the Drive use, with the
+ * same root: the space that used to be the first crumb is the second, after
+ * the workspace. The subject is `composables/useSubject.js`, and it is not a
+ * crumb at all.
+ */
+// The space's first screen, which is what its crumb goes to. A space home is
+// a page of its own one day; until it is, the first thing in the navigation
+// is the nearest true thing.
+const spaceRoute = computed(() => {
+  const first = spec.value?.screens?.[0]
+  return {
+    name: 'Screen',
+    params: { spaceCode: props.spaceCode },
+    ...(first ? { query: { screen: first.screen } } : {}),
+  }
+})
+
+const crumbs = useCrumbs(
+  () => (space.value
+    ? [{ label: space.value.space_label, route: spaceRoute.value }]
+    : []),
+  () => (spec.value?.screen_label
+    ? [{
+      label: spec.value.screen_label,
+      route: {
+        name: 'Screen',
+        params: { spaceCode: props.spaceCode },
+        query: { screen: spec.value.screen },
+      },
+    }]
+    : []),
+)
+
+const { viewLabel, subject, statusValue, docState } = useSubject({
   spec,
-  space,
   shownRecord,
   viewType,
 })
@@ -923,7 +988,14 @@ watch(
 // console uses it to say which workspace it is showing. Left to run, this
 // fetched a record the screen does not list, found nothing, and cleaned the
 // parameter out of the URL: a link straight to a workspace opened empty.
-watch([() => route.query.record, () => spec.value?.screen], ([name, screen]) => {
-  if (screen && !spec.value?.component) openRecord(name || '')
+watch([() => atOf(route.query, KIND.RECORD), () => spec.value?.screen], ([name, screen]) => {
+  if (!screen || spec.value?.component) return
+  // And not while the two disagree. A Link's "open this" pushes the screen and
+  // the record together, so for a tick the URL names the record of a screen
+  // that has not resolved yet — and asking the screen being *left* for it
+  // finds nothing, which used to take `?record=` back out of the URL and land
+  // the person on an empty list.
+  if (route.query.screen && route.query.screen !== screen) return
+  openRecord(name || '')
 })
 </script>

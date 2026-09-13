@@ -29,7 +29,7 @@
         @click="toggle(index)"
       >
         <span
-          class="flex items-center gap-1.5 text-p-xs font-medium uppercase tracking-wide text-ink-gray-5"
+          class="flex items-center gap-1.5 text-p-xs font-medium uppercase tracking-wide text-ink-muted"
         >
           <Icon
             :name="folded(index, section) ? 'lucide-chevron-right' : 'lucide-chevron-down'"
@@ -41,7 +41,7 @@
       </Button>
       <h3
         v-else-if="section.label"
-        class="text-p-xs font-medium uppercase tracking-wide text-ink-gray-5"
+        class="text-p-xs font-medium uppercase tracking-wide text-ink-muted"
       >
         {{ section.label }}
       </h3>
@@ -92,7 +92,7 @@
               v-if="field.note === 'heading'"
               v-show="!rules(field).hidden"
               data-slot="form-heading"
-              class="text-p-base font-medium text-ink-gray-8"
+              class="text-p-base font-medium text-ink-primary"
             >
               {{ field.label }}
             </h4>
@@ -106,7 +106,7 @@
               v-else-if="field.note === 'html'"
               v-show="!rules(field).hidden"
               data-slot="form-html"
-              class="text-p-sm text-ink-gray-6 [&_a]:underline [&_p]:mb-2"
+              class="text-p-sm text-ink-secondary [&_a]:underline [&_p]:mb-2"
               v-html="safe(field.html)"
             />
             <!-- eslint-enable vue/no-v-html -->
@@ -134,13 +134,7 @@
               :doctype="doctype"
               :docname="docname || values.name || ''"
               :doc="values"
-              :disabled="
-                disabled ||
-                !field.editable ||
-                locked(field) ||
-                frozen(field) ||
-                rules(field).readOnly
-              "
+              :state="stateOf(field)"
               class="min-w-0 flex-1"
             />
             <!--
@@ -168,7 +162,7 @@
               :href="field.documentation_url"
               target="_blank"
               rel="noopener noreferrer"
-              class="mt-5 shrink-0 text-ink-gray-4 hover:text-ink-gray-6"
+              class="mt-5 shrink-0 text-ink-gray-4 hover:text-ink-secondary"
               aria-label="Documentation for this field"
             >
               <Icon name="lucide-circle-help" class="size-3.5" :aria-hidden="true" />
@@ -187,12 +181,13 @@ import DOMPurify from 'dompurify'
 import { Button, Icon, Tooltip } from '@/ui'
 import FieldControl from '@/modules/onespace/components/screen/fields/FieldControl.vue'
 import { fieldRules, sectionCollapsed } from '@/modules/onespace/lib/screen/rules'
+import { fieldState } from '@/shared/lib/fields/state'
 import { workspace } from '@/shared/lib/workspace'
 
 // Indexed by how many columns the section has, because Tailwind needs the class
 // name in the source to emit it. Four or more is three: past that a form column
 // is narrower than the words in it, and Frappe's own forms stop at three.
-const GRID = ['', '', 'sm:grid-cols-2', 'sm:grid-cols-3']
+const GRID = ['', '', 'md:grid-cols-2', 'md:grid-cols-3']
 
 const props = defineProps({
   sections: { type: Array, default: () => [] },
@@ -327,25 +322,28 @@ const derive = () => {
 
 onBeforeUnmount(() => window.clearTimeout(waiting))
 
-// `set_only_once` is the doctype saying a field is settled at creation. Only
-// the record knows whether that has happened, so the flag travels on the field
-// and the answer is made here.
-const locked = (field) => !!field.set_only_once && !props.isNew
-
-// A submitted record is editable only in the fields marked `allow_on_submit`,
-// and a cancelled one not at all. The docstatus is on the record rather than on
-// the field, which is why this reads the values rather than the spec.
-const frozen = (field) => {
-  const status = Number(values.value?.docstatus)
-  if (status === 2) return true
-  return status === 1 && !field.allow_on_submit
-}
+// `set_only_once` and the docstatus used to be answered here, in two helpers
+// this form owned and the child table and the inline cell did not have. They
+// are in `lib/fields/state.js` now, with the other five clauses.
 
 // The doctype's own rules, against the record as it stands right now — so a
 // field appears the moment the field it depends on says so. Read on every
 // render, which is what "right now" means; the alternative is a watcher per
 // field per rule.
 const rules = (field) => fieldRules(field, values.value)
+
+/**
+ * What this field is on this record — §B5.
+ *
+ * One call, and the same call the child table and the inline cell make. This
+ * used to be five clauses spelled out in the template here and three and a
+ * half spelled out in each of the other two, which is how a field locked by
+ * `read_only_depends_on` came to be editable in a grid.
+ */
+const stateOf = (field) => fieldState(field, values.value, {
+  canWrite: !props.disabled,
+  isNew: props.isNew,
+})
 
 // An HTML block's markup, with anything that can run stripped out. The default
 // profile: this is a paragraph of explanation, not a document.

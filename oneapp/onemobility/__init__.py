@@ -19,7 +19,13 @@ everything at time T" for one clock that is either now or a Tuesday in March.
     sniff       what a delivery actually is, decided from its bytes rather
                 than from a dropdown or an extension — and what had to be
                 forgiven to say so
-    sources     the four doors a delivery arrives through, and the one pipeline
+    sources     the three doors a delivery arrives through, and the one pipeline
+    vdv         the VDV shelf: every part, what it carries, which door it
+                arrives through, and whether anything here reads it
+    vdv301      IBIS-IP: what a vehicle says about itself, in the
+                specification's own vocabulary — stored as edges, not samples
+    events      the same tier read: what is wrong now, what the fleet does,
+                the measured dwell, and one vehicle's day as spans
     conflicts   two sources claiming one key: whose answer is drawn, and where
                 the other one went
     streaming   the door that never closes — a socket read in bounded windows,
@@ -45,7 +51,7 @@ everything at time T" for one clock that is either now or a Tuesday in March.
 
 from .conflicts import accept_stop, disagreements
 from .facets import offered
-from .forecast import bunching_risk, expect, outlook, risk, unusual
+from .forecast import bunching_risk, expect, faults, outlook, risk, unusual
 from .geo import demand, surface
 from .insights import fleet, rhythm, stops
 from .live import at, report, thaw, track
@@ -54,6 +60,17 @@ from .scoring import accuracy
 from .markers import marker_styles, set_marker_style
 from .network import bunching, days, punctuality, shape
 from .sources import fetch_now, load_feed
+# The VDV shelf: which parts exist, which door each arrives through, and which
+# of them this reads. Shipped knowledge rather than a workspace's data, and a
+# read because "do you support 457-3" is a question about the software.
+from .vdv import coverage
+# What a vehicle said about itself: the IBIS-IP relay door, and the event
+# vocabulary a legend has to match.
+from .live import relay
+from .vdv301 import vocabulary
+# And the half a person looks at: what is wrong now, what this fleet does, how
+# long the doors are open, and one vehicle's day as spans.
+from .events import attention, behaviour, doors, story
 from .timetable import deviation, due, expected
 from .streaming import listen_now
 
@@ -61,32 +78,40 @@ __all__ = [
     "accept_stop",
     "accuracy",
     "at",
+    "attention",
+    "behaviour",
     "bunching",
     "bunching_risk",
+    "coverage",
     "days",
     "demand",
     "deviation",
     "disagreements",
+    "doors",
     "due",
     "expect",
     "expected",
+    "faults",
     "fetch_now",
     "fleet",
     "forget_everything",
     "listen_now",
-    "thaw",
     "load_feed",
     "marker_styles",
     "offered",
     "outlook",
     "punctuality",
+    "relay",
     "report",
     "rhythm",
     "risk",
     "set_marker_style",
     "shape",
     "stops",
+    "story",
     "surface",
+    "thaw",
     "track",
     "unusual",
+    "vocabulary",
 ]

@@ -32,29 +32,30 @@
 
         <LoadingText v-if="loading" :text="__('Counting')" />
 
-        <p v-else-if="field && !values.length" class="px-1 py-2 text-p-sm text-ink-gray-5">
+        <p v-else-if="field && !values.length" class="px-1 py-2 text-p-sm text-ink-muted">
           {{ __('Nothing to count — every record here leaves this field empty.') }}
         </p>
 
         <!-- The values, largest first. A tally is read from the top. -->
         <div v-else-if="values.length" class="flex max-h-80 flex-col overflow-y-auto">
-          <!-- eslint-disable-next-line vue/no-restricted-html-elements -->
-          <button
+          <Row
             v-for="one in values"
             :key="String(one.value)"
-            type="button"
             data-slot="tally-value"
-            class="flex items-center gap-2 rounded-4 px-2 py-1.5 text-start hover:bg-surface-gray-2"
+            edge="rounded"
+            pad="tight"
             @click="pick(one)"
           >
-            <span class="min-w-0 flex-1 truncate text-p-sm text-ink-gray-7">
+            <span class="block truncate text-sm text-ink-secondary">
               {{ said(one.value) }}
             </span>
-            <span class="tabular-nums text-p-sm text-ink-gray-5">{{ one.count }}</span>
-          </button>
+            <template #trail>
+              <span class="tabular-nums text-p-sm text-ink-muted">{{ one.count }}</span>
+            </template>
+          </Row>
         </div>
 
-        <p v-if="more" class="px-2 pt-1 text-p-xs text-ink-gray-5">
+        <p v-if="more" class="px-2 pt-1 text-p-xs text-ink-muted">
           {{ __('The {0} most common. Use Filter for the rest.', [values.length]) }}
         </p>
       </div>
@@ -66,6 +67,7 @@
 import { computed, ref, watch } from 'vue'
 import { Button, LoadingText, Popover, Select } from '@/ui'
 import { useIsMobile } from '@/modules/onespace/lib/shell/breakpoint'
+import Row from '@/shared/components/Row.vue'
 import { workspace } from '@/shared/lib/workspace'
 import { __ } from '@/shared/lib/runtime/translate'
 

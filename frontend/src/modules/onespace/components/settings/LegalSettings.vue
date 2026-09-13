@@ -11,35 +11,38 @@
     `docs/LEGAL.md` explains the machinery; this is the reading room.
   -->
   <div class="flex h-full min-h-0 flex-col gap-4">
-    <div v-if="pending.length" class="rounded-6 border border-outline-amber-2 bg-surface-amber-1 p-3">
+    <Panel tone="amber" pad="tight" v-if="pending.length">
       <p class="text-p-sm font-medium text-ink-amber-3">
         {{ __('There are agreements you have not accepted yet.') }}
       </p>
-      <p class="mt-1 text-p-xs text-ink-gray-7">
+      <p class="mt-1 text-p-xs text-ink-secondary">
         {{ __('You will be asked for them the next time the workspace loads.') }}
       </p>
-    </div>
+    </Panel>
 
     <div class="flex min-h-0 flex-1 gap-4">
-      <ul class="w-64 shrink-0 space-y-1 overflow-y-auto">
-        <li v-for="one in rows" :key="one.key">
-          <button
-            type="button"
-            class="w-full rounded-6 px-3 py-2 text-start"
-            :class="one.key === showing ? 'bg-surface-gray-3' : 'hover:bg-surface-gray-2'"
-            @click="open(one.key)"
-          >
-            <span class="flex items-center justify-between gap-2">
-              <span class="truncate text-p-sm font-medium text-ink-gray-8">{{ one.title }}</span>
-              <Badge v-if="one.accepted" theme="green" variant="subtle" :label="__('Agreed')" />
-              <Badge v-else-if="one.audience" theme="amber" variant="subtle" :label="__('Not yet')" />
-            </span>
-            <span class="mt-0.5 block text-p-xs text-ink-gray-5">
-              {{ __('Version {0}', [one.version]) }}
-            </span>
-          </button>
-        </li>
-      </ul>
+      <!-- A `div` rather than a `ul`, because each clause is a control: the
+           row *is* the button, and `<Row as="li">` with a click would be a
+           list item nothing can tab to. -->
+      <div class="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto">
+        <Row
+          v-for="one in rows"
+          :key="one.key"
+          edge="rounded"
+          pad="normal"
+          :selected="one.key === showing"
+          @click="open(one.key)"
+        >
+          <span class="flex items-center justify-between gap-2">
+            <span class="truncate text-sm font-medium text-ink-primary">{{ one.title }}</span>
+            <Badge v-if="one.accepted" theme="green" variant="subtle" :label="__('Agreed')" />
+            <Badge v-else-if="one.audience" theme="amber" variant="subtle" :label="__('Not yet')" />
+          </span>
+          <span class="mt-0.5 block text-p-xs text-ink-muted">
+            {{ __('Version {0}', [one.version]) }}
+          </span>
+        </Row>
+      </div>
 
       <div class="min-w-0 flex-1 overflow-y-auto rounded-6 border border-outline-gray-2 p-5">
         <LoadingText v-if="loading" :text="__('Loading')" />
@@ -65,6 +68,8 @@ import { Badge, LoadingText } from '@/ui'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { workspace } from '@/shared/lib/workspace'
 import { __ } from '@/shared/lib/runtime/translate'
+import Panel from '@/shared/components/Panel.vue'
+import Row from '@/shared/components/Row.vue'
 
 const documents = ref([])
 const state = ref({ blocking: [], waiting: [] })

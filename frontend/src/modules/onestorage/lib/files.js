@@ -7,6 +7,7 @@
 
 import { __ } from '@/shared/lib/runtime/translate'
 import { isCode, resolveLanguage } from '@/modules/onestorage/lib/languages'
+import { sizeText } from '@/shared/lib/files/size'
 
 // The extension is all a File row says about what it is, and it is enough for
 // an icon. Anything unrecognised is a file, which is true.
@@ -85,6 +86,27 @@ const extensionOf = (fileName) => {
   return name.includes('.') ? name.split('.').pop().toLowerCase() : ''
 }
 
+/**
+ * The most bytes a text editor will open, which is the server's answer read
+ * before the question is asked.
+ *
+ * `onedoc/text.py` refuses anything larger — rightly: an editor holds the
+ * whole file in memory, in a Y.Doc, and sends it back on every save. What was
+ * wrong was *where* the refusal landed. The Drive decided a 3 MB `.log` was a
+ * text file, mounted the editor, and the editor put "That document did not
+ * open" in the pane. A file too big to edit is not a file too big to know
+ * anything about: it has a name, a kind, a size and a download.
+ *
+ * So the ceiling is checked here, where the Drive chooses. Over it there is no
+ * editor, which makes it an ordinary unpreviewable file and sends it to
+ * `FileSurface` — which says what it is and offers the download.
+ *
+ * `tests/test_file_limits.py` holds the two numbers to each other.
+ */
+export const TEXT_CEILING = 2 * 1024 * 1024
+
+const bytes = (file) => Number(file?.file_size) || 0
+
 export const isEditableText = (fileName) => {
   const extension = extensionOf(fileName)
   return !!extension && (PLAIN.includes(extension) || !!resolveLanguage(extension))
@@ -122,8 +144,11 @@ export function routeFor(file) {
  */
 export function editorFor(file) {
   if (!file || file.is_folder) return null
+  // A sheet and a document are rows in our own tables and are read by their
+  // own endpoints, so the ceiling below is not theirs.
   if (file.custom_kind === 'Sheet') return 'sheet'
   if (file.custom_kind === 'Doc') return 'doc'
+  if (bytes(file) > TEXT_CEILING) return null
   if (isCode(file.file_name)) return 'code'
   return isEditableText(file.file_name) ? 'text' : null
 }
@@ -143,17 +168,11 @@ export function isImage(file) {
 }
 
 /**
- * "1.2 MB", in the reader's own locale — the server sends bytes because it does
- * not know what locale that is. Zero is empty rather than "0 B".
+ * A row's size, or an empty cell where there is none. The arithmetic is
+ * `shared/lib/files/size.js`, which is also what a quota bar and an attach
+ * control's ceiling read — §D3.
  */
-export function humanSize(file) {
-  const bytes = Number(file?.file_size) || 0
-  if (!bytes) return ''
-  const units = ['B', 'KB', 'MB', 'GB']
-  const step = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  const value = bytes / 1024 ** step
-  return `${value.toLocaleString(undefined, { maximumFractionDigits: step ? 1 : 0 })} ${units[step]}`
-}
+export const humanSize = (file) => sizeText(file?.file_size)
 
 /**
  * A stored file, back in the browser as a `File`. Some things — importing a
@@ -180,5 +199,21 @@ export async function fetchFile(row) {
  * presigned object, so an `<img>`, a `<video>` and a download link are all the
  * same URL — and none of them needs a key of ours to reach it.
  */
+/**
+ * What a file on a mounted host is called: `remote://<mount>/<path>`.
+ *
+ * The prefix is the server's and is written out once here, because four
+ * surfaces ask the same question — the row hides its heart, the pane offers
+ * Copy instead of Share, the sidebar marks the mount you are in, and the
+ * uploader refuses. See `onestorage/remote.py`.
+ */
+export const REMOTE = 'remote://'
+
+export const isRemote = (name) => typeof name === 'string' && name.startsWith(REMOTE)
+
+/** Which mount a remote name belongs to, or empty for one of ours. */
+export const mountOf = (name) =>
+  isRemote(name) ? name.slice(REMOTE.length).split('/')[0] : ''
+
 export const downloadUrl = (name) =>
   `/api/method/oneapp.onestorage.r2.download?file=${encodeURIComponent(name)}`

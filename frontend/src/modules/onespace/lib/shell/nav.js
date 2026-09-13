@@ -24,6 +24,8 @@ import { __ } from '@/shared/lib/runtime/translate'
  * an assistant told it is "on Files" would be told something its tools cannot
  * act on.
  */
+
+import { KIND, atOf } from '@/shared/lib/url/at'
 export function openContext(route, spaces = session.spaces) {
   const code = route?.params?.spaceCode
   const screen = route?.query?.screen
@@ -33,7 +35,7 @@ export function openContext(route, spaces = session.spaces) {
   const found = (space?.screens || []).find((one) => one.screen === screen)
   if (!found) return null
 
-  const record = route.query.record || ''
+  const record = atOf(route.query, KIND.RECORD)
   return {
     space: code,
     screen,
@@ -97,7 +99,12 @@ export function useNav() {
     const space = activeSpace.value
     if (!space) return workspaceItems
 
-    const declared = space.screens || []
+    // A screen may be routable without being a destination — §E5. The rail is
+    // a list of places to go and work; a reference shelf sitting in it beside
+    // Sources and Deliveries reads as a fourth thing to configure and is not
+    // one. It is still a screen and still reachable; something else links to
+    // it.
+    const declared = (space.screens || []).filter((one) => !one.hide_in_nav)
     // A space with one screen declares none; its landing page is the nav.
     if (!declared.length) {
       return [
@@ -108,10 +115,22 @@ export function useNav() {
         },
       ]
     }
-    return declared.map((screen) => ({
+    return declared.map((screen, at) => ({
       key: screen.screen,
       label: screen.label,
       icon: spaceIcon(screen.icon),
+      // The heading this screen sits under, and only on the first of a run.
+      // The rail draws a heading when the group *changes*, which keeps this a
+      // flat ordered list — the record pane, the phone's More sheet and the
+      // active-screen marking all walk it, and none of them wants a tree.
+      //
+      // A space with six screens declares none and gets none: a heading over
+      // every item is a rail that is twice as tall and says nothing. The
+      // operator console has thirty and earns them.
+      heading:
+        screen.screen_group && screen.screen_group !== declared[at - 1]?.screen_group
+          ? screen.screen_group
+          : '',
       to: screenRoute(space, screen),
       // The ways this screen can be drawn, then the layouts somebody named.
       // Two groups rather than one list, because they answer different

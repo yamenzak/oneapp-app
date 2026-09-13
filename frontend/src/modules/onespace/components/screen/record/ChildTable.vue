@@ -53,7 +53,7 @@
             :tooltip="__('Settings for these rows')"
           />
         </Dropdown>
-        <span class="text-p-xs tabular-nums text-ink-gray-5">
+        <span class="text-p-xs tabular-nums text-ink-muted">
           {{ rows.length === 1 ? __('{0} row', [rows.length]) : __('{0} rows', [rows.length]) }}
         </span>
       </div>
@@ -96,7 +96,7 @@
         -->
         <span
           v-if="column.key === GUTTER"
-          class="text-p-xs tabular-nums text-ink-gray-5"
+          class="text-p-xs tabular-nums text-ink-muted"
           :class="editable ? 'cursor-grab' : ''"
           :draggable="editable"
           @dragstart="dragging = index"
@@ -125,8 +125,14 @@
           />
         </div>
 
+        <!--
+          `ruled` as well as `editable`: the doctype's own
+          `read_only_depends_on` was honoured on the record form and not in
+          this grid, so a field locked at a status could be typed into here
+          and the save went through. `docs/UNIFICATION.md` §B5.
+        -->
         <FieldControl
-          v-else-if="editable && column.column.editable"
+          v-else-if="writes(column.column, row)"
           :model-value="row[column.key]"
           :field="bare(column.column)"
           :space-code="spaceCode"
@@ -144,7 +150,7 @@
       </template>
     </RecordTable>
 
-    <p v-else class="text-p-sm text-ink-gray-5">{{ __('Nothing here yet.') }}</p>
+    <p v-else class="text-p-sm text-ink-muted">{{ __('Nothing here yet.') }}</p>
 
     <!--
       A page at a time, the way Frappe's own grid does it. Not about rendering
@@ -227,6 +233,7 @@ import FeedNote from '@/modules/onesheet/components/FeedNote.vue'
 import ColumnPicker from '@/modules/onespace/components/screen/views/ColumnPicker.vue'
 import { workspace } from '@/shared/lib/workspace'
 import { isNumericCell } from '@/modules/onespace/lib/screen/fields'
+import { STATE, fieldState } from '@/shared/lib/fields/state'
 import { remember, remembered } from '@/modules/onespace/lib/screen/childColumns'
 import { __ } from '@/shared/lib/runtime/translate'
 
@@ -359,6 +366,21 @@ const readColumns = () => {
 onMounted(readColumns)
 watch(() => [child.value.doctype, props.field.fieldname], readColumns)
 const editable = computed(() => !props.disabled && !!child.value.editable && !!props.field.editable)
+
+/**
+ * Whether this cell may be typed in — §B5.
+ *
+ * `lib/fields/state.js`, the same call the form and the inline cell make.
+ * Asked per *row* and not per column, because that is what the doctype's rules
+ * are about: a table of ten rows can have three of them closed and seven open,
+ * and a column-level answer would lock all ten or none.
+ *
+ * A cell that is not writable already draws `FieldCell` rather than a greyed
+ * control, which is what the form has only just learned to do.
+ */
+const writes = (column, row) => fieldState(column, row || {}, {
+  canWrite: editable.value,
+}) === STATE.WRITABLE
 
 // `RecordForm` reads `form` for the layout and `all_columns` for the fields.
 // Shaped here rather than on the server so the payload stays one description of

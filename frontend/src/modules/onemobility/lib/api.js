@@ -58,6 +58,27 @@ export const network = {
    */
   offered: () => callMethod('oneapp.onemobility.offered', {}, { method: 'GET' }),
 
+  /**
+   * The VDV shelf: every part, what it carries, which door it arrives
+   * through, and whether this reads it. Shipped knowledge rather than the
+   * workspace's own data, so it never changes between two loads.
+   */
+  coverage: () => callMethod('oneapp.onemobility.coverage', {}, { method: 'GET' }),
+
+  /**
+   * What the vehicles said about themselves. Three reads over the event
+   * tiers, and `attention` takes no facets on purpose: a fault happening now
+   * is not narrowed by a line somebody chose to look at.
+   */
+  behaviour: (params) =>
+    callMethod('oneapp.onemobility.behaviour', params, { method: 'GET' }),
+
+  /** The measured dwell and the inferred one, hour by hour. */
+  doorTimes: (params) => callMethod('oneapp.onemobility.doors', params, { method: 'GET' }),
+
+  /** What is wrong right now, and how long it has been wrong. */
+  attention: () => callMethod('oneapp.onemobility.attention', {}, { method: 'GET' }),
+
   /** Every mode, and which silhouette the map draws for it. Once per session. */
   markerStyles: () => callMethod('oneapp.onemobility.marker_styles', {}, { method: 'GET' }),
 
@@ -79,6 +100,13 @@ export const network = {
 
   /** Every line's chance of running late at one hour, worst first. */
   risk: (params) => callMethod('oneapp.onemobility.risk', params, { method: 'GET' }),
+
+  /**
+   * The same day read off the event tier: how much is likely to break, hour by
+   * hour. `chance` here is a counted frequency rather than a normal tail —
+   * see `forecast.faults` for why the two forecasts differ on that.
+   */
+  faults: (params) => callMethod('oneapp.onemobility.faults', params, { method: 'GET' }),
 
   /**
    * Where the gap collapses, and how often. The forward half of

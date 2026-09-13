@@ -14,12 +14,12 @@
     figure for a board paper; "the 07:38 from Alexanderplatz has been eight
     minutes late every weekday this month" is a thing somebody can go and fix.
   -->
-  <div class="h-full min-h-[28rem] w-full overflow-y-auto" data-slot="plan">
+  <div class="h-full min-h-body w-full overflow-y-auto" data-slot="plan">
     <div class="mx-auto flex max-w-7xl flex-col gap-4 p-1">
       <div class="flex flex-wrap items-center gap-2" data-slot="plan-controls">
-        <FacetBar v-model="facets" :facets="offered" :unavailable="unavailable" />
+        <Narrow v-model="facets" :fields="offered" :unavailable="unavailable" :measure="false" />
         <Select v-model="day" :options="dayOptions" class="w-44" />
-        <span v-if="kept" class="ms-auto text-sm text-ink-gray-5">
+        <span v-if="kept" class="ms-auto text-sm text-ink-muted">
           {{ __('{0} calls in the timetable', [String(kept)]) }}
         </span>
       </div>
@@ -28,12 +28,12 @@
         v-if="ready && !answer.planned"
         icon="lucide-calendar"
         :title="__('No timetable for this day')"
-        :description="__('A source has to deliver a plan before what ran can be compared with it. GTFS carries one in stop_times, VDV 452 in its travel times.')"
+        :description="__('A source has to deliver a plan first — GTFS in stop_times, VDV 452 in its travel times.')"
       />
 
       <template v-else>
         <div
-          class="grid auto-rows-[7.5rem] grid-cols-2 gap-3 lg:grid-cols-4"
+          class="grid auto-rows-tile grid-cols-2 gap-3 lg:grid-cols-4"
           data-slot="plan-headline"
         >
           <NumberCard
@@ -91,27 +91,21 @@
           timetable changed.
         -->
         <div class="grid grid-cols-1 gap-3 xl:grid-cols-2" data-slot="plan-calls">
-          <div
-            class="flex flex-col gap-2 rounded-6 border border-outline-gray-2
-                   bg-surface-elevation-2 p-4"
-          >
+          <Panel ground="raised" class="flex flex-col gap-2">
             <div class="flex items-baseline justify-between gap-2">
-              <p class="text-base font-medium text-ink-gray-8">{{ __('Nothing came') }}</p>
-              <span class="text-xs text-ink-gray-5">{{ __('Published, and not run') }}</span>
+              <p class="text-base font-medium text-ink-primary">{{ __('Nothing came') }}</p>
+              <span class="text-xs text-ink-muted">{{ __('Published, and not run') }}</span>
             </div>
             <CallList :calls="missed" />
-          </div>
+          </Panel>
 
-          <div
-            class="flex flex-col gap-2 rounded-6 border border-outline-gray-2
-                   bg-surface-elevation-2 p-4"
-          >
+          <Panel ground="raised" class="flex flex-col gap-2">
             <div class="flex items-baseline justify-between gap-2">
-              <p class="text-base font-medium text-ink-gray-8">{{ __('Furthest from the plan') }}</p>
-              <span class="text-xs text-ink-gray-5">{{ __('Worst first') }}</span>
+              <p class="text-base font-medium text-ink-primary">{{ __('Furthest from the plan') }}</p>
+              <span class="text-xs text-ink-muted">{{ __('Worst first') }}</span>
             </div>
             <CallList :calls="late" />
-          </div>
+          </Panel>
         </div>
       </template>
     </div>
@@ -122,12 +116,14 @@
 import { computed, onMounted, ref, watch } from 'vue'
 
 import { BarChart, NumberCard, Select } from '@/ui'
+import Narrow from '@/shared/components/Narrow.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { __ } from '@/shared/lib/runtime/translate'
 import { network } from '@/modules/onemobility/lib/api'
+import { useFacets } from '@/modules/onemobility/lib/facets'
 import { delayInk, occupancyInk } from '@/modules/onemobility/lib/palette'
 import CallList from '@/modules/onemobility/components/CallList.vue'
-import FacetBar from '@/modules/onemobility/components/FacetBar.vue'
+import Panel from '@/shared/components/Panel.vue'
 
 defineProps({
   /** The resolved screen. Unused: this surface reads no records. */
@@ -139,8 +135,8 @@ defineProps({
  *  line. */
 const BACK = 14
 
-const facets = ref({})
-const offered = ref([])
+// Shared with the map and the charts, and in the URL — `lib/facets.js`.
+const { facets, offered, asJson } = useFacets()
 const day = ref(yesterday())
 const loading = ref(true)
 const ready = ref(false)
@@ -217,7 +213,7 @@ async function pull() {
   try {
     answer.value = await network.deviation({
       day: day.value,
-      facets: JSON.stringify(facets.value),
+      facets: asJson(),
     })
   } finally {
     loading.value = false
@@ -227,8 +223,5 @@ async function pull() {
 
 watch([facets, day], pull)
 
-onMounted(async () => {
-  offered.value = (await network.offered()).facets || []
-  pull()
-})
+onMounted(pull)
 </script>

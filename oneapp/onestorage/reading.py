@@ -12,11 +12,12 @@ from frappe import _
 from oneapp.onespace.ai import written
 from oneapp.onemail import people
 
+from . import remote
 from .kinds import KIND_FIELD, KINDS, OPENED_FIELD, STATUS_FIELD, TRASHED, TRASHED_FIELD
 from .writing import KEEP_DAYS
 from .query import (
-    HOME, ORDER, PLACES, RECORD, ROOT, SORTABLE, TRASH, _place_filters, _searching,
-    _visible, ordering,
+    HOME, ORDER, PLACES, RECORD, RECORDS, ROOT, SORTABLE, TRASH, _place_filters,
+    _searching, _visible, ordering,
 )
 
 PAGE = 50
@@ -46,9 +47,26 @@ def listing(place: str = HOME, folder: str = "", kind: str = "",
             sort: str = "", descending: int = 0,
             doctype: str = "", docname: str = "") -> dict:
     """One page of one place."""
+    # A folder on somebody else's server is browsed live and has no rows in
+    # this table — see `remote.py`. The branch is here rather than inside
+    # `_place_filters` because there is no filter to build: the answer comes
+    # from an FTP socket, and putting a `remote://` name into `filters` would
+    # be a `File` query for a name no `File` has ever had.
+    if remote.is_remote(folder):
+        return remote.listing(folder, search, start, limit, sort,
+                              bool(int(descending or 0)))
+
     place = place if place in PLACES else HOME
     if kind and kind not in KINDS:
         kind = ""
+
+    # A tree rather than a filter, so it is walked rather than `where`d — and
+    # walked by the same resolver a mounted `doctype:Quotation` uses, because a
+    # rail place and a mount that disagreed about what a record has on it would
+    # be two answers to one question. `folder` under this place is the path:
+    # empty, `Quotation`, `Quotation/QTN-0001`.
+    if place == RECORDS:
+        return _records(folder, search, start, limit)
 
     filters, or_filters = _place_filters(place, folder, kind, (doctype, docname))
     if search:
@@ -90,6 +108,124 @@ def listing(place: str = HOME, folder: str = "", kind: str = "",
     }
 
 
+def _records(folder: str, search: str, start: int, limit: int) -> dict:
+    """The Records tree: kinds of record, then records, then their files.
+
+    Nothing here is a folder. A directory per record would be a `File` row per
+    record — four thousand quotations is four thousand rows, renaming a record
+    becomes moving a folder and deleting one becomes a cascade — which is the
+    decision `docs/UNIFICATION.md` §E1 records and `query.py`'s own docstring
+    rests on: there is no second store.
+
+    So the first two levels are made out of the attachment rows themselves, at
+    the moment they are asked for, and only the third level is `File` rows. The
+    shape they come back in is a folder's, because what draws them is the
+    Drive's own row and a row that looked different would be a second component
+    to keep in step.
+    """
+    from . import scopes
+
+    parts = [one for one in (folder or "").split("/") if one]
+    limit = max(1, min(int(limit or PAGE), PAGE))
+    start = max(0, int(start or 0))
+
+    if len(parts) >= 2:
+        # A record's own files, which is `record` by another name — same
+        # filter, same rows, same `_shape`.
+        found = listing(place=RECORD, search=search, start=start, limit=limit,
+                        doctype=parts[0], docname=parts[1])
+        found["place"] = RECORDS
+        found["folder"] = folder
+        found["path"] = _records_path(parts)
+        return found
+
+    if parts:
+        nodes = scopes.children(
+            scopes.Node(label=parts[0], is_folder=True, doctype=parts[0])
+        )
+        rows = [{"name": f"{parts[0]}/{one.label}", "file_name": one.label}
+                for one in nodes]
+    else:
+        rows = [{"name": one, "file_name": one} for one in _kinds_with_files()]
+
+    if search:
+        needle = search.lower()
+        rows = [one for one in rows if needle in one["file_name"].lower()]
+
+    page = rows[start:start + limit + 1]
+    more = len(page) > limit
+
+    return {
+        "files": [_as_folder(one) for one in page[:limit]],
+        "more": more,
+        "place": RECORDS,
+        "folder": folder,
+        "path": _records_path(parts),
+        # A directory made out of a query has nothing to make *in* it. The New
+        # menu and the dropzone read this, and a record's files are attached
+        # from the record rather than uploaded into a place.
+        "can_write": False,
+        "sort": "",
+        "descending": False,
+        "attached_to": None,
+    }
+
+
+def _kinds_with_files() -> list[str]:
+    """The kinds of record that have a file on them, and only those.
+
+    Over the attachment rows rather than over the doctype list: a directory per
+    doctype on the site is two hundred directories, almost all of them empty,
+    and the thing being listed is the files.
+    """
+    rows = frappe.get_list(
+        "File",
+        filters={"attached_to_doctype": ["is", "set"], **_visible()},
+        fields=["attached_to_doctype"],
+        group_by="attached_to_doctype",
+        order_by="attached_to_doctype asc",
+        limit_page_length=0,
+    )
+    return [one["attached_to_doctype"] for one in rows if one.get("attached_to_doctype")]
+
+
+def _as_folder(one: dict) -> dict:
+    """A row the Drive draws as a folder, with nothing behind it."""
+    return {
+        **one,
+        "is_folder": 1,
+        "file_size": 0,
+        "folder": "",
+        "owner": "",
+        "modified": None,
+        "creation": None,
+        "_liked_by": None,
+        "file_url": "",
+        "is_private": 1,
+        KIND_FIELD: "Folder",
+        STATUS_FIELD: "",
+        TRASHED_FIELD: None,
+        OPENED_FIELD: None,
+        "attached_to_doctype": "",
+        "attached_to_name": "",
+        "who": None,
+        "liked": False,
+        "kind": "Folder",
+    }
+
+
+def _records_path(parts: list[str]) -> list[dict]:
+    """`Records / Quotation / QTN-0001`, built from the path rather than walked.
+
+    There is nothing to walk: the levels are a doctype and a record name, and
+    both are in the path already.
+    """
+    trail = []
+    for depth, one in enumerate(parts[:2]):
+        trail.append({"name": "/".join(parts[:depth + 1]), "label": one})
+    return trail
+
+
 def _shape(rows: list[dict]) -> None:
     """Everything a row needs that is not a column, in one query for the page."""
     owners = people.profiles([(row.get("owner") or "", "") for row in rows])
@@ -119,6 +255,9 @@ def path(folder: str) -> list[dict]:
     Walked at read time rather than stored: a folder tree is a handful of rows
     deep and a stored path is a thing to rewrite on every move.
     """
+    if remote.is_remote(folder):
+        return remote.crumbs(folder)
+
     trail = []
     seen = set()
     current = folder
@@ -147,6 +286,12 @@ def details(name: str) -> dict:
     were fetched — and because the preview is a redirect, which is the one
     place there is no request to hang this on.
     """
+    # Nothing to stamp and no row to stamp it on. A remote file is not in
+    # Recents for the same reason it is not in Favourites: Recents is a column
+    # on a row, and this file has none.
+    if remote.is_remote(name):
+        return remote.details(name)
+
     doc = frappe.get_doc("File", name)
     doc.check_permission("read")
 

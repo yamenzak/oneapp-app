@@ -8,15 +8,15 @@
   -->
   <div class="flex flex-wrap items-center gap-3 rounded-6 border border-outline-gray-2 p-3">
     <div class="min-w-0 flex-1">
-      <p class="text-base-medium text-ink-gray-8">{{ addon.name }}</p>
-      <p class="mt-0.5 text-p-sm text-ink-gray-5">
+      <p class="text-base-medium text-ink-primary">{{ addon.name }}</p>
+      <p class="mt-0.5 text-p-sm text-ink-muted">
         {{ money(rate, addon.currency) }} per {{ addon.unit_gb }} GB, per month
         <!-- What they are actually paying, when it is not what the catalogue
              says today. A grandfathered rate that shows as the new price is a
              billing surprise waiting on the next invoice. -->
         <span v-if="grandfathered" class="text-ink-gray-4">· your original rate</span>
       </p>
-      <p v-if="held" class="mt-1 text-p-sm text-ink-gray-7">
+      <p v-if="held" class="mt-1 text-p-sm text-ink-secondary">
         Holding {{ held }} × {{ addon.held_unit_gb || addon.unit_gb }} GB
         = {{ held * (addon.held_unit_gb || addon.unit_gb) }} GB
       </p>
@@ -30,7 +30,7 @@
         :disabled="!held || busy"
         @click="emit('set', held - 1)"
       />
-      <span class="w-8 text-center text-base tabular-nums text-ink-gray-8">{{ held }}</span>
+      <span class="w-8 text-center text-base tabular-nums text-ink-primary">{{ held }}</span>
       <Button
         icon="lucide-plus"
         :label="`One more ${addon.name}`"
@@ -50,6 +50,7 @@
 <script setup>
 import { computed } from 'vue'
 import { Button } from '@/ui'
+import { money as written } from '@/shared/lib/runtime/format'
 
 const props = defineProps({
   addon: { type: Object, required: true },
@@ -69,10 +70,5 @@ const atCeiling = computed(
   () => Boolean(props.addon.max_units) && held.value >= props.addon.max_units,
 )
 
-const money = (amount, currency) =>
-  new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: (currency || 'USD').toUpperCase(),
-    maximumFractionDigits: 2,
-  }).format(Number(amount) || 0)
+const money = (amount, currency) => written(amount || 0, currency)
 </script>
