@@ -45,7 +45,7 @@ DEPTH = 20
 def listing(place: str = HOME, folder: str = "", kind: str = "",
             search: str = "", start: int = 0, limit: int = PAGE,
             sort: str = "", descending: int = 0,
-            doctype: str = "", docname: str = "") -> dict:
+            doctype: str = "", docname: str = "", owner: str = "") -> dict:
     """One page of one place."""
     # A folder on somebody else's server is browsed live and has no rows in
     # this table — see `remote.py`. The branch is here rather than inside
@@ -68,7 +68,9 @@ def listing(place: str = HOME, folder: str = "", kind: str = "",
     if place == RECORDS:
         return _records(folder, search, start, limit)
 
-    filters, or_filters = _place_filters(place, folder, kind, (doctype, docname))
+    filters, or_filters = _place_filters(
+        place, folder, kind, (doctype, docname), owner
+    )
     if search:
         or_filters = _searching(search, filters, or_filters)
 

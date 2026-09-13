@@ -35,10 +35,52 @@
 import { unref } from 'vue'
 
 import { CAN, offers } from '@/shared/lib/capability'
+import { KIND_VALUES, labelForKind } from '@/modules/onestorage/lib/files'
+import { __ } from '@/shared/lib/runtime/translate'
 import { workspace } from '@/shared/lib/workspace'
 
 /** How many rows one page is. The server caps at this, so asking for more is asking for this. */
 export const PAGE = 50
+
+/**
+ * What a file place can be narrowed by — §B2's "a declared list for a file
+ * place", which `Narrow.vue` has named in its own docstring since it was
+ * written and which nothing ever declared.
+ *
+ * The Drive was the same frame as every list and a tenth of the chrome, for
+ * one reason: `recordSource` declares thirteen capabilities and this one
+ * declared three, and `DataList` draws what the source offers. It was not a
+ * different engine. It was a thinner sentence.
+ *
+ * **Kind** first because `kinds.py` opens by saying what a kind is *for* — "a
+ * file manager's first question is 'show me the drawings', and the answer has
+ * to be a column" — and the column has been there, indexed and filtered by
+ * `listing(kind=…)`, since that module was written. No surface ever offered
+ * it. **Owner** second because it is the other question people ask of a
+ * shared drive, and it costs one clause.
+ *
+ * `load` rather than `options` for the owner: a workspace's people is a list
+ * the server holds and a set too big to send is what `load` is for.
+ */
+export const FILE_FIELDS = [
+  {
+    key: 'kind',
+    label: __('Kind'),
+    options: KIND_VALUES.map((kind) => ({ label: labelForKind(kind), value: kind })),
+  },
+  {
+    key: 'owner',
+    label: __('Added by'),
+    load: async (query) => {
+      const people = (await workspace.members().catch(() => null))?.members || []
+      const asked = String(query || '').toLowerCase()
+      return people
+        .filter((one) => !asked || `${one.full_name || ''} ${one.name || ''}`
+          .toLowerCase().includes(asked))
+        .map((one) => ({ label: one.full_name || one.name, value: one.name }))
+    },
+  },
+]
 
 /**
  * Files, from the one file query.
@@ -58,6 +100,9 @@ export function fileSource({
   attachedTo = null,
   record = null,
   kind = '',
+  //: `{kind, owner}` — what `FILE_FIELDS` sets, straight through to the query.
+  //: A ref, because the bar changes it without rebuilding the source.
+  narrow = null,
   sort = '',
   descending = false,
   can = {},
@@ -86,7 +131,13 @@ export function fileSource({
       // The record door takes neither: `attachments` narrows by the
       // docfield's own filter and orders by when a file arrived, and a box
       // that searched nothing would be a box that looks broken.
-      ...(record ? {} : { [CAN.SEARCH]: true, [CAN.SORT]: true }),
+      ...(record ? {} : {
+        [CAN.SEARCH]: true,
+        [CAN.SORT]: true,
+        //: Only where the caller hands in somewhere to keep it. A bar over a
+        //: source that drops what it is set to is a control that does nothing.
+        ...(narrow ? { [CAN.FILTER]: true } : {}),
+      }),
       [CAN.PAGE]: true,
       ...can,
     }),
@@ -110,10 +161,15 @@ export function fileSource({
       }
 
       const on = unref(attachedTo) || {}
+      const narrowed = unref(narrow) || {}
       const found = await workspace.driveList({
         place: unref(place),
         folder: unref(folder) || '',
-        kind: unref(kind) || '',
+        // The bar's answer wins over the caller's fixed one: the picker pins a
+        // kind it will accept and nothing draws a bar over it, so the two
+        // never both apply.
+        kind: narrowed.kind || unref(kind) || '',
+        owner: narrowed.owner || '',
         search,
         start,
         limit: pageLength || PAGE,

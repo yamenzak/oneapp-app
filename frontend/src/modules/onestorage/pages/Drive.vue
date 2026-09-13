@@ -194,6 +194,29 @@
           a control that disappears when you switch view is a control you stop
           trusting.
         -->
+        <!--
+          What is narrowing this list — the same `<Narrow>` a space screen and
+          the mobility space draw, over the fields `FILE_FIELDS` declares.
+          §B2 named "a declared list for a file place" when the component was
+          written and nothing ever declared one, which is the whole of why the
+          Drive looked like a different product: it is the same `DataList`
+          over a source that offered three capabilities where a record's
+          offers thirteen, and the frame draws what it is offered.
+        -->
+        <!-- `w-full` because `DataList`'s header is one wrapping flex row:
+             without it the bar shares a line with the count and the order,
+             which is the one place it must not be — filters sit *above* the
+             list on every other surface. `measure` off because two fields
+             have a row to themselves and never overflow it; the engine
+             measures because a doctype can declare eight. -->
+        <Narrow
+          v-if="can.can(CAN.FILTER)"
+          v-model="narrowing"
+          :fields="FILE_FIELDS"
+          :measure="false"
+          class="w-full"
+        />
+
         <div class="flex items-center gap-2 pb-1 text-p-xs text-ink-muted">
           <!-- No select-all where the source cannot act in bulk: over a
                mount the rows have no checkbox either, because there is
@@ -498,8 +521,9 @@ import Trail from '@/shared/components/Trail.vue'
 import { useCrumbs } from '@/shared/composables/useCrumbs'
 import { CAN, offers } from '@/shared/lib/capability'
 import DataList from '@/shared/components/DataList.vue'
+import Narrow from '@/shared/components/Narrow.vue'
 import SelectionBar from '@/modules/onespace/components/screen/bodies/SelectionBar.vue'
-import { PAGE, fileSource } from '@/shared/lib/list/files'
+import { FILE_FIELDS, PAGE, fileSource } from '@/shared/lib/list/files'
 import FileSurface from '@/modules/onestorage/components/FileSurface.vue'
 import ListSearch from '@/modules/onespace/components/screen/views/ListSearch.vue'
 import FileRow from '@/modules/onestorage/components/FileRow.vue'
@@ -516,6 +540,7 @@ import { useDrive } from '@/shared/composables/useDrive'
 import { useNewFile } from '@/shared/composables/useNewFile'
 import LanguagePicker from '@/modules/onecode/components/LanguagePicker.vue'
 import { useUploads } from '@/shared/composables/useUploads'
+import { useNarrowing } from '@/shared/lib/url/narrowing'
 import {
   editorFor, isRemote, mountOf, routeFor,
 } from '@/modules/onestorage/lib/files'
@@ -604,6 +629,17 @@ const folder = computed(() => route.query.folder || '')
  */
 const inRemote = computed(() => isRemote(folder.value))
 
+/*
+ * What this list is narrowed by, in the address — §C4, and the same `narrow`
+ * key the mobility space uses, because it is the same question.
+ *
+ * A folder filtered to images, sent to somebody, opens filtered to images.
+ * That is the test §C4 states — "can I send this to a colleague" — and the
+ * Drive failed it twice: its sort and view lived in `localStorage` until
+ * Stage 0d, and until now there was nothing to filter by at all.
+ */
+const narrowing = useNarrowing()
+
 // The frame, and what it is looking at. `rows` is the frame's accumulated
 // list — every page it has read — which is the set a selection is over and the
 // set a drag moves.
@@ -645,6 +681,7 @@ const source = computed(() => fileSource({
   // that was rebuilt every time somebody sorted would clear what they had
   // typed. Place and folder *are* a fresh list; an order is not.
   sort: drive.sort,
+  narrow: narrowing,
   descending: drive.descending,
   can: can.value.declared(),
   empty: emptyFace.value,
@@ -652,6 +689,20 @@ const source = computed(() => fileSource({
   // of the list.
   onAnswer: drive.walked,
 }))
+
+/*
+ * A chip changes what the query asks for, and on its own nothing would notice.
+ *
+ * `narrowing` is handed to the source as a *ref* for the same reason the sort
+ * is — a new source is a fresh list and the frame empties the search box when
+ * it gets one — so it is read inside `load` and never appears in the source's
+ * identity. Which means the thing that re-reads has to be here: `orderBy` ends
+ * in `load()` for exactly this, and a chip has no equivalent hand to do it in.
+ *
+ * From the top, not from `start`: page two of "only the code" over page one of
+ * everything is a list that is neither.
+ */
+watch(narrowing, () => drive.load())
 
 // --------------------------------------------------------------------------
 // Getting files in
@@ -785,6 +836,7 @@ const can = computed(() => offers(inRemote.value
   ? {
     [CAN.SEARCH]: true,
     [CAN.SORT]: __('This host answers in its own order.'),
+    [CAN.FILTER]: __('This host answers with what it has.'),
     [CAN.BULK]: __('The Drive reads a host, it does not write to one.'),
     // Not refused, absent: the toolbar offers Check again in New's place,
     // which is a better answer than a disabled button — §F1's third state.
@@ -797,12 +849,17 @@ const can = computed(() => offers(inRemote.value
       // absent — §F1's middle state — because a control that vanishes in one
       // place is a control people stop trusting everywhere.
       [CAN.SORT]: __('The record list\'s own order.'),
+      // The Records tree's first two levels are made out of attachment rows
+      // rather than `File` rows, so there is no column to narrow — the same
+      // reason its order is the query's.
+      [CAN.FILTER]: __('The record list\'s own order.'),
       [CAN.BULK]: true,
       [CAN.CREATE]: __('Attach a file to a record.'),
     }
     : {
       [CAN.SEARCH]: true,
       [CAN.SORT]: true,
+      [CAN.FILTER]: true,
       [CAN.BULK]: true,
       [CAN.CREATE]: true,
     }))

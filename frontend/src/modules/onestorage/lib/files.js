@@ -56,6 +56,16 @@ export const iconForKind = (kind) => KIND_ICONS[kind] || KIND_ICONS.Other
  * catalogue has loaded, and the extractor that builds the catalogue needs to
  * see each string as a literal.
  */
+//: Every kind, in `kinds.py`'s own order — the filter's options, and the only
+//: list of them the browser holds. `tests/test_drive.py` reads it back against
+//: the server's `KINDS`, because a kind offered here and unknown there is a
+//: filter that answers nothing, and one the server has and this does not is a
+//: bucket nobody can ask for.
+export const KIND_VALUES = [
+  'Folder', 'Image', 'PDF', 'Video', 'Audio', 'Document', 'Sheet', 'Doc',
+  'Code', 'Other',
+]
+
 export const labelForKind = (kind) => {
   if (kind === 'Folder') return __('Folder')
   if (kind === 'Image') return __('Image')

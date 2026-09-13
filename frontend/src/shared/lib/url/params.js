@@ -43,7 +43,7 @@ export const PLACE = Object.freeze({
   desc: '`1` when that order is reversed.',
   as: 'Which way the Drive draws its rows — `grid` or a list.',
   overlay: "Which layer the mobility map is showing.",
-  narrow: 'How the mobility space is narrowed — `line:U6;stop:Alex`. Shared by every screen in it.',
+  narrow: 'How a list is narrowed — `kind:Image;owner:robin@…`. The mobility space shares one across its screens; the Drive has its own.',
   workspace: 'Which workspace, on the account screens, for somebody who has more than one.',
 })
 
