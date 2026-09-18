@@ -91,6 +91,26 @@ const routes = [
     meta: { pane: true },
   },
   {
+    // The doors this workspace has opened. A service and not a space — a form
+    // is what every department wants and no department owns — so it is a
+    // route beside `/tasks` rather than a space code.
+    path: '/forms',
+    name: 'Forms',
+    component: () => import('@/modules/oneforms/pages/Forms.vue'),
+    // Its own scroller, with the picker pinned above it.
+    meta: { pane: true },
+  },
+  {
+    // One form, built. Its own route rather than a dialog over the list: a
+    // builder is three columns and a page, and a form is a thing somebody
+    // comes back to — so it wants an address.
+    path: '/forms/:name',
+    name: 'FormBuilder',
+    component: () => import('@/modules/oneforms/pages/FormBuilder.vue'),
+    props: true,
+    meta: { pane: true },
+  },
+  {
     // The assistant belongs to the workspace, like Mail and Files: what it can
     // read follows the reader's roles across every space, not one of them.
     // The open thread is `?chat=`, so a conversation can be linked to.
@@ -136,6 +156,16 @@ const routes = [
     // `public`, which no other route is: the guard below lets it through
     // without a session and `App.vue` draws it outside the shell, because
     // every part of the shell needs a session this reader does not have.
+    // A form somebody outside was sent. `meta.public` like the share link
+    // above, and for the same reason: there is no session and every part of
+    // the shell needs one. `?key=` is the invitation, where there is one.
+    path: '/f/:route',
+    name: 'PublicForm',
+    component: () => import('@/modules/oneforms/pages/PublicForm.vue'),
+    props: true,
+    meta: { pane: true, focused: true, public: true },
+  },
+  {
     path: '/link/:secret',
     name: 'Linked',
     component: () => import('@/modules/onestorage/pages/Linked.vue'),
