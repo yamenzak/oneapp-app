@@ -85,18 +85,29 @@ test('files and mail are reachable from the rail, and from the sheet on a phone'
   await page.goto('/one/space/zzmock')
 
   if (info.project.name === 'mobile') {
-    await page.getByRole('button', { name: 'More' }).click()
+    // The bottom bar's own, by its marker. By role it is ambiguous — a screen
+    // also offers "More filters" and "More for this record" — and even an
+    // exact name is not enough, because the desktop chrome is mounted and
+    // hidden rather than absent. `drive.spec.js` learned this first and its
+    // helper says the same thing at more length.
+    await page.locator('[data-slot="mobile-nav-item"][aria-label="More"]').click()
     await page.getByRole('button', { name: 'Files', exact: true }).click()
     await expect(page).toHaveURL(/\/one\/files/)
     return
   }
 
-  await page.locator('[data-slot="files-link"]').click()
-  await expect(page).toHaveURL(/\/one\/files/)
-
-  // And the two sit together, because they are the same kind of thing: the
-  // bell is between them and the account, not between them.
-  await expect(page.locator('[data-slot="files-link"]')).toBeVisible()
+  // The dock, not the column's foot: the apps moved out of the sidebar when
+  // there were windows to open — a row of shortcuts inside a column of
+  // navigation folded to 3rem with it and changed with the route.
+  //
+  // And what it opens is a *window*, so the address does not change: the space
+  // underneath is still the space you were in, which is the whole reason
+  // OneCloud stopped being a route. `docs/DESKTOP.md` stage 6.
+  const tile = page.locator('[data-slot="dock-tile"][data-app="files"]')
+  await tile.click()
+  await expect(page.locator('[data-window="onestorage"]')).toBeVisible({ timeout: 15_000 })
+  await expect(page).toHaveURL(/\/one\/space\/zzmock/)
+  await expect(tile).toBeVisible()
 
   expectNoRealErrors(errors)
 })

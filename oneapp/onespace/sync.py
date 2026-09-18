@@ -12,6 +12,10 @@ import frappe
 from frappe.utils import cint, now_datetime
 
 from oneapp.onespace import branding, control_client, restore, site
+from oneapp.onespace import one as ONE
+
+from .seats import role as _seat_role, roles as _seat_roles
+from .words import renamed, worded
 
 CACHE_KEY = "onespace_site_state"
 CACHE_TTL = 300
@@ -54,7 +58,15 @@ def state() -> dict:
 		"backup_retention_days": doc.get("backup_retention_days") or 0,
 		"quota": json.loads(doc.quota_json or "{}"),
 		"credit_balance": doc.credit_balance or 0,
-		"spaces": json.loads(doc.spaces_json or "[]") + local_spaces(),
+		# And the words this workspace uses for them — `onespace/words.py`,
+		# `docs/ONECRM.md` stage 7. Last in the pipeline and applied here
+		# rather than nine times downstream: this list is what the rail, the
+		# switcher, the resolver, the breadcrumbs and the New button all read,
+		# so renaming a screen is renaming it everywhere or it is a rail that
+		# disagrees with the page it opens.
+		"spaces": renamed(worded(configured(
+			ordered(json.loads(doc.spaces_json or "[]") + local_spaces())
+		))),
 		"roles": json.loads(doc.roles_json or "[]"),
 		"last_sync": str(doc.last_sync) if doc.last_sync else None,
 	}
@@ -62,7 +74,7 @@ def state() -> dict:
 	return data
 
 
-def granted_doctypes() -> set[str]:
+def granted_doctypes(space_code: str = "") -> set[str]:
 	"""Every doctype this workspace's own screens show.
 
 	The one answer to "what may this workspace reach", read off the manifest
@@ -70,14 +82,88 @@ def granted_doctypes() -> set[str]:
 	it and one revoked takes them away. Naming and printing both ask it, and
 	both mean the same thing by it: a settings page that offered every doctype
 	on the site would be offering the platform's own bookkeeping to break.
+
+	`space_code` narrows it to one space, which is what a space's own
+	Configuration page wants. Alerts, naming and print formats are all keyed on
+	a doctype, so "this space's" is exactly "the ones its screens show" — and
+	the workspace-wide answer, which is what these pages used to give, is a
+	page where OnePeople's leave alerts and OneCRM's deal alerts are one list
+	somebody scrolls.
 	"""
 	found = set()
 	for space in state().get("spaces") or []:
+		if space_code and space.get("space_code") != space_code:
+			continue
 		for screen in space.get("screens") or []:
 			name = (screen.get("document_type") or "").strip()
 			if name:
 				found.add(name)
 	return found
+
+
+#: The screen every space has, whether it asked for one or not.
+CONFIGURATION = "configuration"
+
+
+def configured(spaces: list) -> list:
+	"""Give every space a Configuration page it did not declare.
+
+	Three settings belong to a space rather than to the workspace — the alerts
+	on its records, the series that name them, the formats they print as — and
+	each is keyed on a doctype, so "this space's" is exactly "the ones its
+	screens show". They were three tabs in a dialog, workspace-wide: one list
+	where OnePeople's leave alerts and OneCRM's deal alerts were scrolled past each
+	other.
+
+	Which leaves the question of where they go in a space that declared no
+	Configuration page, and the honest answer is that the page is the engine's
+	rather than the manifest's. A space says what it *is*; every space gets the
+	same three pieces of machinery over whatever that turns out to be. So this
+	appends the screen where there is none, `configuration.shape` appends the
+	three panels to whatever a page declares, and a manifest that wants tables
+	on it declares only the tables.
+
+	Skipped where there is nothing to configure — a space of component screens
+	with no doctype between them has no alerts to write — and skipped whole on
+	the control plane, which is an operator console rather than a workspace.
+	"""
+	if ONE.CONTROL_APP in (frappe.get_installed_apps() or []):
+		return spaces
+
+	for space in spaces:
+		screens = space.get("screens") or []
+		if any((one or {}).get("screen") == CONFIGURATION for one in screens):
+			continue
+		if not any((one or {}).get("document_type") for one in screens):
+			continue
+		space["screens"] = [*screens, {
+			"screen": CONFIGURATION,
+			"label": frappe._("Configuration"),
+			"singular": frappe._("Table"),
+			"icon": "lucide-wrench",
+			"component": CONFIGURATION,
+			"view_settings": "",
+		}]
+	return spaces
+
+
+def ordered(spaces: list) -> list:
+	"""The synced spaces and the provided ones, as one list in one order.
+
+	It used to be a concatenation, which put whatever a provider returned after
+	everything the control plane sent — fine while the only provider was the
+	console's, where there is no synced half to come after. One is provided too
+	and belongs *first*, because it is the workspace rather than something the
+	workspace bought, and a rail whose order depends on where a space came from
+	is a rail with a seam in it.
+
+	`sort_order` then label, which is exactly how the control plane orders its
+	own and therefore is not a second opinion about it.
+	"""
+	return sorted(
+		spaces,
+		key=lambda one: (one.get("sort_order") or 0, one.get("space_label") or ""),
+	)
 
 
 def local_spaces() -> list:
@@ -172,7 +258,11 @@ def sync_from_control_plane() -> dict:
 		payload.get("owner_role"),
 		payload.get("member_role"),
 	)
-	sync_permissions(payload.get("permissions") or [])
+	# Before the permissions: `_permlevels` reads the metadata to decide which
+	# rows to write, and a level that does not exist yet is a level nothing is
+	# written for.
+	sync_field_levels(_spaces(payload))
+	sync_permissions(payload.get("permissions") or [], _spaces(payload))
 	created = sync_owner(
 		payload.get("owner") or {},
 		payload.get("owner_role"),
@@ -232,9 +322,10 @@ def sync_screen_fixtures(spaces: list) -> dict:
 	is a space whose app is not installed yet, which is ordinary; a format whose
 	layout will not parse is one bad row rather than a failed sync.
 	"""
-	series = formats = fields = 0
+	series = formats = fields = rules = 0
 	for space in spaces or []:
 		fields += _seed_custom_fields(space.get("custom_fields"))
+		rules += _seed_alerts(space.get("alerts"), space)
 		for screen in space.get("screens") or []:
 			doctype = (screen.get("document_type") or "").strip()
 			if not doctype or not frappe.db.exists("DocType", doctype):
@@ -242,9 +333,208 @@ def sync_screen_fixtures(spaces: list) -> dict:
 			series += _seed_series(doctype, screen.get("naming_series"))
 			formats += _seed_formats(doctype, screen.get("print_formats"),
 			                         space.get("module"))
-	if series or formats or fields:
+	if series or formats or fields or rules:
 		frappe.db.commit()
-	return {"series": series, "formats": formats, "fields": fields}
+	return {"series": series, "formats": formats, "fields": fields,
+	        "alerts": rules}
+
+
+# --------------------------------------------------------------------------- #
+# Which fields are private, and to whom
+#
+# The one fixture here that is **reconciled** rather than applied once, and the
+# reason is that it is not a fixture at all — it is a permission.
+#
+# ERPNext puts every one of Employee's hundred-odd fields at permission level
+# zero, `ctc`, `iban` and `passport_number` among them. OnePeople grants Employee to
+# the employee seat unrestricted, deliberately, because a directory nobody can
+# open is not a directory — and the result was that opening a colleague showed
+# their personnel file. There is no narrowing in a grant that can say "all of
+# the record except these eleven fields": `if_owner` is about rows.
+#
+# Frappe's own answer is the permission level, so a space may raise fields to
+# one and say which of its roles still reach it. Two halves, both needed:
+# `_seed_field_levels` moves the fields, and `_level_roles` stops
+# `sync_permissions` mirroring every grant up there — which is what it does by
+# default, for the reason written at `_permlevels`, and which is right for a
+# level somebody else's app declared and wrong for one we declared ourselves.
+# --------------------------------------------------------------------------- #
+
+#: Where a raised level is written. A Property Setter is Frappe's own way of
+#: changing a field of somebody else's doctype without forking it.
+LEVEL_PROPERTY = "permlevel"
+
+
+def sync_field_levels(spaces: list) -> int:
+	"""Raise the fields a space calls private. Before the permissions, because
+	`_permlevels` reads the metadata to decide which rows to write, and a level
+	that does not exist yet is a level nothing is written for."""
+	moved = 0
+	for space in spaces or []:
+		moved += _seed_field_levels(space.get("field_levels"))
+	if moved:
+		frappe.clear_cache()
+		frappe.db.commit()
+	return moved
+
+
+def _seed_field_levels(declared) -> int:
+	"""One Property Setter per field, written whenever it is not already right.
+
+	Reconciled rather than left alone. Everything else in `sync_screen_fixtures`
+	is somewhere a workspace starts from and then owns; this is the opposite. A
+	workspace that lowered `ctc` back to level zero has not expressed a
+	preference, it has opened the payroll to everybody who can open the
+	directory — so the manifest wins, every sync.
+	"""
+	rows = _rows(declared)
+	moved = 0
+	for row in rows:
+		doctype = str(row.get("dt") or "").strip()
+		level = int(row.get("level") or 0)
+		if not doctype or level < 1 or not frappe.db.exists("DocType", doctype):
+			continue
+		for fieldname in row.get("fields") or []:
+			if _raise_field(doctype, str(fieldname).strip(), level):
+				moved += 1
+	return moved
+
+
+def _raise_field(doctype: str, fieldname: str, level: int) -> bool:
+	"""Put one field above level zero, unless it is already there."""
+	if not fieldname:
+		return False
+	try:
+		field = frappe.get_meta(doctype).get_field(fieldname)
+	except Exception:
+		return False
+	if not field:
+		# A field the doctype no longer has. One field rather than the sync,
+		# and silent: HRMS renames things between versions and a manifest
+		# naming an old one should cost the field it cannot find.
+		return False
+	if int(getattr(field, "permlevel", 0) or 0) >= level:
+		return False
+
+	frappe.make_property_setter({
+		"doctype": doctype,
+		"fieldname": fieldname,
+		"property": LEVEL_PROPERTY,
+		"value": level,
+		"property_type": "Int",
+	}, is_system_generated=False)
+	return True
+
+
+def _level_roles(spaces: list) -> dict:
+	"""`{(doctype, level): {frappe role, ...}}` — who reaches a raised level.
+
+	Empty for every doctype no space raised, which is what keeps the default
+	behaviour exactly as it was: a level an app shipped is still mirrored to
+	every grant, because those levels separate roles inside that app's own set
+	and a tenant holds none of them.
+	"""
+	found: dict = {}
+	for space in spaces or []:
+		for row in _rows(space.get("field_levels")):
+			doctype = str(row.get("dt") or "").strip()
+			level = int(row.get("level") or 0)
+			if not doctype or level < 1:
+				continue
+			named = {_space_role(space, str(label))
+			         for label in row.get("roles") or []}
+			found.setdefault((doctype, level), set()).update(one for one in named if one)
+	return found
+
+
+def _rows(declared) -> list[dict]:
+	"""A JSON list off a Code field, defensively."""
+	try:
+		rows = frappe.parse_json(declared) if isinstance(declared, str) else declared
+	except Exception:
+		frappe.clear_last_message()
+		return []
+	return [one for one in rows if isinstance(one, dict)] if isinstance(rows, list) else []
+
+
+def _space_role(space: dict, label: str) -> str:
+	"""The Frappe role a manifest's seat *label* names on this site.
+
+	A manifest cannot write the role down. The Frappe name is derived from the
+	space's `role_name`, which is a prefix the control plane owns, and one of
+	the four seat labels: `HR` and `Manager` are `HR-Manager`.
+
+	A label that is not one of the four is nothing rather than the prefix. It
+	used to fall back to the base role, which is how a typo in a field-level
+	row quietly granted the level to everybody in the space.
+
+	And a seat this site does not actually hold is nothing too: a rule
+	addressed to a role that does not exist is a rule that looks present in
+	Settings and reaches nobody.
+	"""
+	name = _seat_role(space.get("role_name") or "", label)
+	return name if name and frappe.db.exists("Role", name) else ""
+
+
+def _seed_alerts(declared, space: dict | None = None) -> int:
+	"""The notifications a space arrives with.
+
+	A space that grants Leave Application knows that the person who has to
+	approve one should hear about it, and a workspace should not have to work
+	that out from an empty settings page. So a manifest may ship the rules, and
+	they arrive as *the workspace's own* — written through `alerts.save`, marked
+	the way a rule typed into Settings is marked, and therefore listed, editable,
+	pausable and deletable there like any other.
+
+	Once each, keyed on the subject, which is what `Notification.autoname` makes
+	the primary key: a rule somebody reworded is a rule they reworded, and a
+	rule they deleted stays deleted. That is the same contract the custom fields
+	above have and it matters for the same reason — reapplying every fifteen
+	minutes would undo an afternoon's work with nothing to show why.
+
+	Nothing here is fatal. A rule naming a field HRMS renamed is one rule that
+	does not arrive, logged, rather than a sync that stops.
+	"""
+	from oneapp.onespace import alerts
+
+	# Parsed defensively: this arrives from a Code field an operator types JSON
+	# into by hand, so "nearly JSON" is a thing it really holds — and a sync
+	# that raises here is one that also stops carrying roles, members and
+	# quotas.
+	try:
+		rows = frappe.parse_json(declared) if isinstance(declared, str) else declared
+	except Exception:
+		frappe.clear_last_message()
+		frappe.log_error(title="OneSpace: alerts are not JSON", message=str(declared)[:500])
+		return 0
+	if not isinstance(rows, list):
+		return 0
+
+	made = 0
+	for row in rows:
+		if not isinstance(row, dict):
+			continue
+		doctype = str(row.get("doctype") or "").strip()
+		subject = str(row.get("subject") or "").strip()
+		if not doctype or not subject or not frappe.db.exists("DocType", doctype):
+			continue
+		if frappe.db.exists("Notification", subject):
+			continue
+		asked = dict(row)
+		# A manifest names a role by its *label* — see `_space_role`.
+		if label := asked.pop("to_role_label", ""):
+			asked["to_role"] = _space_role(space or {}, label)
+			if not asked["to_role"]:
+				continue
+		try:
+			alerts.save(asked)
+		except Exception as raised:
+			frappe.clear_last_message()
+			frappe.log_error(title=f"OneSpace: alert {doctype}",
+			                 message=f"{subject}: {raised}")
+			continue
+		made += 1
+	return made
 
 
 def _seed_custom_fields(declared) -> int:
@@ -280,6 +570,19 @@ def _seed_custom_fields(declared) -> int:
 			frappe.clear_last_message()
 			frappe.log_error(title=f"OneSpace: custom field {doctype}.{fieldname}",
 			                 message=str(raised))
+			# And take the row back, because a Custom Field that fails does not
+			# always fail *before* it is written: a Link whose target doctype
+			# is not there yet inserts, then throws on the way through
+			# `on_update` — where the column would have been added. That leaves
+			# a field the `exists` check above skips for ever, on a doctype
+			# with no column for it, and every write of that field is a SQL
+			# error nobody can explain. The next sync should try again, which
+			# is what the docstring above promises.
+			frappe.db.rollback()
+			if frappe.db.exists("Custom Field", {"dt": doctype, "fieldname": fieldname}):
+				frappe.delete_doc("Custom Field", f"{doctype}-{fieldname}",
+				                  force=True, ignore_permissions=True)
+				frappe.db.commit()
 			continue
 		made += 1
 	return made
@@ -481,10 +784,10 @@ def sync_ai(block: dict, credits: dict) -> None:
 	Reporting is the other half of autodiscovery: features exist only in app
 	code, so an operator would otherwise have no way to know what a site can do.
 	"""
-	from oneapp.onespace.ai import features
+	from oneapp.oneai import features
 
 	try:
-		frappe.db.set_single_value("OneSpace AI Settings", {
+		frappe.db.set_single_value("OneAI Settings", {
 			"catalogue_json": json.dumps(block.get("models") or [], default=str),
 			"registry_json": json.dumps(block.get("features") or [], default=str),
 			"credit_balance": credits.get("balance") or 0,
@@ -613,6 +916,44 @@ PERM_FIELDS = [
 	"print", "email", "export", "report", "share", "if_owner",
 ]
 
+# What a permission above level zero can say. Frappe reads nothing else off a
+# `permlevel > 0` row: the level guards *fields*, so "may you read them" and
+# "may you change them" are the only two questions it answers.
+LEVELLED_FIELDS = ("read", "write")
+
+
+def _permlevels(doctype: str) -> list[int]:
+	"""Every permission level this doctype's own fields actually use.
+
+	The reason this exists is a silent and total failure. Frappe reads a
+	doctype's standard permissions **only while it has no Custom DocPerm**;
+	the moment one exists, the custom rows are the whole answer. We wrote ours
+	at level zero and nothing else — so a doctype a space granted lost every
+	level-1 grant its app shipped, and every field above level zero became
+	unreadable and unwritable by everybody on that site.
+
+	It is silent in both directions. `_offerable` drops a field the reader may
+	not read, so the column, the badge and the board column simply are not
+	there: OnePeople's leave board is columns of `Leave Application.status`, which
+	HRMS puts at level 1, and the board was dropped for want of a field nobody
+	could see.
+
+	So a grant is mirrored at every level the doctype uses. That is the honest
+	rule rather than a conservative one: a permlevel separates roles *inside an
+	app's own role set*, and a tenant holds none of those roles — so declining
+	to grant the level protects nothing and hides a field from its owner. A
+	space that needs a field kept from one of its seats should not grant the
+	doctype to that seat.
+	"""
+	try:
+		fields = getattr(frappe.get_meta(doctype), "fields", None) or []
+	except Exception:
+		# A doctype from an app that is still installing. Level zero is what
+		# we would have written anyway, and the next sync sees the rest.
+		return [0]
+	levels = {int(getattr(df, "permlevel", 0) or 0) for df in fields}
+	return sorted(levels | {0})
+
 # Which of two grants for the same role and doctype wins.
 #
 # The manifest can name one twice on purpose, and a space that ships more than
@@ -646,15 +987,20 @@ def ensure_role(name: str):
 	).insert(ignore_permissions=True)
 
 
-def sync_permissions(manifest: list[dict]):
+def sync_permissions(manifest: list[dict], spaces: list | None = None):
 	"""Write DocPerms for our roles from the control plane's manifest.
 
 	Reconciled, not appended: a doctype dropped from an app's manifest has its
 	permission removed here, so revoking access is an edit in one place rather
 	than a migration.
+
+	`spaces` carries the field-level policy, which is the one thing that stops a
+	grant reaching every level — see the block above `sync_field_levels`.
 	"""
 	if not manifest:
 		return
+
+	private = _level_roles(spaces)
 
 	wanted = {}
 	for row in manifest:
@@ -678,29 +1024,50 @@ def sync_permissions(manifest: list[dict]):
 		wanted[key] = (rank, perms)
 		ensure_role(role)
 
-	wanted = {key: perms for key, (_rank, perms) in wanted.items()}
+	# One row per level the doctype's fields actually use, not one row at zero
+	# — see `_permlevels` for what that cost. `if_owner` is a level-zero idea:
+	# a levelled row narrows which *fields* you may touch, and repeating the
+	# ownership rule on it is not a thing Frappe reads.
+	levelled = {}
+	for (doctype, role), (_rank, perms) in wanted.items():
+		for level in _permlevels(doctype):
+			if level == 0:
+				levelled[(doctype, role, 0)] = perms
+				continue
+			# A level *this space* raised is private: only the roles it named
+			# reach it, and everybody else gets no row, which is what makes the
+			# field unreadable to them. A level somebody else's app shipped is
+			# mirrored as before — `_permlevels` says why.
+			named = private.get((doctype, level))
+			if named is not None and role not in named:
+				continue
+			levelled[(doctype, role, level)] = {
+				field: perms.get(field, 0) for field in LEVELLED_FIELDS
+			}
+	wanted = levelled
 
 	managed_roles = {row["role"] for row in manifest if row.get("role")}
 	existing = frappe.get_all(
 		"Custom DocPerm",
 		filters={"role": ["in", list(managed_roles)]},
-		fields=["name", "parent", "role"],
+		fields=["name", "parent", "role", "permlevel"],
 	)
 
 	seen = set()
 	for perm in existing:
-		key = (perm["parent"], perm["role"])
+		key = (perm["parent"], perm["role"], int(perm["permlevel"] or 0))
 		if key not in wanted:
 			frappe.delete_doc("Custom DocPerm", perm["name"], ignore_permissions=True, force=True)
 			continue
 		seen.add(key)
 		_apply_perm(perm["name"], wanted[key])
 
-	for (doctype, role), perms in wanted.items():
-		if (doctype, role) in seen:
+	for (doctype, role, level), perms in wanted.items():
+		if (doctype, role, level) in seen:
 			continue
 		doc = frappe.get_doc(
-			{"doctype": "Custom DocPerm", "parent": doctype, "role": role, "permlevel": 0}
+			{"doctype": "Custom DocPerm", "parent": doctype, "role": role,
+			 "permlevel": level}
 		)
 		for field in PERM_FIELDS:
 			doc.set(field, perms.get(field, 0))
@@ -983,7 +1350,7 @@ def all_managed_roles() -> list[str]:
 		spaces = json.loads(doc.spaces_json or "[]")
 	except (json.JSONDecodeError, TypeError):
 		return []
-	return [s["role_name"] for s in spaces if s.get("role_name")]
+	return [name for s in spaces for name in _seat_roles(s.get("role_name") or "")]
 
 
 def report_usage_to_control_plane() -> dict:

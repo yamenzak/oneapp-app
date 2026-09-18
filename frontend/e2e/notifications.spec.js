@@ -11,6 +11,22 @@
 import { expect, test } from '@playwright/test'
 import { collectConsoleErrors, expectNoRealErrors, signIn } from './auth.js'
 
+/**
+ * Meta: a popover on a desktop, a tab on a phone — `docs/DESKTOP.md` stage 5.
+ *
+ * It was the strangest of the record's tabs: not a place you go, but a
+ * paragraph about the thing you are looking at. A phone keeps the tab, because
+ * a phone has no line with room beside it.
+ */
+const openMeta = async (page, info) => {
+  if (info?.project?.name === 'mobile') {
+    await page.getByRole('tab', { name: 'Meta' }).click()
+    return
+  }
+  await page.locator('[data-slot="record-about"]').click()
+}
+
+
 // Robin, because Frappe filters recipients by `User.email` and the
 // Administrator's email is `admin@example.com` rather than `Administrator` —
 // so assigning to the admin notifies nobody, on any Frappe site. Every
@@ -33,7 +49,7 @@ test('an assignment turns up in the panel, and opens the record', async ({
   await page.locator('[data-slot="object-pane"]').waitFor({ timeout: 15_000 })
   // Assignment is on Meta now, with the other three things you do to a record
   // about other people.
-  await page.getByRole('tab', { name: 'Meta' }).click()
+  await openMeta(page, info)
   await page.locator('[data-slot="assign"]').waitFor({ timeout: 15_000 })
 
   // Start from nobody. The control is a *toggle*: on a record another spec
@@ -91,7 +107,7 @@ test('an assignment turns up in the panel, and opens the record', async ({
   await page.locator('[data-slot="object-pane"]').waitFor({ timeout: 15_000 })
   // Assignment is on Meta now, with the other three things you do to a record
   // about other people.
-  await page.getByRole('tab', { name: 'Meta' }).click()
+  await openMeta(page, info)
   await page.locator('[data-slot="assign"]').waitFor({ timeout: 15_000 })
   await page.locator('[data-slot="assign"]').click()
   await page.getByRole('option', { name: /robin/i }).click()
@@ -178,8 +194,8 @@ test('every kind says where it reaches you, and each channel is its own', async 
   await signIn(page, baseURL)
   // In Settings, where everything a person sets is — §E7. Account used to
   // render this panel as well, which is the same question answered on two
-  // surfaces; it links here now, and a panel has an address.
-  await page.goto('/one/account?panel=notifications')
+  // surfaces; it links here now, and settings are a route.
+  await page.goto('/one/space/one?screen=configuration&tab=notifications')
 
   // Two masters, then a row per kind. The kinds are the server's registry —
   // `onespace/notifications.py` — so this is also what proves a declared

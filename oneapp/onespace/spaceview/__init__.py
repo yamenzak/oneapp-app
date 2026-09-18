@@ -155,10 +155,14 @@ from .views import (
 	MEASURED,
 	CARD_VIEW_TYPES,
 	MAX_CARD_FIELDS,
+	MOST_TAGS,
 	SHOWCASE,
+	TAGS,
+	_as_tags,
 	_board,
 	_boardable,
 	_calendar,
+	_dashboard,
 	_dateable,
 	_gantt,
 	_place,
@@ -167,13 +171,18 @@ from .views import (
 	_window,
 	_cards,
 	_resolve_views,
+	_shaped,
 	_view_settings,
 	_widgets,
 )
 from .applied import _apply_overrides, _apply_saved
 from .connections import CONNECTIONS, connections, points_back
-from .resolve import _granted_doctypes, _resolve, _space, routes, visible
-from .people import _ids, _people, _users, _with_people
+from .resolve import (
+	_granted_doctypes, _resolve, _space, _space_roles, navigable, routes, visible,
+)
+from .people import (
+	PEOPLE_PAGE, _colleagues, _ids, _people, _users, _with_people, colleagues,
+)
 from .links import (
 	LINK_PAGE,
 	_link_column,
@@ -256,7 +265,7 @@ from .mail import (
 	template,
 	write,
 )
-from .assign import ASSIGNEE_PAGE, _assignable, _colleagues, assign, assignees
+from .assign import ASSIGNEE_PAGE, _assignable, assign, assignees
 from .bulk import (
 	_each,
 	_names,
@@ -326,7 +335,10 @@ __all__ = [
 	"PINS",
 	"PLURALS",
 	"RECORD_META",
+	"MOST_TAGS",
 	"SHOWCASE",
+	"TAGS",
+	"_as_tags",
 	"TAGS_COLUMN",
 	"TIMELINE_PAGE",
 	"UNIT_WIDTH",
@@ -345,6 +357,7 @@ __all__ = [
 	"_board",
 	"_boardable",
 	"_calendar",
+	"_dashboard",
 	"_dateable",
 	"EXCEL_BOM",
 	"MAX_EXPORT",
@@ -377,6 +390,8 @@ __all__ = [
 	"_child_changes",
 	"_chosen_layout",
 	"_colleagues",
+	"PEOPLE_PAGE",
+	"colleagues",
 	"_columns",
 	"_default_fields",
 	"_default_layout",
@@ -389,6 +404,7 @@ __all__ = [
 	"_form",
 	"_gallery_filters",
 	"_granted_doctypes",
+	"_space_roles",
 	"_group_by",
 	"_grouped_order",
 	"_has_column_field",
@@ -444,6 +460,7 @@ __all__ = [
 	"_total",
 	"_users",
 	"_view_icon",
+	"_shaped",
 	"_view_settings",
 	"_view_types",
 	"_widgets",
@@ -505,6 +522,7 @@ __all__ = [
 	"toggle_follow",
 	"toggle_like",
 	"unshare",
+	"navigable",
 	"visible",
 	"workflow_action",
 	"template",

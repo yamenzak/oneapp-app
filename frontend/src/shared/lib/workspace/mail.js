@@ -398,8 +398,10 @@ export const mail = {
     callMethod('oneapp.onemail.intelligence.suggest_reply', { thread, folder }),
 
   // What is waiting in a conversation, as cards to approve. The run writes
-  // the cards; `mailSuggestions` reads back what is already there, which is
-  // how a thread reopened tomorrow still shows the ones nobody answered.
+  // the cards; `mailSuggestions` reads back the ones nobody has answered,
+  // which is how a thread reopened tomorrow still shows them — and how one
+  // worked through for a month does not reopen onto everything it was ever
+  // offered. The surface holds what it answered while the reader is on it.
   mailNotice: (thread, folder = 'all') =>
     callMethod('oneapp.onemail.intelligence.notice_thread', { thread, folder }),
 
@@ -415,13 +417,9 @@ export const mail = {
       silent: true, method: 'GET',
     }),
 
-  mailRewrite: (ask) =>
-    callMethod('oneapp.onemail.intelligence.rewrite', {
-      verb: ask.verb,
-      text: ask.text || '',
-      instruction: ask.instruction || '',
-      tone: ask.tone || '',
-      to: ask.to || '',
-      subject: ask.subject || '',
-    }),
+  // `onemail.intelligence.rewrite` has no caller here any more: the composer's
+  // own verb menu went when OneAI became the one door to writing help, and an
+  // answer reaches the message through `shared/lib/ai/insert.js` instead. The
+  // endpoint stays — it is where mail's "this is a letter to X about Y"
+  // framing lives, and it is what a surface that wants the verbs back calls.
 }

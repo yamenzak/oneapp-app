@@ -7,7 +7,7 @@
     tick, a version, and the date — and clicking one answers the first.
 
     The text is rendered on the server from what every module declares, so a
-    document that mentions Cloudflare mentions it because OneStorage said so.
+    document that mentions Cloudflare mentions it because OneCloud said so.
     `docs/LEGAL.md` explains the machinery; this is the reading room.
   -->
   <div class="flex h-full min-h-0 flex-col gap-4">
@@ -49,6 +49,7 @@
         <!-- `v-html` because the server assembled it out of declarations we
              wrote and escaped every one of them on the way — `assemble._esc`.
              Nothing a customer typed reaches this. -->
+        <!-- eslint-disable-next-line vue/no-v-html -- clauses we wrote, escaped server-side -->
         <article v-else-if="shown" class="prose prose-sm max-w-none" v-html="shown.html" />
         <EmptyState
           v-else

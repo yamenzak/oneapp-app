@@ -14,7 +14,13 @@
     without this every mailbox and the bin were unreachable from a phone. Off
     the same list the sidebar draws, so the two cannot drift.
   -->
-  <PageHeader>
+  <!--
+    No header in a window: its title bar names the app and the rail inside
+    names the folder and marks the one you are in. The window had one band too
+    many before OneCloud measured it, and this is that lesson rather than a
+    second discovery.
+  -->
+  <PageHeader v-if="!windowed">
     <Trail :items="crumbs">
       <!--
         The folder, and how you change it. On a phone a dropdown, because there
@@ -46,10 +52,15 @@
       What has arrived. On a phone the two panes are one screen at a time, which
       is what the URL already says — `?thread=` — so this is a class and not a
       second state to keep in step.
+
+      A message being written counts as the second pane. It is drawn in the
+      column beside this one now rather than in a dialog over both, and a
+      phone showing the list would be a phone showing the list with the
+      composer off the side of it.
     -->
     <div
       class="relative flex w-full shrink-0 flex-col rounded-6 bg-surface-base md:w-96"
-      :class="chosen ? 'hidden md:flex' : 'flex'"
+      :class="chosen || writing ? 'hidden md:flex' : 'flex'"
     >
       <div class="flex items-center gap-2 border-b border-outline-gray-1 p-2">
         <!--
@@ -92,8 +103,9 @@
         -->
         <template #row="{ row: one, picked: ticked, toggle }">
         <Row
-          :to="{ name: 'Mail', query: { folder, at: writeAt(KIND.THREAD, one.key) } }"
+          :to="rowTo(one.key)"
           layout="bare"
+          @click="windowed && go({ thread: one.key })"
           class="flex flex-col gap-0.5"
           :open="chosen === one.key"
           data-slot="mail-thread"
@@ -178,28 +190,45 @@
       </SelectionBar>
     </div>
 
-    <!-- What it says -->
+    <!-- What it says, or what you are writing back -->
     <div
       class="flex min-w-0 flex-1 flex-col rounded-6 bg-surface-base"
-      :class="chosen ? 'flex' : 'hidden md:flex'"
+      :class="chosen || writing ? 'flex' : 'hidden md:flex'"
     >
+      <!--
+        The composer is this column, not a dialog over it — `ComposerFrame.vue`
+        says why. Mounted whatever is happening, because Reply calls into it
+        and a `v-if` would mean calling a component that is not there yet; it
+        draws nothing at all until there is a message being written.
+      -->
+      <MailComposer
+        ref="composer"
+        v-model="writing"
+        pane
+        :addresses="addresses"
+        @sent="afterSend"
+      />
+
       <EmptyState
-        v-if="!chosen"
+        v-if="!chosen && !writing"
         icon="lucide-mail-open"
         :title="__('Nothing open')"
         :description="__('Pick a conversation from the list.')"
       />
 
-      <div v-else class="min-h-0 flex-1 overflow-y-auto p-5">
-        <!-- The phone has no second column to go back to. `md:hidden` because
-             on a desktop the list never left. -->
-        <RouterLink
+      <div v-else-if="!writing" class="min-h-0 flex-1 overflow-y-auto p-5">
+        <!-- The phone has no second column to go back to, and neither has a
+             narrow window. `md:hidden` because on a desktop the list never
+             left; a press rather than a link in a window, which has no
+             address to go back to. -->
+        <Button
           class="md:hidden"
-          :to="{ name: 'Mail', query: { folder } }"
+          variant="ghost"
+          icon-left="lucide-arrow-left"
+          :label="__('All conversations')"
           data-slot="mail-back"
-        >
-          <Button variant="ghost" icon-left="lucide-arrow-left" :label="__('All conversations')" />
-        </RouterLink>
+          @click="go({ folder })"
+        />
         <!--
           The subject, and what can be done to the *conversation*. These four
           were in the strip under the thread beside Reply and Forward, which
@@ -334,6 +363,13 @@
           what it leaves you to do. Read back on opening rather than only
           after a run, so a card offered yesterday and never answered is still
           there today.
+
+          **What is waiting, plus what you answered while you were here.** An
+          answered card stays, greyed, saying what happened — a card that
+          vanished on Apply would leave an answer above it with no sign of what
+          became of it. It does not come back tomorrow: the server is asked for
+          the ones nobody has answered, and a thread worked through for a month
+          would otherwise open onto a column of thirty already dealt with.
         -->
         <div
           v-if="waiting.length || noticing.running.value"
@@ -352,7 +388,7 @@
             v-for="one in waiting"
             :key="one.name"
             :suggestion="one"
-            @answered="readSuggestions()"
+            @answered="answered(one, $event)"
           />
         </div>
 
@@ -429,7 +465,7 @@
       `send_after`. "Archived 11" is the note `bulk` handed back, which
       `restore` reads.
     -->
-    <Panel ground="raised" pad="bar" elevation="over" v-if="note" class="fixed inset-x-0 bottom-8 z-20 mx-auto flex w-fit items-center gap-3" data-slot="mail-undo">
+    <Panel ground="raised" pad="bar" elevation="over" v-if="note" class="fixed inset-x-0 bottom-24 z-20 mx-auto flex w-fit items-center gap-3 md:bottom-dock" data-slot="mail-undo">
       <span class="text-p-sm text-ink-primary">{{ note.text }}</span>
       <!-- Only where there is something to undo: mail that arrived on a routed
            address was in no folder to begin with. -->
@@ -450,18 +486,12 @@
     -->
     <FilePane v-model="preview" :file="previewing" />
 
-    <MailComposer
-      ref="composer"
-      v-model="writing"
-      :addresses="addresses"
-      @sent="afterSend"
-    />
   </div>
 </template>
 
 <script setup>
 import { computed, onUnmounted, ref, watch } from 'vue'
-import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import {
   Button,
   Checkbox,
@@ -488,6 +518,7 @@ import { onDoctypeChange } from '@/shared/lib/runtime/socket'
 import { MOD, useShortcuts } from '@/modules/onespace/lib/shell/shortcuts'
 import { useIsMobile } from '@/modules/onespace/lib/shell/breakpoint'
 import { useAiRun } from '@/shared/lib/ai/run'
+import { useAiContext } from '@/shared/lib/ai/context'
 import { writingVerbs } from '@/shared/lib/ai/verbs'
 import { loadMail, mail } from '@/modules/onespace/lib/shell/mail'
 import { __ } from '@/shared/lib/runtime/translate'
@@ -496,8 +527,52 @@ import Panel from '@/shared/components/Panel.vue'
 import { ago } from '@/shared/lib/runtime/format'
 import { KIND, atOf, writeAt } from '@/shared/lib/url/at'
 
+const props = defineProps({
+  /** Drawn inside a window rather than as the page — `MailWindow.vue`. */
+  windowed: { type: Boolean, default: false },
+  /** Which folder and which conversation, when a window keeps that rather
+   *  than the URL. */
+  at: { type: Object, default: () => ({}) },
+})
+const emit = defineEmits(['go'])
+
 const route = useRoute()
 const router = useRouter()
+
+/**
+ * Where this one is looking: the window's own, or the address.
+ *
+ * The page keeps both in the URL because a conversation is a place somebody
+ * can be sent to — that is what makes the back button close a thread and a
+ * reload keep one open. A window has no address, so it keeps them beside
+ * itself; `onemail/lib/window.js` is where, and why.
+ */
+const asked = computed(() => (props.windowed ? props.at : route.query))
+
+/**
+ * Somewhere else in the mail, through whichever of the two is keeping it.
+ *
+ * `{folder, thread}` either way, so every caller says the same thing and only
+ * this function knows which surface it is on.
+ */
+function go(where) {
+  if (props.windowed) {
+    emit('go', { folder: where.folder ?? folder.value, thread: where.thread || '' })
+    return
+  }
+  router.push({
+    name: 'Mail',
+    query: {
+      folder: where.folder ?? folder.value,
+      ...(where.thread ? { at: writeAt(KIND.THREAD, where.thread) } : {}),
+    },
+  })
+}
+
+/** What a thread row is: a link on the page, a press in a window. */
+const rowTo = (key) => (props.windowed
+  ? null
+  : { name: 'Mail', query: { folder: folder.value, at: writeAt(KIND.THREAD, key) } })
 
 const addresses = ref([])
 
@@ -530,10 +605,12 @@ const source = computed(() => threadSource({
 const load = ({ append = false } = {}) => list.value?.read({ append })
 const messages = ref([])
 
-// Both read from the URL rather than kept beside it, so a link pasted into the
-// address bar opens exactly what the person who sent it saw.
-const folder = computed(() => String(route.query.folder || 'all'))
-const chosen = computed(() => atOf(route.query, KIND.THREAD))
+// On the page, both read from the URL rather than kept beside it, so a link
+// pasted into the address bar opens exactly what the person who sent it saw.
+// In a window the window keeps them — see `asked`.
+const folder = computed(() => String(asked.value.folder || 'all'))
+const chosen = computed(() =>
+  (props.windowed ? asked.value.thread || '' : atOf(route.query, KIND.THREAD)))
 
 // Which attachment is being looked at, and therefore whether the previewer is
 // open — one ref rather than two kept in step by hand.
@@ -567,7 +644,7 @@ const folderOptions = computed(() => {
     const option = {
       label: one.label,
       icon: one.icon,
-      onClick: () => router.push({ name: 'Mail', query: { folder: one.key } }),
+      onClick: () => go({ folder: one.key }),
     }
 
     // "All mail" belongs to no address — it is the union — so it sits above the
@@ -742,7 +819,7 @@ async function act(what) {
   // Back to the list, but only if the conversation in front of somebody is one
   // of the ones that just moved.
   if (chosen.value && keys.includes(chosen.value) && MOVES.includes(what)) {
-    router.push({ name: 'Mail', query: { folder: folder.value } })
+    go({ folder: folder.value })
   }
   await load()
   await loadMail({ reload: true })
@@ -797,6 +874,31 @@ const composer = ref(null)
 /** Open the composer, blank or carrying a message. */
 const compose = (from, kind) => composer.value?.compose(from, kind)
 
+/**
+ * What the assistant is about while this is on screen.
+ *
+ * Mail was the last everyday surface the panel was blind to: opened over a
+ * conversation it offered to talk about the workspace, which is the one thing
+ * nobody asks while reading a message. So the conversation is a claim, the
+ * same way a document and a workbook are — `shared/lib/ai/context.js` — and
+ * `onespace/chat/context.py` resolves it back through `mailbox.thread`, so a
+ * claim cannot reach a message its claimant could not open.
+ *
+ * The draft goes with it, because "make my reply shorter" is a question about
+ * what is in the box rather than about the thread. Only while the composer is
+ * open: what somebody is not writing is not something to send anywhere.
+ */
+useAiContext(() => {
+  if (!chosen.value) return null
+  return {
+    thread: chosen.value,
+    folder: folder.value,
+    label: openSubject.value || __('This conversation'),
+    writing: writing.value,
+    draft: composer.value?.drafted || '',
+  }
+})
+
 // --- the short version ------------------------------------------------------
 //
 // Asked for, never fetched. A summary of the two-message thread somebody just
@@ -838,9 +940,28 @@ const noticing = useAiRun()
 const waiting = ref([])
 
 async function readSuggestions() {
-  waiting.value = chosen.value
+  const found = chosen.value
     ? (await workspace.mailSuggestions(chosen.value, folder.value).catch(() => [])) || []
     : []
+  // The ones answered on this visit, which the server no longer calls waiting.
+  // Kept in front, in the order they were offered, so pressing Apply does not
+  // make the card jump.
+  const held = waiting.value.filter(
+    (one) => one.state !== 'Proposed' && !found.some((row) => row.name === one.name),
+  )
+  waiting.value = [...held, ...found]
+}
+
+/**
+ * A card was answered here: remember what it became, then read the rest back.
+ *
+ * The row is the one `waiting` is holding, so writing its state is what keeps
+ * it on screen — and greyed, with the right word on it — once the server stops
+ * returning it.
+ */
+function answered(one, state) {
+  one.state = state || 'Applied'
+  readSuggestions()
 }
 
 async function notice() {
@@ -972,19 +1093,31 @@ function step(by) {
   if (!keys.length) return false
   const at = keys.indexOf(chosen.value)
   const next = keys[Math.min(Math.max(at + by, 0), keys.length - 1)]
-  router.push({
-    name: 'Mail',
-    query: { folder: folder.value, at: writeAt(KIND.THREAD, next) },
-  })
+  go({ thread: next })
 }
 
 function escape() {
-  if (picked.value.size) list.value?.clearChosen()
-  else if (chosen.value) router.push({ name: 'Mail', query: { folder: folder.value } })
+  // The message being written first, because it is the thing in front. It is
+  // put down rather than thrown away — what was typed is kept, which is what
+  // `ComposerFrame.vue`'s own control says.
+  if (writing.value) writing.value = false
+  else if (picked.value.size) list.value?.clearChosen()
+  else if (chosen.value) go({ folder: folder.value })
   else return false
 }
 
-useShortcuts({
+/**
+ * A key that means nothing while a message is being written.
+ *
+ * The composer was a dialog and `useShortcuts` steps aside for one of those;
+ * a pane is part of the page, so without this `e` pressed with the cursor
+ * anywhere but a field would archive the conversation being answered.
+ * Escape is the exception and is not wrapped: it is how you put the message
+ * down.
+ */
+const idle = (fn) => () => (writing.value ? false : fn())
+
+useShortcuts(Object.fromEntries(Object.entries({
   j: () => step(1),
   k: () => step(-1),
   escape,
@@ -1007,7 +1140,7 @@ useShortcuts({
   },
   'mod+a': () => list.value?.toggleAll(),
   'mod+z': () => (note.value ? undo() : false),
-})
+}).map(([key, fn]) => [key, key === 'escape' ? fn : idle(fn)])))
 
 boot()
 

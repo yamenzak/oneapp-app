@@ -289,12 +289,12 @@ export function isNumericCell(cell) {
 /** DocType State's palette, in Badge themes. */
 export const STATE_COLORS = {
   "Blue": "blue",
-  "Cyan": "teal",
+  "Cyan": "blue",
   "Gray": "gray",
   "Green": "green",
   "Light Blue": "blue",
-  "Orange": "orange",
-  "Pink": "pink",
+  "Orange": "amber",
+  "Pink": "red",
   "Purple": "violet",
   "Red": "red",
   "Yellow": "amber"
@@ -795,7 +795,11 @@ const TAB_ICON_WORDS = [
       "date",
       "schedule",
       "timing",
-      "period"
+      "period",
+      "calendar",
+      "month",
+      "week",
+      "diary"
     ]
   ],
   [
@@ -896,9 +900,12 @@ export function tabIcon(label, declared = null) {
  * two different events look like one.
  */
 export const ACTIVITY_ICONS = {
+  "call": "lucide-phone",
   "change": "lucide-pencil",
   "comment": "lucide-message-circle",
-  "created": "lucide-circle-plus"
+  "created": "lucide-circle-plus",
+  "file": "lucide-paperclip",
+  "mail": "lucide-mail"
 }
 
 const DEFAULT_ACTIVITY_ICON = 'lucide-dot'

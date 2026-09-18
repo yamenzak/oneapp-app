@@ -38,8 +38,26 @@ def _mine(name: str):
 
 
 @frappe.whitelist(methods=["POST"])
-def make_folder(file_name: str, folder: str = "") -> dict:
-    """A new folder, inside another or at the top."""
+def make_folder(file_name: str, folder: str = "",
+                doctype: str = "", docname: str = "") -> dict:
+    """A new folder: in another, at the top of the drive, or in a record's room.
+
+    The room is the third case and the reason this grew two arguments. A record
+    with forty attachments wants what forty files in any folder want, and until
+    now the Records tree answered `can_write: False` everywhere — true of the
+    doctype and record levels, which are a query wearing a directory's shape,
+    and not true of the room itself, which is a real place with real rows.
+
+    **Nothing is created for the record.** The folder carries `attached_to_*`
+    and is therefore the record's, and `file.py` names it after the room so two
+    records may each have a `Correspondence` without colliding. A record nobody
+    filed anything under still costs no rows at all, which is the whole of why
+    the tree above it is virtual.
+
+    A folder made *inside* a room folder inherits the room, so a file three
+    deep is still the record's attachment — otherwise a subfolder would be a
+    quiet way out of the permission the room hangs off.
+    """
     title = (file_name or "").strip()
     if not title:
         frappe.throw(_("A folder needs a name."))
@@ -48,20 +66,23 @@ def make_folder(file_name: str, folder: str = "") -> dict:
         # in one is a folder that cannot be found again.
         frappe.throw(_("A folder name cannot contain a slash."))
 
-    parent = folder or "Home"
-    if folder:
-        _mine(folder)
+    room = _room(folder, doctype, docname)
 
+    fresh = {
+        "doctype": "File",
+        "file_name": title,
+        "is_folder": 1,
+        # A room folder has no parent. `file.py` names it from the room, and
+        # `folder` staying empty is what tells it to: a room is the top.
+        "folder": folder or ("" if room else "Home"),
+        KIND_FIELD: kind_of(title, is_folder=True),
+        STATUS_FIELD: ACTIVE,
+    }
+    if room:
+        fresh["attached_to_doctype"], fresh["attached_to_name"] = room
 
     try:
-        doc = frappe.get_doc({
-            "doctype": "File",
-            "file_name": title,
-            "is_folder": 1,
-            "folder": parent,
-            KIND_FIELD: kind_of(title, is_folder=True),
-            STATUS_FIELD: ACTIVE,
-        }).insert()
+        doc = frappe.get_doc(fresh).insert()
     except frappe.DuplicateEntryError:
         # Frappe names a folder `Home/Drawings`, so two folders with one name
         # in one parent are one primary key. Its own message names a doctype
@@ -69,6 +90,35 @@ def make_folder(file_name: str, folder: str = "") -> dict:
         frappe.throw(_("There is already a folder called “{0}” here.").format(title))
 
     return {"ok": True, "name": doc.name, "label": doc.file_name}
+
+
+def _room(folder: str, doctype: str, docname: str) -> tuple[str, str] | None:
+    """Which record this folder belongs to, and whether it may be made there.
+
+    Two ways in and one answer. A folder *named* — the ordinary case — takes
+    the room of its parent, which is empty for a folder in the drive proper and
+    the record's for one inside a room. A **record named** is a folder being
+    made at the top of that record's room, and is the only case that has to ask
+    the record itself whether this person may write to it: everything below
+    that has already been asked, by `_mine` on the parent.
+    """
+    if folder:
+        parent = _mine(folder)
+        # `.get` and not attribute access: a folder in the drive proper has no
+        # value in either field, and which of "empty" and "absent" that is
+        # depends on how the row was loaded.
+        room = (parent.get("attached_to_doctype"), parent.get("attached_to_name"))
+        return room if all(room) else None
+
+    if not (doctype and docname):
+        return None
+
+    # The record, not the folder: a room is the record's, so permission to file
+    # something in it is permission to change the record. `get_doc` also
+    # refuses a doctype or a name that does not exist, which is the other half
+    # of what stops this being a way to write rows about anything.
+    frappe.get_doc(doctype, docname).check_permission("write")
+    return doctype, docname
 
 
 @frappe.whitelist(methods=["POST"])
@@ -96,32 +146,76 @@ def rename(name: str, file_name: str) -> dict:
 
 
 @frappe.whitelist(methods=["POST"])
-def move(names: str | list, folder: str = "") -> dict:
-    """Put files into a folder, or back at the top.
+def move(names: str | list, folder: str = "",
+         doctype: str = "", docname: str = "") -> dict:
+    """Put files into a folder, at the top, or into a record's room.
 
     A folder cannot be moved into itself or into anything under it. Frappe will
     happily store that and the breadcrumb walk is what discovers it, one
     reader at a time.
+
+    **A move in or out of a room changes what the file belongs to**, and that
+    is the test of whether the Records tree is a place or a viewer. Dragged
+    into a room, a file becomes that record's attachment; dragged out of one,
+    it stops being it. Neither is a side effect to be sorry about — it is the
+    only reading of the gesture, and a file that moved into a record's folder
+    without joining the record would be invisible from both directions at once.
+
+    Detaching is the one that loses something, so the caller says so before it
+    asks; `left` comes back naming how many stopped belonging to a record, so
+    what it said can be checked against what happened.
     """
     names = frappe.parse_json(names) if isinstance(names, str) else names
     names = [one for one in (names or []) if one]
     if not names:
         return {"ok": True, "moved": 0}
 
-    target = folder or "Home"
+    room = _room(folder, doctype, docname)
+
+    # The top of a room is not a folder — there is no row to be inside — so a
+    # move there is an attachment with no folder at all, which is exactly what
+    # a file uploaded from the record's own Files tab looks like.
+    target = folder or ("" if room else "Home")
+
     if folder:
-        _mine(folder)
         inside = set(_upward(folder))
         for name in names:
             if name == folder or name in inside:
                 frappe.throw(_("A folder cannot be moved inside itself."))
 
+    left = 0
     for name in names:
         doc = _mine(name)
+        if room:
+            doc.attached_to_doctype, doc.attached_to_name = room
+        elif _in_room(doc):
+            doc.attached_to_doctype, doc.attached_to_name = "", ""
+            left += 1
         doc.folder = target
         doc.save()
 
-    return {"ok": True, "moved": len(names), "folder": folder}
+    return {"ok": True, "moved": len(names), "folder": folder, "left": left}
+
+
+def _in_room(doc) -> bool:
+    """Whether this file is *living in* a record's room rather than merely
+    pointing at a record.
+
+    The distinction that keeps a move from detaching things nobody meant to
+    detach. "A file can have both" is the sentence the whole module rests on:
+    an attachment that somebody also filed into a folder of their own is
+    attached *and* in the drive, and dragging it from one drive folder to
+    another has nothing to do with the record it belongs to.
+
+    What is in a room is what the room lists — a loose attachment, or one under
+    a folder the room owns, whose id begins with the room's own address.
+    """
+    if not (doc.get("attached_to_doctype") and doc.get("attached_to_name")):
+        return False
+    folder = doc.get("folder") or ""
+    if not folder:
+        return True
+    return folder.startswith(f"{doc.attached_to_doctype}/{doc.attached_to_name}/")
 
 
 def _upward(folder: str) -> list[str]:

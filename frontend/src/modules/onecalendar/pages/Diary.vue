@@ -10,8 +10,60 @@
     The merge is the server's (`onecalendar/diary.py`), because it is the same
     permission path each screen uses.
   -->
-  <PageHeader>
+  <!--
+    The bar, which is the shell's on the page and the window's own inside one.
+
+    Teleported rather than drawn again: a window already has a bar with a name
+    in it, and a second row under it holding one button is the band OneCloud
+    spent a stage removing. `WINDOW_BAR` in `lib/desk/windows.js`.
+  -->
+  <Teleport v-if="inWindow" :to="`#${inWindow}`">
+    <!-- Whose days these are. Icons in a window's bar, where there is room for
+         two glyphs and not for two words. -->
+    <Button
+      v-for="one in LENSES"
+      :key="one.lens"
+      variant="ghost"
+      :icon="one.icon"
+      :label="one.label"
+      :tooltip="one.label"
+      :class="diary.lens === one.lens ? '!bg-surface-gray-3' : ''"
+      :data-slot="`diary-lens-${one.lens}`"
+      @click="lookAt(one.lens)"
+    />
+    <Button
+      variant="ghost"
+      icon="lucide-plus"
+      :label="__('New event')"
+      :tooltip="__('New event')"
+      data-slot="diary-new"
+      @click="start()"
+    />
+  </Teleport>
+
+  <PageHeader v-else>
     <Trail :items="crumbs" />
+
+    <!--
+      Whose days these are — `docs/WORK.md` §6. Two buttons and not a
+      dropdown: there are two answers, they are the two questions anybody opens
+      a calendar with, and a menu would hide one of them behind the other.
+    -->
+    <div class="flex items-center gap-0.5">
+      <!-- The chosen one is held down. `!` because a Button draws its own
+           background for its variant and this has to beat it — the same way
+           the space switcher marks itself open. -->
+      <Button
+        v-for="one in LENSES"
+        :key="one.lens"
+        variant="ghost"
+        :icon-left="one.icon"
+        :label="one.label"
+        :class="diary.lens === one.lens ? '!bg-surface-gray-3' : ''"
+        :data-slot="`diary-lens-${one.lens}`"
+        @click="lookAt(one.lens)"
+      />
+    </div>
 
     <!-- The one thing this surface writes. Everything else on the grid is a
          record under a screen's rules, and New there means New *there*. -->
@@ -48,19 +100,22 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, inject, onMounted, ref, unref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Alert, Button, Calendar, PageHeader } from '@/ui'
 import Trail from '@/shared/components/Trail.vue'
 import { useCrumbs } from '@/shared/composables/useCrumbs'
 import EventDialog from '@/modules/onecalendar/components/EventDialog.vue'
 import { workspace } from '@/shared/lib/workspace'
+import { WINDOW_BAR } from '@/modules/onespace/lib/desk/windows'
 import { KIND, writeAt } from '@/shared/lib/url/at'
 import { useIsMobile } from '@/modules/onespace/lib/shell/breakpoint'
 import { settings } from '@/shared/lib/runtime/format'
 import { errorText } from '@/shared/lib/runtime/errors'
 import { __ } from '@/shared/lib/runtime/translate'
-import { diary, diaryEvents, showing } from '@/modules/onespace/lib/screen/diary'
+import {
+  EVERYONE, MINE, diary, diaryEvents, look, showing,
+} from '@/modules/onespace/lib/screen/diary'
 
 /**
  * Read-only, and more firmly than the screen calendar is: every entry here
@@ -83,6 +138,30 @@ const CONFIG = computed(() => ({
   // surface saying 2 PM.
   timeFormat: settings().time.includes('a') ? '12h' : '24h',
 }))
+
+/**
+ * Whether this is inside a window, and where its bar is.
+ *
+ * Held until mounted, because a `<Teleport>` resolves its target when it
+ * patches and a target appearing in the same tick is one Vue warns about and
+ * then ignores — the same hold `EditorChrome` makes, for the same reason.
+ */
+const bar = inject(WINDOW_BAR, null)
+const ready = ref(false)
+onMounted(() => { ready.value = true })
+const inWindow = computed(() => (ready.value ? unref(bar) || '' : ''))
+
+/**
+ * The two lenses, as the row of buttons draws them.
+ *
+ * Built in a function rather than at module scope for the reason every other
+ * list of `__()` in this app is: a constant built when the module loads calls
+ * the translator before the catalogue has arrived.
+ */
+const LENSES = [
+  { lens: MINE, label: __('Mine'), icon: 'lucide-user' },
+  { lens: EVERYONE, label: __('Everyone'), icon: 'lucide-users' },
+]
 
 const router = useRouter()
 
@@ -134,12 +213,25 @@ const days = ref(null)
 
 const reload = () => (days.value ? moved(days.value) : null)
 
+/**
+ * Change the lens, and ask the same days again.
+ *
+ * The lens is the server's question rather than a filter over what arrived:
+ * "everyone" reads sources "mine" never asked for, so there is nothing in the
+ * browser to filter down to. `docs/WORK.md` §6.
+ */
+function lookAt(lens) {
+  if (diary.lens === lens) return
+  look(lens)
+  reload()
+}
+
 async function moved({ startDate, endDate }) {
   if (!startDate || !endDate) return
   days.value = { startDate, endDate }
   error.value = ''
   try {
-    const answer = await workspace.agenda(startDate, endDate)
+    const answer = await workspace.agenda(startDate, endDate, diary.lens)
     rows.value = answer?.events || []
     // Every calendar there is, not only the ones with something in them this
     // month: a rail whose rows appear and disappear as you page is a set of

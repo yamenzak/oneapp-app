@@ -14,6 +14,20 @@
   -->
   <StateBadge v-if="column.cell === 'badge' && value" :label="value" :states="states" />
 
+  <!--
+    A word the screen said is a category rather than a record. Coloured from
+    the value itself — `lib/screen/tags.js` — so a tenant's own designations
+    and departments are told apart without anybody configuring anything.
+  -->
+  <Badge
+    v-else-if="column.cell === 'tag' && text"
+    :theme="tagTheme(text)"
+    variant="subtle"
+    class="max-w-full"
+  >
+    <span class="truncate" :title="text">{{ text }}</span>
+  </Badge>
+
   <span v-else-if="column.cell === 'check'" class="text-ink-secondary">
     <Icon
       :name="value ? 'lucide-check' : 'lucide-minus'"
@@ -21,7 +35,13 @@
     />
   </span>
 
-  <Rating v-else-if="column.cell === 'rating'" :model-value="Number(value) || 0" disabled />
+  <!-- Whole stars, from the fraction Frappe stores. See `starsOf`. -->
+  <Rating
+    v-else-if="column.cell === 'rating'"
+    :model-value="starsOf(value)"
+    :max="STARS"
+    disabled
+  />
 
   <div v-else-if="column.cell === 'image'" class="flex items-center">
     <Avatar v-if="value" :image="value" :label="String(value)" shape="square" size="sm" />
@@ -116,6 +136,8 @@ import StateBadge from '@/modules/onespace/components/screen/fields/StateBadge.v
 import RecordChip from '@/modules/onespace/components/screen/record/RecordChip.vue'
 import RecordPreview from '@/modules/onespace/components/screen/bodies/RecordPreview.vue'
 import { cellText, tagList } from '@/modules/onespace/lib/screen/cells'
+import { tagTheme } from '@/modules/onespace/lib/screen/tags'
+import { STARS, starsOf } from '@/modules/onespace/lib/screen/rating'
 import { session } from '@/modules/onespace/lib/shell/session'
 
 const props = defineProps({
@@ -171,4 +193,12 @@ const numeric = computed(() => NUMERIC.includes(props.column.cell))
 const formatted = computed(() =>
   cellText(props.column, props.value, formats.value, link.value),
 )
+
+// A tag's own word, which is the same word `cellText` writes minus the em dash
+// it uses for nothing: an empty tag is no badge at all rather than a coloured
+// pill with a dash in it.
+const text = computed(() => {
+  const said = formatted.value
+  return said === '—' ? '' : said
+})
 </script>

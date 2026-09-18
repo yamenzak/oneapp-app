@@ -4,8 +4,48 @@
     list or a grid. What is new is underneath: these are Frappe `File` rows, the
     same ones an attachment is, so nothing here is a second store.
   -->
-  <PageHeader>
-    <Trail :items="crumbs">
+  <!--
+    The header, wherever this Drive is.
+
+    On the page it teleports into the shell's bar, which is what `PageHeader`
+    is. In a window there is no shell bar to teleport to — the window's own bar
+    is a title and its chrome — so the same row is drawn in place, under it.
+  -->
+  <component :is="windowed ? 'div' : PageHeader" :class="windowed ? WINDOW_BAR : ''">
+    <!--
+      Where you are. A trail of links on the page, because every folder is
+      somewhere you can send a colleague; a row of presses in a window, because
+      a window has no address of its own to link into.
+    -->
+    <nav
+      v-if="windowed"
+      data-slot="drive-window-path"
+      class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto"
+    >
+      <Button
+        variant="ghost"
+        size="sm"
+        icon="lucide-corner-left-up"
+        :label="__('Up one folder')"
+        :tooltip="__('Up one folder')"
+        :disabled="crumbs.length < 2"
+        @click="upOne"
+      />
+      <template v-for="(one, step) in crumbs" :key="one.name || step">
+        <span v-if="step" class="shrink-0 text-ink-gray-4" aria-hidden="true">/</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          :icon="one.home ? 'lucide-home' : undefined"
+          :label="one.home ? one.home : one.label"
+          :tooltip="one.home || ''"
+          :disabled="step === crumbs.length - 1"
+          @click="goCrumb(one)"
+        />
+      </template>
+    </nav>
+
+    <Trail v-else :items="crumbs">
       <!-- The rail, on a phone: the shell draws a sidebar only on a desktop.
            The same list, from the same module, so the two cannot drift. -->
       <template v-if="isMobile" #before>
@@ -22,50 +62,37 @@
 
     <div class="flex shrink-0 items-center gap-2">
       <!--
-        Only where there are no column heads to sort from.
+        Search, at the end of the path, which is where every file manager on
+        the reference board puts it and where it says what it means: this
+        narrows *here*. It had a line of its own over the list, which made it
+        the fourth stacked band between the window's title and the first file,
+        and read as a filter on the product rather than on the folder.
 
-        A list sorts by clicking the word at the top of the column, which is
-        what every list screen here does and what a person expects of a table.
-        A grid has no columns, so it keeps the menu — and the menu is also the
-        only home for the two orders that are not columns, `Default` and
-        `Kind`. Two controls for one job on one screen is the thing worth
-        avoiding; one control on the screen that has no other is not.
-
-        One or the other, never both: `icon` is what makes a Button icon-only
-        and `icon-left` is what puts one beside a label, so setting the pair
-        drew the arrow twice on a phone.
+        §B1 leaves the box's place to the caller — `v-model:searched` is the
+        frame saying "my box, my place" — so this is a move and not a second
+        box.
       -->
-      <Dropdown v-if="grid" :options="orderOptions">
-        <Button
-          variant="ghost"
-          data-slot="drive-order"
-          :disabled="!can.can(CAN.SORT)"
-          :icon-left="isMobile ? undefined : (drive.descending.value
-            ? 'lucide-arrow-down-narrow-wide'
-            : 'lucide-arrow-up-narrow-wide')"
-          :label="isMobile ? undefined : __('Sort')"
-          :icon="isMobile
-            ? (drive.descending.value
-              ? 'lucide-arrow-down-narrow-wide'
-              : 'lucide-arrow-up-narrow-wide')
-            : undefined"
-          :tooltip="can.why(CAN.SORT) || __('Sorted by {0}', [orderName])"
-        />
-      </Dropdown>
-
-      <!-- List or grid, remembered: a person who wants thumbnails wants them
-           on every folder, not once. -->
-      <Button
-        :icon="grid ? 'lucide-list' : 'lucide-layout-grid'"
-        :label="grid ? __('Show as a list') : __('Show as a grid')"
-        :tooltip="grid ? __('Show as a list') : __('Show as a grid')"
-        variant="ghost"
-        @click="setGrid(!grid)"
+      <!-- On Home there is no list to narrow, so typing here is a search of
+           the drive: the box takes you to All files carrying what you typed,
+           which is what a search box on a landing page has always meant. -->
+      <ListSearch
+        v-model="searched"
+        class="w-40 lg:w-56"
+        :placeholder="__('Search {0}', [placeName])"
+        @changed="atHome ? go({ place: 'home' }) : list?.read()"
       />
+
       <!--
-        Icon-only on a phone. `icon` rather than `icon-left` is what makes a
-        Button icon-only; the label stays either way, because it is also the
-        accessible name.
+        Sort, the view toggle and New have moved to the command bar under this
+        line — `DriveCommands.vue`. They were here because there was nowhere
+        else; now there is, and a header that kept a second copy of three of
+        them would be the two-buttons-for-one-idea this product keeps
+        removing.
+
+        What is left is the one verb that is about the *place* rather than
+        about a file or a way of looking at one: emptying the bin is not
+        something you do to a selection, and it is not something you want a
+        press away from Delete.
       -->
       <Button
         v-if="place === 'trash'"
@@ -77,74 +104,93 @@
         :disabled="!drive.files.value.length || drive.busy.value"
         @click="emptying = true"
       />
+
       <!--
-        Inside a mount there is nothing to upload into and nothing to make:
-        the Drive browses a host and does not write to one. What is useful
-        instead is asking the host again, because the commonest question about
-        a drop folder is whether today's delivery has landed.
+        Upload. A plain input rather than `FileUploader`: the queue is
+        `useUploads`, which outlives this page, and a component that owns
+        reactive upload state would end where the page does. A hidden file
+        input *is* the file picker; `FormControl` draws a box around one.
       -->
-      <template v-else-if="inRemote">
-        <Button
-          icon-left="lucide-refresh-cw"
-          :label="__('Check again')"
-          :tooltip="__('Ask the host again')"
-          :loading="loading"
-          @click="drive.load()"
-        />
-        <!-- The mount itself, managed where it is used. A connection that can
-             only be paused from the desk is a connection nobody pauses: the
-             moment you want to is the moment the host is misbehaving, and the
-             person looking at the red dot is here. -->
-        <Dropdown :options="mountOptions">
-          <Button
-            data-slot="drive-mount-menu"
-            icon="lucide-ellipsis-vertical"
-            variant="ghost"
-            :label="__('This connection')"
-            :tooltip="__('This connection')"
-          />
-        </Dropdown>
-      </template>
-      <template v-else>
-        <!--
-          Upload. A plain input rather than `FileUploader`: the queue is
-          `useUploads`, which outlives this page, and a component that owns
-          reactive upload state would end where the page does.
-        -->
-        <!-- A hidden file input is the file picker itself; `FormControl` draws
-             a labelled control and there is nothing here to label. -->
-        <!-- eslint-disable-next-line vue/no-restricted-html-elements -->
-        <input
-          ref="chooser"
-          name="drive-upload"
-          type="file"
-          multiple
-          class="hidden"
-          @change="chosenFiles"
-        >
-        <!--
-          Everything made rather than uploaded, behind one button — a folder
-          included. A dropdown rather than a row of buttons, because a
-          workspace with an estimator template starts from it far more often
-          than from a blank grid, and because "New folder" sitting beside "New"
-          was two buttons for one idea: the first thing anybody asks of either
-          is "make me something here".
-        -->
-        <Dropdown :options="makeOptions">
-          <Button
-            :icon="isMobile ? 'lucide-plus' : undefined"
-            :icon-left="isMobile ? undefined : 'lucide-plus'"
-            :icon-right="isMobile ? undefined : 'lucide-chevron-down'"
-            variant="solid"
-            :label="__('New')"
-            :disabled="!can.can(CAN.CREATE)"
-            :tooltip="can.why(CAN.CREATE) || __('New file')"
-            :loading="making"
-          />
-        </Dropdown>
-      </template>
+      <!-- eslint-disable-next-line vue/no-restricted-html-elements -->
+      <input
+        ref="chooser"
+        name="drive-upload"
+        type="file"
+        multiple
+        class="hidden"
+        @change="chosenFiles"
+      >
     </div>
-  </PageHeader>
+  </component>
+
+  <!--
+    What you can do here, and what you can do to what you have chosen.
+
+    Between the trail and the list, which is where a file manager puts it and
+    where this product had nothing: New and a view toggle up on the header's
+    line, every other verb hidden behind a row's own menu, and a bar that
+    floated in once something was ticked. `DriveCommands.vue` has the argument.
+  -->
+  <DriveCommands
+    :picked="picked"
+    :can="can"
+    :make-options="makeOptions"
+    :order-options="orderOptions"
+    :order-name="orderName"
+    :more-options="moreOptions"
+    :grid="grid"
+    :details="previewing"
+    :making="making"
+    :trashed="place === 'trash'"
+    :remote="inRemote"
+    :landing="atHome"
+    :wide="!isMobile"
+    @upload="chooser?.click()"
+    @open="open"
+    @download="picked.forEach(downloadOne)"
+    @share="startShare"
+    @rename="startRename"
+    @move="startMove(picked)"
+    @trash="drive.trash(picked)"
+    @restore="drive.restore(picked)"
+    @destroy="drive.destroy(picked)"
+    @clear="list?.clearChosen()"
+    @grid="setGrid"
+    @details="toggleDetails"
+    :rereading="loading"
+    @reread="drive.load()"
+  >
+    <!--
+      A mount has nothing to upload into and nothing to make — the Drive
+      browses a host and does not write to one — so the bar offers the two
+      things that *are* useful there instead. Asking again is the commonest
+      question about a drop folder: has today's delivery landed.
+
+      And the connection itself, managed where it is used: one that can only be
+      paused from the desk is one nobody pauses, because the moment you want to
+      is the moment the host is misbehaving and the person looking at the red
+      dot is here.
+    -->
+    <template v-if="inRemote" #mount>
+      <Dropdown :options="mountOptions">
+        <Button
+          data-slot="drive-mount-menu"
+          icon="lucide-ellipsis-vertical"
+          variant="ghost"
+          :label="__('This connection')"
+          :tooltip="__('This connection')"
+        />
+      </Dropdown>
+    </template>
+    <!-- "Show me every image", asked of the folder you are in. One query with
+         a different `kind`, which the server has taken since the column
+         existed. On this bar's trailing end rather than on a band of its own —
+         `DriveKinds.vue`. -->
+    <template v-if="!inRemote && !atHome && !byKind && place !== 'trash'" #kinds>
+      <DriveKinds :kind="kind" @pick="kind = $event" />
+      <span class="mx-1 h-5 w-px shrink-0 bg-surface-gray-4" />
+    </template>
+  </DriveCommands>
 
   <!-- The rail is the shell's, drawn into its `#sidebar` slot the way Mail's
        is — a page that drew its own would be two rails on one screen. -->
@@ -211,7 +257,27 @@
         radii and no half of one: `test_every_radius_is_one_of_the_four_we_named`
         refuses it, correctly. A corner is a property of a container.
       -->
-      <div class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-6">
+      <!-- A way to start, above the list, in the rooms that are one kind —
+           `DriveStart.vue`. -->
+      <DriveStart
+        v-if="startKind && !atHome"
+        :kind="startKind"
+        :blank="startBlank"
+        :templates="startTemplates"
+        :making="making"
+        @blank="startBlankFile"
+        @template="startFromTemplate"
+      />
+
+      <!--
+        Home, which is not a list: `DriveHome.vue`. It draws three short bands
+        out of three of the places this rail used to spend an entry on each,
+        and everything below — the frame, the heads, the rows, the status bar
+        — is about one list and has nothing to say about it.
+      -->
+      <DriveHome v-if="atHome" @open="open" />
+
+      <div v-else class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-6">
       <ContextMenu :options="rowMenu">
       <DataList
         ref="list"
@@ -226,46 +292,37 @@
       >
         <template #header="{ allPicked, toggleAll }">
         <!--
-          The search box, over the list rather than up in the page header.
-          §B1 leaves the box's place to the caller — `v-model:searched` is the
-          frame saying "my box, my place" — and beside Upload and New was the
-          wrong place for it: those make things and this narrows them. A list
-          screen keeps its box over its rows, and so does this now.
-        -->
-        <ListSearch
-          v-model="searched"
-          class="w-full md:w-64"
-          :placeholder="__('Search files')"
-          @changed="list?.read()"
-        />
-
-        <!--
           The grid keeps a line of its own: it has no column heads to hang a
           select-all on, and "everything here" is still a thing to ask of
-          thumbnails. The count sits with it rather than below, because a grid
-          has no footer rule to sit under.
+          thumbnails.
+
+          A tick and, where bulk is refused, the reason. The count is *not*
+          here — it is in the status bar under the list, which is where every
+          file manager puts it and where the list case has said it since the
+          bar existed. Two places saying "50 items" is one of them wrong the
+          first time a page loads.
         -->
         <!-- A squeezed list has no columns under the header either, so it gets
              the compact line rather than a rule captioned with four words for
              cells that are not being drawn. -->
         <div
-          v-if="grid || squeezed"
+          v-if="(grid || squeezed) && (can.can(CAN.BULK) || can.why(CAN.BULK))"
           class="flex w-full items-center gap-2 pb-1 text-xs text-ink-muted"
         >
-          <template v-if="can.can(CAN.BULK)">
+          <!-- The tick wears its own words here. In the list it is the head of
+               a column and the column says what it ticks; on its own above a
+               wall of cards it is a lone checkbox floating in white space,
+               which is a control nobody presses because nobody knows what it
+               does. -->
+          <label v-if="can.can(CAN.BULK)" class="flex items-center gap-2 ps-2.5">
             <Checkbox
               :model-value="allPicked"
               :aria-label="__('Select everything here')"
-              class="ms-2.5"
               @update:model-value="toggleAll"
             />
-            <span>{{ counted }}</span>
-          </template>
-          <template v-else-if="can.why(CAN.BULK)">
-            <span>{{ counted }}</span>
-            <span class="text-ink-muted">· {{ can.why(CAN.BULK) }}</span>
-          </template>
-          <span v-else>{{ counted }}</span>
+            <span>{{ allPicked ? __('Clear the selection') : __('Select everything here') }}</span>
+          </label>
+          <span v-else class="ms-2.5">{{ can.why(CAN.BULK) }}</span>
         </div>
 
         <!--
@@ -331,7 +388,7 @@
                  its own columns. -->
             <span class="size-7 shrink-0" />
             <span class="size-7 shrink-0" />
-            <span class="hidden w-36 shrink-0 items-center lg:flex">{{ __('Owner') }}</span>
+            <span v-if="ownered" class="hidden w-36 shrink-0 items-center lg:flex">{{ __('Owner') }}</span>
             <ListHeaderCellSort
               v-if="sorts"
               :direction="directionFor('modified')"
@@ -392,7 +449,12 @@
           to the height of the tallest thing in its row, which in a mixed row
           is a card.
         -->
-        <template #row="{ row: file, index, rows, picked, toggle }">
+        <!-- Renamed on the way in, both of them. `rows` and `picked` are also
+             the names of two computeds in this file, and the slot's `picked` is
+             not even the same *kind* of thing as the outer one — a boolean for
+             this row against the list of what is chosen. Shadowing that reads
+             as the same value twice. -->
+        <template #row="{ row: file, index, rows: shown, picked: chosen, toggle }">
           <!--
             Folders, then everything else — the shape every file manager has
             and the one this list was already in without saying so. `ordering`
@@ -404,24 +466,27 @@
             and would otherwise take one card's width.
           -->
           <p
-            v-if="sectionAt(index, rows)"
+            v-if="sectionAt(index, shown)"
             data-slot="drive-section"
             class="col-span-full px-2 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-ink-muted first:pt-0"
-          >{{ sectionAt(index, rows) }}</p>
+          >{{ sectionAt(index, shown) }}</p>
 
           <FileRow
             :file="file"
             :place="place"
             :link="routeFor(file)"
+            :folder-link="!windowed"
             :inline="isMobile ? [] : INLINE"
             :dense="squeezed"
             :grid="grid"
             :shared="place === 'shared'"
             :columns="!grid && !squeezed"
+            :ownered="ownered"
+            :kind-known="byKind"
             selectable
             actions
             movable
-            :selected="picked"
+            :selected="chosen"
             :trashed="place === 'trash'"
             @menu="(options) => (rowMenu = options)"
             @move-into="moveInto"
@@ -452,14 +517,12 @@
 
         `shrink-0` because the list above it is the part that scrolls.
       -->
-      <div
-        v-if="!grid"
-        data-slot="drive-footer"
-        class="flex shrink-0 items-center justify-end gap-2 border-t border-outline-gray-2 px-2 py-2 text-xs text-ink-muted"
-      >
-        <span>{{ counted }}</span>
-        <span v-if="can.why(CAN.BULK)">· {{ can.why(CAN.BULK) }}</span>
-      </div>
+      <DriveStatus
+        :rows="rows"
+        :picked="picked"
+        :more="!!list?.more"
+        :note="can.why(CAN.BULK) || ''"
+      />
       </ContextMenu>
       </div>
     </div>
@@ -537,69 +600,16 @@
   </div>
 
   <!--
-    What you can do with what you have chosen, over the list rather than in the
-    header: a bar at the top means looking away from the thing you are acting
-    on.
+    The floating selection bar is gone from here, and this is the one place in
+    the product it has gone from.
 
-    The same `SelectionBar` a record list and a mailbox draw. It used to be a
-    `Panel` written out here — a third spelling of a bar that already existed
-    twice — and the differences were all accidents: a different count sentence,
-    a different gap, a different way of saying "clear". `anchor="screen"`
-    is the one real difference, and it is real: this list *is* the scroller, so
-    a bar absolute inside it would scroll away with the rows.
+    It exists because a record list and a mailbox have nowhere else to put
+    "eleven chosen" and the verbs for them. OneCloud has two such places now —
+    the command bar above the rows for the verbs, the status bar under them for
+    the count — so a third thing sliding in over the rows was a third place to
+    look for one answer, which is the thing the bar was consolidated to stop.
+    `SelectionBar` is unchanged for every list that is not a file manager.
   -->
-  <SelectionBar
-    v-if="chosenCount"
-    anchor="screen"
-    :count="chosenCount"
-    :total="drive.files.value.length"
-    @clear="list?.clearChosen()"
-    @all="list?.toggleAll()"
-  >
-    <template v-if="place === 'trash'">
-      <Button
-        icon-left="lucide-rotate-ccw"
-        :label="__('Put it back')"
-        :tooltip="__('Put it back')"
-        :loading="drive.busy.value"
-        @click="drive.restore(picked)"
-      />
-      <!--
-        Icon-only on a phone rather than a shorter word. There are two
-        destructive verbs in this product and they are "Move to the bin"
-        and "Delete for ever"; abbreviating one of them to "Delete" on a
-        narrow screen is how a reader comes to think there are three.
-        `icon` and not `icon-left` is what makes a Button icon-only, and
-        the label is still the accessible name.
-      -->
-      <Button
-        :icon="isMobile ? 'lucide-trash-2' : undefined"
-        :icon-left="isMobile ? undefined : 'lucide-trash-2'"
-        theme="red"
-        :label="__('Delete for ever')"
-        :tooltip="__('Delete for ever')"
-        :loading="drive.busy.value"
-        @click="drive.destroy(picked)"
-      />
-    </template>
-    <template v-else>
-      <Button
-        icon-left="lucide-folder-input"
-        :label="__('Move')"
-        :loading="drive.busy.value"
-        @click="startMove(picked)"
-      />
-      <Button
-        :icon="isMobile ? 'lucide-trash-2' : undefined"
-        :icon-left="isMobile ? undefined : 'lucide-trash-2'"
-        theme="red"
-        :label="__('Move to the bin')"
-        :tooltip="__('Move to the bin')"
-        :loading="drive.busy.value"
-        @click="drive.trash(picked)"
-      />
-    </template>
-  </SelectionBar>
 
   <FileShare v-model="sharing" :file="looking" />
 
@@ -613,6 +623,46 @@
     :folder-label="folderLabel"
   />
   <FolderPicker v-model="moving" :moving="toMove" @chosen="intoFolder" />
+
+  <!-- A file the workspace already has, filed onto the record whose room this
+       is. `attached_to` is what makes it the record's, and the room is what
+       supplies it — see `makeOptions`. -->
+  <FilePicker
+    v-if="room"
+    v-model="attaching"
+    multiple
+    :attached-to="{ doctype: room.doctype, docname: room.docname }"
+    @picked="drive.load()"
+  />
+
+  <!--
+    The one move that loses something.
+
+    Dragging a file out of a record's room is not undone by dragging it back:
+    nothing on the file remembers which record it used to be about, so the
+    record is not somewhere it can be returned to. The other direction — into a
+    room — gains a record and needs no question.
+  -->
+  <Dialog
+    :model-value="!!pending"
+    :title="__('Take it off the record?')"
+    @update:model-value="pending = null"
+  >
+    <p class="text-p-base text-ink-secondary">
+      {{ pending?.losing.length === 1
+        ? __('{0} belongs to {1}. Moving it here takes it off.', [pending.losing[0].file_name, pending.losing[0].attached_to_name])
+        : __('{0} of these belong to a record. Moving them here takes them off.', [pending.losing.length]) }}
+    </p>
+    <template #actions>
+      <Button
+        theme="red"
+        variant="solid"
+        :label="__('Move it anyway')"
+        data-slot="drive-confirm-move"
+        @click="confirmMove"
+      />
+    </template>
+  </Dialog>
 
   <Dialog v-model="naming" :title="__('New folder')">
     <template #default>
@@ -663,7 +713,7 @@
 
 <script setup>
 import { useAiContext } from '@/shared/lib/ai/context'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   Alert,
@@ -678,10 +728,16 @@ import {
   PageHeader,
 } from '@/ui'
 import Trail from '@/shared/components/Trail.vue'
+import DriveCommands from '@/modules/onestorage/components/DriveCommands.vue'
+import DriveHome from '@/modules/onestorage/components/DriveHome.vue'
+import DriveStart from '@/modules/onestorage/components/DriveStart.vue'
+import { openFile } from '@/modules/onestorage/lib/editing'
+import FilePicker from '@/modules/onestorage/components/FilePicker.vue'
+import DriveKinds from '@/modules/onestorage/components/DriveKinds.vue'
+import DriveStatus from '@/modules/onestorage/components/DriveStatus.vue'
 import { useCrumbs } from '@/shared/composables/useCrumbs'
 import { CAN, offers } from '@/shared/lib/capability'
 import DataList from '@/shared/components/DataList.vue'
-import SelectionBar from '@/modules/onespace/components/screen/bodies/SelectionBar.vue'
 import { PAGE, fileSource } from '@/shared/lib/list/files'
 import ListSearch from '@/modules/onespace/components/screen/views/ListSearch.vue'
 import FileRow from '@/modules/onestorage/components/FileRow.vue'
@@ -703,12 +759,19 @@ import {
 } from '@/modules/onestorage/lib/files'
 import { useIsMobile } from '@/modules/onespace/lib/shell/breakpoint'
 import { __ } from '@/shared/lib/runtime/translate'
-import { PLACES, labelOf } from '@/modules/onestorage/components/places'
+import { BIN, RAIL, labelOf } from '@/modules/onestorage/components/places'
 import { recall, remember } from '@/shared/lib/url/remember'
 
 // What an empty place means, which is different in each: an empty bin is good
 // news and an empty folder is an invitation.
 const EMPTY = {
+  // Home draws no list of its own — `DriveHome.vue` — so this entry is the
+  // *gate* rather than the copy: a place absent from here falls back to All
+  // files, which is how Templates spent several stages quietly showing it.
+  start: {
+    title: __('Nothing here yet'),
+    description: __('Upload a file, or make a folder.'),
+  },
   home: {
     title: __('Nothing here yet'),
     description: __('Upload a file, or make a folder.'),
@@ -770,10 +833,99 @@ const isMobile = useIsMobile()
 // it highlights when you click it, the crumb says "Files" and the rows are
 // everybody's: no error, no empty state, nothing to notice except that the
 // answer is wrong. A guard reads `places.js` back against this now.
+/**
+ * Where this Drive is, which is the URL on the page and a pair of refs in a
+ * window.
+ *
+ * A window over a space has no claim on the address: the page underneath is
+ * somewhere, and a folder somebody opened beside it is not. So the same
+ * component reads whichever of the two it was given — `docs/DESKTOP.md`
+ * stage 6 — and everything below this line is unchanged by which.
+ *
+ * The URL still wins on the page, and that is the half worth keeping: a folder
+ * is somewhere you can send a colleague.
+ */
+const props = defineProps({
+  /** Drawn inside a window rather than as the page — `DriveWindow.vue`. */
+  windowed: { type: Boolean, default: false },
+  /** Where it is, when a window is keeping that rather than the URL. */
+  at: { type: Object, default: () => ({}) },
+})
+const emit = defineEmits(['go'])
+
+// A ref of the prop, so the handful of places that read it before the template
+// does are reading one thing. `props.windowed` does not change over a
+// component's life — a window's Drive is a window's Drive — so this is a read
+// rather than a watch.
+const windowedRef = computed(() => props.windowed)
+
+const asked = computed(() => (props.windowed ? props.at : route.query))
+
 const place = computed(() =>
-  Object.hasOwn(EMPTY, route.query.place) ? route.query.place : 'home',
+  Object.hasOwn(EMPTY, asked.value.place) ? asked.value.place : 'home',
 )
-const folder = computed(() => route.query.folder || '')
+const folder = computed(() => asked.value.folder || '')
+
+/** Home — a landing rather than a folder, so most of this page is not drawn. */
+const atHome = computed(() => place.value === 'start')
+
+/**
+ * A place that *is* a kind — Documents, Workbooks, Code.
+ *
+ * These are the three the editors' windows open on, and inside one the kind
+ * pills have nothing to add: pressing Images in OneWriter is asking for the
+ * images among the documents, which is the empty set every time. The filter
+ * is the room you are standing in.
+ */
+const BY_KIND = ['documents', 'workbooks', 'code']
+const byKind = computed(() => BY_KIND.includes(place.value))
+
+/**
+ * The start strip's three answers, from the room you are in.
+ *
+ * Only in a room that is one kind. In All files "start something" has no
+ * answer — asking which kind is the New menu's whole job there, and a strip
+ * that asked it again would be that menu drawn flat.
+ */
+const startKind = computed(() => (
+  { documents: 'Doc', workbooks: 'Sheet', code: 'Code' }[place.value] || ''
+))
+const startBlank = computed(() => ({
+  Doc: __('Blank document'),
+  Sheet: __('Blank sheet'),
+  Code: __('New code file'),
+}[startKind.value] || ''))
+const startTemplates = computed(() => (
+  startKind.value === 'Sheet' ? sheetTemplates.value
+    : startKind.value === 'Doc' ? docTemplates.value
+      : []
+))
+
+/** The blank, whichever blank this room means. */
+function startBlankFile() {
+  if (startKind.value === 'Sheet') newSheet()
+  else if (startKind.value === 'Code') choosingLanguage.value = true
+  else newDoc()
+}
+
+/** And one of the workspace's own, opened as a *new* file — the template is
+ *  never written over, which is why `TemplatePicker` refuses to say "apply". */
+function startFromTemplate(one) {
+  if (startKind.value === 'Sheet') newSheet(one.name)
+  else newDoc(one.name)
+}
+
+/** The windowed header's own row, which the shell's bar would have given it. */
+const WINDOW_BAR = 'flex shrink-0 items-center gap-2 border-b border-outline-gray-2 px-3 py-2'
+
+/** Somewhere else in the Drive, through whichever of the two is keeping it. */
+function go(where) {
+  if (props.windowed) {
+    emit('go', { place: place.value, folder: '', ...where })
+    return
+  }
+  router.push({ name: 'Drive', query: { ...where } })
+}
 
 /**
  * Looking at a folder on somebody else's server.
@@ -804,8 +956,11 @@ const drive = useDrive({
   rows,
   reread: () => list.value?.read(),
   folder,
-  route,
-  router,
+  // Not in a window: the order it is sorted in goes in the address on the
+  // page, and a window has no claim on the address. It keeps the order all the
+  // same — `useDrive` holds it either way — it simply does not write it down.
+  route: windowedRef.value ? null : route,
+  router: windowedRef.value ? null : router,
 })
 
 /**
@@ -822,6 +977,9 @@ const drive = useDrive({
 const source = computed(() => fileSource({
   place: place.value,
   folder: folder.value,
+  // A pill, and a fresh list when it changes: narrowing to the images in a
+  // folder is a different set of rows rather than the same ones re-ordered.
+  kind: kind.value,
   // The refs and not their values, deliberately. A new source is a fresh
   // list, and the frame empties the search box when it gets one — so a source
   // that was rebuilt every time somebody sorted would clear what they had
@@ -846,11 +1004,31 @@ const chooser = ref(null)
 // the place rather than pushing a row in: the server decided the name, the size
 // and whether the quota allowed it at all.
 uploads.onFinished((one) => {
-  if (one.folder === (folder.value || 'Home')) drive.load()
+  if (one.folder === (landing().folder || 'Home')) drive.load()
 })
 
+/**
+ * Where an uploaded file goes from here.
+ *
+ * Two shapes, because the top of a record's room is not a folder. The levels
+ * above a room are a query and the room itself is addressed by the record, so
+ * a file dropped there is *attached* rather than filed — which is what it
+ * would have been if somebody had dropped it on the record's own Files tab,
+ * and is the whole point of the room being a place.
+ *
+ * A folder *inside* a room is an ordinary folder again: its id is real, the
+ * file is filed into it, and the server takes the room off the folder on the
+ * way in (`file.py`). So a room needs no special case below its own top.
+ */
+function landing() {
+  if (room.value) {
+    return { folder: '', attachTo: { doctype: room.value.doctype, docname: room.value.docname } }
+  }
+  return { folder: folder.value || 'Home' }
+}
+
 function chosenFiles(event) {
-  uploads.add([...(event.target.files || [])], { folder: folder.value || 'Home' })
+  uploads.add([...(event.target.files || [])], landing())
   // Reset, so choosing the same file twice fires twice.
   event.target.value = ''
 }
@@ -864,22 +1042,124 @@ function chosenFiles(event) {
  * there is not a folder.
  */
 function dropped(files) {
-  uploads.add(files, { folder: folder.value || 'Home' })
+  uploads.add(files, landing())
+}
+
+/**
+ * Whether moving these into that folder takes them off a record.
+ *
+ * A file that *lives in* a room — loose on the record, or under one of the
+ * room's own folders — stops belonging to it when it is dragged into the drive
+ * proper. A file that is merely attached *and* filed somewhere does not: "it
+ * can have both" is the sentence the module rests on, and dragging one drive
+ * folder to another has nothing to do with the record.
+ *
+ * The same reading the server does before it writes — `_in_room` in
+ * `writing.py` — because a warning that guessed differently from the thing it
+ * warns about is worse than no warning.
+ */
+function leaving(files, into) {
+  const under = String(into || '')
+  return files.filter((one) => {
+    if (!one.attached_to_doctype || !one.attached_to_name) return false
+    const room = `${one.attached_to_doctype}/${one.attached_to_name}/`
+    const now = one.folder || ''
+    if (now && !now.startsWith(room)) return false
+    return !under.startsWith(room)
+  })
 }
 
 /** A row dropped on a folder row. */
 function moveInto(target, names) {
-  const moving = drive.files.value.filter((one) => names.includes(one.name))
-  if (moving.length) drive.move(moving, target.name)
+  const what = drive.files.value.filter((one) => names.includes(one.name))
+  if (what.length) askThenMove(what, target.name)
+}
+
+/**
+ * The move, with the one question worth asking first.
+ *
+ * Taking a file out of a record's room is not undoable by dragging it back —
+ * the record is not where it came *from* any more, and nothing on the file
+ * remembers which record it used to be about. So the one direction that loses
+ * something says so, and the other just happens.
+ */
+function askThenMove(what, into) {
+  const losing = leaving(what, into)
+  if (!losing.length) {
+    drive.move(what, into)
+    return
+  }
+  pending.value = { what, into, losing }
+}
+
+async function confirmMove() {
+  const ask = pending.value
+  pending.value = null
+  if (ask) await drive.move(ask.what, ask.into)
 }
 
 // One menu for the whole list, filled by whichever row was end-clicked —
 // frappe-ui's own pattern, and why there is not a menu instance per row.
 const rowMenu = ref([])
 
+/**
+ * Where in the Records tree this is, as its parts.
+ *
+ * `Quotation`, then `QTN-0001`, then any folders under it. The first two are a
+ * doctype and a primary key; everything after them is a real `File` row whose
+ * id *is* this path — `onestorage/file.py` names the top of a room after the
+ * room, so nothing has to be looked up to turn one into the other.
+ */
+const recordPath = computed(() => (
+  place.value === 'records' ? folder.value.split('/').filter(Boolean) : []
+))
+
+/**
+ * Whether this is a record's room rather than one of the two queries above it.
+ *
+ * A room is a place: it has rows, it takes a folder, it sorts. The levels
+ * above are a `group by` wearing a directory's shape and have nothing to make
+ * in them, which is what `can` says out loud.
+ */
+const inRoom = computed(() => recordPath.value.length >= 2)
+
+/**
+ * The record a new folder would belong to, where there is no parent folder to
+ * make it inside.
+ *
+ * Only at the top of a room. One folder deeper there *is* a parent, its id is
+ * the path, and the server takes the room off it — which is also what keeps a
+ * subfolder from being a quiet way out of the permission the room hangs off.
+ */
+const room = computed(() => (
+  recordPath.value.length === 2
+    ? { doctype: recordPath.value[0], docname: recordPath.value[1] }
+    : null
+))
+
+/**
+ * A crumb, pressed inside a window.
+ *
+ * The trail's items carry a route because on the page they are links. In a
+ * window there is nothing to link to, so the route is read back for what it
+ * says rather than followed — which is the same two values `go` takes.
+ */
+function goCrumb(one) {
+  const query = one.route?.query || {}
+  go({ place: query.place || 'home', folder: query.folder || '' })
+}
+
+/** One level up, which is the crumb before the last one. */
+function upOne() {
+  const above = crumbs.value[crumbs.value.length - 2]
+  if (above) goCrumb(above)
+}
+
 const placeName = computed(() => labelOf(place.value))
+// The phone's way to the places, which has no rail to put them in. The same
+// bands, flattened with the bin last — a dropdown cannot have a foot.
 const placeOptions = computed(() =>
-  PLACES.map((one) => ({
+  [...RAIL.flatMap((band) => band.places), BIN].map((one) => ({
     label: one.label,
     icon: one.icon,
     route: { name: 'Drive', query: { place: one.value } },
@@ -890,8 +1170,23 @@ const placeOptions = computed(() =>
 // to drop the "Files" crumb is gone: frappe-ui collapses the trail to its
 // last two with an ellipsis menu when it runs out of room, which is a better
 // answer than a surface deciding for itself which of its crumbs is expendable.
+/**
+ * Where you are, said out loud.
+ *
+ * Two entries and not one: the first *becomes* the house — `useCrumbs` reads
+ * it that way — and the second is the place inside it. Passing only the first
+ * left the trail as a house glyph and nothing else, so this was the one page
+ * in the product that did not say where it was. The rail said it, in a chip
+ * nobody reads as a title, and the header said nothing at all.
+ *
+ * It is also what a folder's path hangs off: at the root of Recents the trail
+ * is `⌂ / Recent`, and three folders into Home it is `⌂ / All files / … `.
+ */
 const crumbs = useCrumbs(
-  () => ({ label: __('Files'), route: { name: 'Drive', query: { place: place.value } } }),
+  () => [
+    { label: __('Files'), route: { name: 'Drive', query: { place: place.value } } },
+    { label: placeName.value, route: { name: 'Drive', query: { place: place.value } } },
+  ],
   () => drive.path.value.map((one) => ({
     label: one.label,
     route: { name: 'Drive', query: { place: 'home', folder: one.name } },
@@ -974,20 +1269,6 @@ function sectionAt(index, rows) {
   return index === 0 || rows[index - 1]?.is_folder ? __('Files') : ''
 }
 
-const counted = computed(() => {
-  const shown = drive.files.value.length
-  const chosenNow = chosenCount.value
-  if (chosenNow) return __('{0} of {1} chosen', [chosenNow, shown])
-  // Whole sentences rather than a number glued to a word: the plural and the
-  // "and there is more" are one phrase in some languages and two in others.
-  if (list.value?.more) {
-    return shown === 1
-      ? __('1 thing, more below')
-      : __('{0} things, more below', [shown])
-  }
-  return shown === 1 ? __('1 thing') : __('{0} things', [shown])
-})
-
 // What the folder somebody is in is called, for the share dialog's sentence
 // about what a key reaches. The breadcrumb already knows.
 const folderLabel = computed(
@@ -1012,13 +1293,16 @@ const can = computed(() => offers(inRemote.value
     // Not refused, absent: the toolbar offers Check again in New's place,
     // which is a better answer than a disabled button — §F1's third state.
   }
-  : place.value === 'records'
+  : place.value === 'records' && !inRoom.value
     ? {
       [CAN.SEARCH]: true,
       // A directory made out of a query has nothing to make in it and no
       // order but the one the query came back in. Said rather than left
       // absent — §F1's middle state — because a control that vanishes in one
       // place is a control people stop trusting everywhere.
+      //
+      // The two levels above a room only. A room itself is a place with real
+      // rows in it, and both of these work there — see `inRoom`.
       [CAN.SORT]: __('The record list\'s own order.'),
       [CAN.BULK]: true,
       [CAN.CREATE]: __('Attach a file to a record.'),
@@ -1038,6 +1322,17 @@ const emptyFace = computed(() => {
       icon: 'lucide-server',
       title: __('This folder is empty'),
       description: __('Nothing on the host at this path right now.'),
+    }
+  }
+  // A room is a place you can put things, so an empty one says so. The
+  // Records place's own copy — "files attached to records appear here" — is
+  // about the *tree*, and reading it inside a folder you just made is being
+  // told where files come from while standing in the place you would put one.
+  if (inRoom.value) {
+    return {
+      icon: 'lucide-folder-open',
+      title: __('Nothing here yet'),
+      description: __('Upload a file, or make a folder.'),
     }
   }
   const ICON = {
@@ -1064,6 +1359,9 @@ const grid = ref(
 function setGrid(wanted) {
   grid.value = wanted
   remember('drive.grid', wanted ? '1' : '0')
+  // A window writes nothing to the address: the page underneath owns it, and
+  // the browser's memory above is what makes the choice stick either way.
+  if (props.windowed) return
   // `replace`: switching to thumbnails is not a place to go back to. And the
   // list is the default, so it is an absent key rather than `as=list`.
   const query = { ...route.query }
@@ -1074,6 +1372,60 @@ function setGrid(wanted) {
 // Which file the dialogs are about. One ref, because only one of them is open.
 const looking = ref(null)
 const previewing = ref(false)
+
+/**
+ * The kind this place is narrowed to, or nothing for all of them.
+ *
+ * Not in the address: a pill is how you are looking at a folder rather than
+ * which folder you are in, the same call the order makes. `DriveKinds.vue`.
+ *
+ * Dropped when the place or the folder changes, because "the images in here"
+ * is a question about *here* — carrying it into the next folder would be a
+ * filter somebody has to notice to undo.
+ */
+const kind = ref('')
+watch([place, folder], () => { kind.value = '' })
+
+/**
+ * The details pane, from the command bar.
+ *
+ * It opens on whatever is chosen, and on nothing when nothing is — which is
+ * the one case worth handling rather than refusing: a person who presses
+ * Details with an empty selection is asking for the pane, and the pane with
+ * nothing in it says so better than a disabled button does.
+ */
+function toggleDetails() {
+  if (previewing.value) {
+    previewing.value = false
+    return
+  }
+  looking.value = picked.value[0] || looking.value
+  previewing.value = !!looking.value
+}
+
+/**
+ * The verbs that do not earn a place on the command bar.
+ *
+ * Favourite and Copy are real and are not what anybody came to the row for,
+ * which is the test: a bar is the four or five things somebody presses, and
+ * the rest are one press further away rather than absent.
+ */
+const moreOptions = computed(() => {
+  const one = picked.value.length === 1 ? picked.value[0] : null
+  if (!one || place.value === 'trash' || inRemote.value) return []
+  return [
+    {
+      label: one.liked ? __('Remove from favourites') : __('Add to favourites'),
+      icon: one.liked ? 'lucide-heart-off' : 'lucide-heart',
+      onClick: () => drive.favourite(one),
+    },
+    ...(one.is_folder ? [] : [{
+      label: __('Copy into the Drive'),
+      icon: 'lucide-copy',
+      onClick: () => copyHere(one),
+    }]),
+  ]
+})
 
 /*
  * The kinds the pane opens rather than the router.
@@ -1146,6 +1498,24 @@ const editing = computed(() => !!mounts.value)
  */
 const squeezed = computed(() => previewing.value && !isMobile.value)
 
+/**
+ * Whether the Owner column is worth its 144 pixels.
+ *
+ * It is when more than one person's name would appear in it. A workspace one
+ * person uses answered "Administrator" on every row of every folder, which is
+ * a column of one repeated word taking width off the only column anybody
+ * reads — and in a window, where the whole list is 800 pixels, it was the
+ * difference between a name that fits and a name that truncates.
+ *
+ * A column that comes and goes is normally a bad idea; this one is a fact
+ * about the *place*, not about scrolling. Shared with me always has several
+ * owners and always draws it; a private folder never does and never does.
+ */
+const ownered = computed(() => {
+  const owners = new Set(drive.files.value.map((one) => one.owner).filter(Boolean))
+  return owners.size > 1
+})
+
 const lookingRemote = computed(() => isRemote(looking.value?.name))
 
 /**
@@ -1201,7 +1571,7 @@ const mountOptions = computed(() => {
       icon: 'lucide-unplug',
       onClick: async () => {
         await workspace.driveDisconnect(here.value)
-        router.push({ name: 'Drive', query: { place: 'home' } })
+        go({ place: 'home' })
       },
     },
   ]
@@ -1225,6 +1595,8 @@ async function copyHere(file) {
 
 const sharing = ref(false)
 const naming = ref(false)
+// The picker, reachable only inside a record's room — see `makeOptions`.
+const attaching = ref(false)
 const renaming = ref(false)
 const moving = ref(false)
 const emptying = ref(false)
@@ -1233,6 +1605,9 @@ const copying = ref(false)
 const folderName = ref('')
 const newName = ref('')
 const toMove = ref([])
+
+/** A move waiting on the question above — `{ what, into, losing }` or null. */
+const pending = ref(null)
 const importing = ref(false)
 
 // Anything with an address is a link and navigates itself — a folder, a sheet,
@@ -1240,6 +1615,31 @@ const importing = ref(false)
 // than opened, and looking is what this does: the download is one button
 // further in, which is the right way round.
 function open(file) {
+  // A folder row is a link on the page and is not one in a window, where
+  // following it would take the page underneath somewhere. So the window walks
+  // its own way in — `folderLink` on the row.
+  //
+  // And a pinned folder on Home is never a link, in a window or on the page:
+  // Home is not a place a folder sits *inside*, so walking into one from here
+  // means All files at that folder. Following `place` instead would be Home
+  // again with a folder it has nothing to do with.
+  if (file.is_folder && (windowedRef.value || atHome.value)) {
+    go({ place: atHome.value ? 'home' : place.value, folder: file.name })
+    return
+  }
+
+  // Something with an editor of ours opens in a window of its own —
+  // `lib/editing.js`. It used to open in the pane beside this list, which was
+  // right while the Drive was a page: 45% of a laptop is a reasonable
+  // spreadsheet. OneCloud is a window now and a pane inside one is four
+  // columns and a scrollbar.
+  //
+  // Which leaves the pane doing the thing a pane is for. You *look* at a
+  // photograph, a PDF, a video, and looking is what a column beside the list
+  // is the right shape for — the point of it was never the editor, it was not
+  // losing the folder you found the file in, and a window loses it even less.
+  if (openFile(file)) return
+
   looking.value = file
   previewing.value = true
 }
@@ -1247,13 +1647,43 @@ function open(file) {
 // The only things in this product that are made rather than uploaded, shared
 // with the record's Files tab. Importing a spreadsheet is the Drive's alone:
 // it opens a dialog this page owns.
-const { making, options: newOptions, choosingLanguage, newText, loadTemplates } = useNewFile(
-  () => ({ folder: folder.value || '' }),
+const {
+  making, options: newOptions, choosingLanguage, newText, loadTemplates,
+  docTemplates, sheetTemplates, newDoc, newSheet,
+} = useNewFile(
+  // Where a new file goes, and the two answers are not the same shape.
+  //
+  // At the top of a record's room there is no folder to put it in: the level
+  // is *virtual*, made out of the attachment rows at the moment it is asked
+  // for — §E1 — so `Project/PROJ-0001` is an address and not a `File`. What
+  // makes a document belong to the record there is `attached_to`, which is
+  // what the record's own Files tab passed before it became a door into here.
+  // Handing that level's path over as a `folder` made a document filed in a
+  // folder that does not exist.
+  //
+  // One folder deeper it is the other way round: a room's subfolder is a real
+  // row, and `before_insert` copies the room's `attached_to` onto anything
+  // made inside it — so the folder is both the right answer and the one that
+  // keeps the record.
+  () => (room.value
+    ? { doctype: room.value.doctype, docname: room.value.docname }
+    : { folder: folder.value || '' }),
   () => [{
     label: __('Import a spreadsheet'),
     icon: 'lucide-file-up',
     onClick: () => { importing.value = true },
   }],
+  {
+    // Made here, opened here. A window that made a document by navigating the
+    // page underneath would take away the space somebody was reading, which is
+    // the thing windows exist to stop — and on the page it is the same
+    // gesture, one press from the list the file is now in.
+    opened: (made, route) => openFile({
+      name: made.name,
+      file_name: made.title || made.file_name || '',
+      custom_kind: route === 'Sheet' ? 'Sheet' : 'Doc',
+    }),
+  },
 )
 
 /**
@@ -1281,6 +1711,17 @@ const makeOptions = computed(() => [
     icon: 'lucide-folder-plus',
     onClick: () => { naming.value = true },
   },
+  // Inside a record's room only, because it is the one place where "put a file
+  // here" can mean a file the workspace already has. It was the record's Files
+  // tab's own button and came off with the tab — `docs/DRIVE.md` §13. Uploading
+  // a second copy of a drawing that is already on the site is exactly what the
+  // picker exists to stop, so a room without this door is a room that teaches
+  // people to duplicate.
+  ...(room.value ? [{
+    label: __('Attach a file the workspace has'),
+    icon: 'lucide-paperclip',
+    onClick: () => { attaching.value = true },
+  }] : []),
   ...newOptions.value,
   // Last, and deliberately in this menu rather than beside the rail's
   // Connected heading: everything that brings files into the Drive is behind
@@ -1322,14 +1763,14 @@ function startMove(what) {
 }
 
 async function intoFolder(into) {
-  await drive.move(toMove.value, into)
+  askThenMove(toMove.value, into)
   list.value?.clearChosen()
 }
 
 async function makeFolder() {
   const title = folderName.value.trim()
   if (!title) return
-  await drive.newFolder(title)
+  await drive.newFolder(title, room.value)
   if (!drive.error.value) {
     naming.value = false
     folderName.value = ''

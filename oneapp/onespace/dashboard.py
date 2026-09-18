@@ -67,6 +67,22 @@ KINDS = {
 	"scatter": {"component": "ScatterChart", "needs": ("x_field", "y_field"), "family": "points"},
 }
 
+# The ramps a chart may draw its colours from, and the one it gets by default.
+#
+# frappe-ui's own three, read off `--chart-*` in CSS so they follow the theme
+# rather than being a list of hexes somebody has to keep in step with it.
+#
+# The default it ships for a cartesian chart is `sequential` — one series gets a
+# single mid-blue and more get evenly spaced stops of it — which is right when
+# the series are *steps of one magnitude* and wrong for what dashboards here
+# actually group by. Attendance stacked by status is Present, Absent, On Leave:
+# unrelated categories, and drawn as four shades of blue they are four things
+# nobody can tell apart in a legend. So a widget grouped by a category asks for
+# `categorical`, which is what the donut already defaulted to for exactly this
+# reason.
+PALETTES = ("categorical", "sequential", "diverging")
+DEFAULT_PALETTE = "categorical"
+
 # What a measure is. Frappe takes these as `{"COUNT": "name", "as": "value"}`
 # in a `get_list` field list and refuses the same thing written as a string —
 # so this maps our word to its word rather than building SQL.
@@ -160,6 +176,24 @@ def _shaped(raw, offered: set) -> dict | None:
 	if grain in GRAINS:
 		one["grain"] = grain
 
+	# The order the buckets are meant to be read in, where there is one.
+	#
+	# `_grouped` sorts by value, largest first, which is right for nearly every
+	# chart: alphabetical order puts the answer wherever the alphabet happens
+	# to put it. It is wrong for the one case where the buckets are a
+	# *sequence* — a sales pipeline by stage, a hiring funnel by status — and
+	# there the shape of the chart is the meaning, so a funnel sorted by value
+	# is a funnel of nothing.
+	#
+	# Values rather than fieldnames, so it cannot be checked against the
+	# screen's columns the way everything else here is; bounded instead, the
+	# same way `board.shape` bounds a column order.
+	order = raw.get("order")
+	if isinstance(order, list):
+		kept = [_text(value) for value in order[:BUCKETS] if _text(value)]
+		if kept:
+			one["order"] = list(dict.fromkeys(kept))
+
 	filters = raw.get("filters")
 	if isinstance(filters, dict) and filters:
 		one["filters"] = {
@@ -176,7 +210,18 @@ def _shaped(raw, offered: set) -> dict | None:
 		if value:
 			one[text] = value
 
+	_colours(one, raw)
 	return one
+
+
+def _colours(one: dict, raw: dict) -> None:
+	"""Which ramp this widget draws from.
+
+	Declared where a screen has an opinion and defaulted where it has not. The
+	default is the interesting half: see `PALETTES`.
+	"""
+	asked = _text(raw.get("palette")).lower()
+	one["palette"] = asked if asked in PALETTES else DEFAULT_PALETTE
 
 
 # --------------------------------------------------------------------------- #
@@ -258,14 +303,29 @@ def _grouped(doctype: str, widget: dict, asked: dict) -> list[dict]:
 		limit_page_length=BUCKETS * (BUCKETS if series else 1),
 	)
 
-	return [
+	return _ordered([
 		{
 			"label": _label(row.get(group)),
 			**({"series": _label(row.get(series))} if series else {}),
 			"value": _number(row.get("value")),
 		}
 		for row in rows
-	]
+	], widget.get("order"))
+
+
+def _ordered(rows: list[dict], order) -> list[dict]:
+	"""The buckets a manifest named, in the order it named them.
+
+	Everything else keeps the order it arrived in, which is largest first — so
+	a declared order narrows the sort rather than replacing it, and a stage
+	somebody added last week appears at the end rather than vanishing.
+	"""
+	if not order:
+		return rows
+	rank = {value: at for at, value in enumerate(order)}
+	named = sorted((row for row in rows if row["label"] in rank),
+	               key=lambda row: rank[row["label"]])
+	return named + [row for row in rows if row["label"] not in rank]
 
 
 def _points(doctype: str, widget: dict, asked: dict) -> list[dict]:

@@ -1,4 +1,4 @@
-# OneDoc
+# OneWriter
 
 Documents — the prose half of what a workspace writes. A scope of works, a
 covering letter, a method statement, a README. Opened from the Drive, from a
@@ -57,6 +57,7 @@ Server, in import order:
     typography    how a document is set, in the one place both renderings read
     writing       making one, copying one, throwing one away
     intelligence  what a document asks a model for
+    actions       the one thing a model may ask a document to be, and its tool
 
 Browser, at `frontend/src/modules/onedoc/`: `Doc.vue` is the page and
 `DocEditor.vue` the editor, with the outline, the settings dialog, the
@@ -137,12 +138,21 @@ to any of them rewrites all of them.
 
 ### What a model may do here, and where it lands
 
-The writing verbs are `onespace/ai/text.py`'s, shared with mail and everything
+The writing verbs are `oneai/text.py`'s, shared with mail and everything
 else. What this module owns is writing something that was not there:
 `doc.compose` for a passage at the cursor, `doc.fill` for a whole document
 written from its own headings. Two features rather than one because a credit
 hold is priced off the declared ceiling, and holding a document's worth to
 write one paragraph would make the cursor verb unusable.
+
+All of them are entries in the document's own menu, beside Print and Page
+setup. They were a button of their own in the chrome — "Write with OneAI",
+beside the title — and it came out when OneAI stopped being something each app
+had its own door to: the panel knows which window is in front, it can put a
+passage into this document through `useAiInsert`, and a second branded button
+beside the title was a second answer to "where is the AI". The workbook had
+already settled it; the words and their order are `shared/lib/ai/verbs.js`, so
+"Improve" is the same word in the same place here and in a composer.
 
 All of it arrives **in the prose**, as ordinary ProseMirror transactions — not
 into a panel with a Use button. That is what makes replacing a whole document
@@ -156,6 +166,19 @@ The material a model is given is the document's prose — read from the stored
 HTML, not the JSON — plus the records it reads, described by
 `ai/index.describe`. The same description the search index embeds, because
 "this record as the text that says what it is about" is one question.
+
+And the third thing, which is not a verb in the editor at all: **a document
+that does not exist yet.** `actions.py` registers `document.write` on the
+suggestion registry — "write a to whom it may concern letter for this
+employee", asked of the assistant beside the employee, comes back as a card
+carrying the letter. The prose is written on the turn it is proposed rather
+than on Apply, because what the person is agreeing to is the letter and a card
+that showed a description of one would be agreeing to something nobody read;
+Apply is then `writing.make` and `body.store`, the same two calls the New menu
+makes, and the card gains a way into what it made. `body.from_text` is how a
+model's plain text becomes a body, and it is paragraphs and line breaks and
+nothing else — a Markdown parser here would be a second one to keep in step
+with the editor's.
 
 ---
 

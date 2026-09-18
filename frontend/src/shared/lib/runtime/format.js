@@ -82,21 +82,63 @@ function datePattern() {
 }
 
 /**
+ * A day with no time on it: Frappe's Date, as against its Datetime.
+ *
+ * `2026-09-11` and nothing after it. A Datetime carries a space and a clock,
+ * which is what tells the two apart on the way in.
+ */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/
+
+/**
  * A value as a dayjs in the reader's own zone, or null.
  *
- * A **string** is a Frappe datetime: a wall clock in the *site's* timezone, so
- * reading it as if it were the reader's own puts an invoice dated the 1st on
- * the 31st for anybody far enough west. `dayjsLocal` is what converts it.
+ * A **datetime string** is a wall clock in the *site's* timezone, so reading
+ * it as if it were the reader's own puts an invoice timed 00:30 on the 1st at
+ * 20:30 on the 31st for anybody far enough west. `dayjsLocal` is what converts
+ * it.
+ *
+ * A **date string** is not an instant and has no zone to convert *from*. It is
+ * somebody's birthday, the day a leave starts, the date an attendance row is
+ * about — facts about a calendar rather than about a moment, and the same on
+ * both sides of a border. Converting one anyway is how a day marked the 11th
+ * came to be drawn as the 10th on every list, calendar and record in the
+ * product: midnight site-time is the evening before, west of the site.
  *
  * A **Date or a number** is an absolute instant — a browser's own
- * `Date.now()`, a comment posted in this tab a moment ago — and has no
- * timezone to convert *from*. Running it through `dayjsLocal` would shift it
- * by the site's offset and say a reply posted now arrived four hours ago.
+ * `Date.now()`, a comment posted in this tab a moment ago — and likewise has
+ * nothing to convert from. Running it through `dayjsLocal` would shift it by
+ * the site's offset and say a reply posted now arrived four hours ago.
  */
 function read(value) {
   if (value === null || value === undefined || value === '') return null
-  const when = typeof value === 'string' ? dayjsLocal(value) : dayjs(value)
+  let when
+  if (typeof value !== 'string') when = dayjs(value)
+  else if (DATE_ONLY.test(value)) when = dayjs(value)
+  else when = dayjsLocal(value)
   return when.isValid() ? when : null
+}
+
+/**
+ * The month a day is in, named — "September 2026".
+ *
+ * Not through the workspace's date pattern, because that pattern is about a
+ * *day* and has no month name in it. Through dayjs, which is the same clock
+ * everything else here reads, rather than `toLocaleDateString`: the browser's
+ * answer follows the reader's own language, which nobody configured, so two
+ * colleagues looking at the same grid would see two different words.
+ */
+export function month(value) {
+  return read(value)?.format('MMMM YYYY') || ''
+}
+
+/**
+ * A weekday, as narrowly as a column header can carry — "M", "T", "W".
+ *
+ * Same reason as above, and one more: a grid of thirty-one columns has about
+ * twelve pixels for this, so the initial is not a preference.
+ */
+export function weekday(value) {
+  return read(value)?.format('dd').slice(0, 1) || ''
 }
 
 /** A day, in the workspace's format. */
@@ -104,9 +146,57 @@ export function date(value) {
   return read(value)?.format(datePattern()) || ''
 }
 
-/** A time of day, in the workspace's format. */
-export function time(value) {
-  return read(value)?.format(settings().time) || ''
+/**
+ * A time of day, in the workspace's format.
+ *
+ * `toTheMinute` drops the seconds from that format rather than replacing it,
+ * so a workspace on a 12-hour clock stays on one. What wants it is a fact
+ * about somebody's day rather than a log: somebody arrived at 09:41, not at
+ * 09:41:07, and the two extra digits are the difference between a line that
+ * reads as a fact and one that reads as a timestamp. Anywhere a second really
+ * matters — an audit trail, a check-in list — passes nothing and keeps them.
+ */
+const SECONDS = /[:.]s+/g
+
+/**
+ * A time of day with no day attached — what Frappe sends for a `Time` field.
+ *
+ * `03:30:44.832953`, because the column is a MySQL `time` and the driver hands
+ * back a `timedelta` that serialises with its microseconds. Nothing parses
+ * that: it is not a date, so `dayjs` reads it as invalid, and every surface
+ * that asked what a Time says got the raw string back. It is only six
+ * characters of noise in a list cell and it is the whole field on a read-only
+ * form, where `Posting Time` read `3:30:44.832953` under a clock icon.
+ *
+ * Anchored to today, which is the one thing a time of day cannot tell you and
+ * the one thing a formatter needs: the pattern is about the clock, and the day
+ * it is borrowing never reaches the output.
+ *
+ * Hours past 23 are deliberately not matched. A `timedelta` is a *duration*
+ * and MySQL will happily store `38:00:00` in a time column; anchoring that to
+ * a day silently rolls it over to 14:00 the next morning, which is a wrong
+ * answer rather than an unformatted one. It falls through to null, and the
+ * caller says the raw value instead.
+ */
+const CLOCK = /^(\d{1,2}):([0-5]\d)(?::([0-5]\d))?(?:\.\d+)?$/
+
+function clockOf(value) {
+  if (typeof value !== 'string') return null
+  const parts = CLOCK.exec(value.trim())
+  if (!parts) return null
+  const hours = Number(parts[1])
+  if (hours > 23) return null
+  return dayjs()
+    .hour(hours)
+    .minute(Number(parts[2]))
+    .second(Number(parts[3] || 0))
+    .millisecond(0)
+}
+
+export function time(value, { toTheMinute = false } = {}) {
+  const pattern = settings().time
+  return (clockOf(value) || read(value))?.format(
+    toTheMinute ? pattern.replace(SECONDS, '') : pattern) || ''
 }
 
 /** A day and a time of day. */

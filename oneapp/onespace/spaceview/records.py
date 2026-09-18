@@ -12,7 +12,7 @@ import frappe
 from frappe import _
 from oneapp.onespace import collab, dashboard, docflow, fieldtypes, printing, showcase
 from oneapp.shared import fieldrules
-from oneapp.onespace.ai import written
+from oneapp.oneai import written
 from .meta import MAX_PAGE, META_FIELDS, PAGE, RECORD_META, _fetch_fields
 from .filters import MAX_DELETE, _all_filters, _grouped_order, _search_filters
 from .applied import _apply_overrides, _apply_saved
@@ -78,6 +78,15 @@ def rows(space_code: str, screen: str | None = None, limit: int = PAGE,
 
 	limit = min(int(limit or PAGE), MAX_PAGE)
 
+	# A window is not a page. A calendar and a matrix both ask for *the days on
+	# screen* and neither can page through them: a month drawn from whichever
+	# hundred rows sorted first is a month with holes in it, and in a grid the
+	# holes read as people who were not there. So a request that carried a
+	# window takes the whole of it — `_window` has already narrowed the query
+	# to those days, and `MAX_PAGE` is still the ceiling.
+	if _window(resolved, since, until):
+		limit = MAX_PAGE
+
 	# One more than asked for, so "there are more" needs no second count query.
 	found = frappe.get_list(
 		resolved["doctype"],
@@ -90,6 +99,7 @@ def rows(space_code: str, screen: str | None = None, limit: int = PAGE,
 	found = [_with_meta(row) for row in found]
 	_with_links(resolved, found[:limit])
 	_with_people(found[:limit])
+	_with_sequence(resolved, found[:limit])
 
 	# The columns come back with the rows, not only from `spec`. An unsaved
 	# change to the column list narrows what is fetched, and a header list that
@@ -334,7 +344,7 @@ def record(space_code: str, screen: str, name: str) -> dict:
 		return {}
 
 	found = [_with_meta(row) for row in found]
-	_with_links(resolved, found)
+	_with_links(resolved, found, every=True)
 	_with_people(found)
 	_with_authors(found[0])
 	_with_children(resolved, found[0], name)
@@ -460,7 +470,7 @@ def _total(resolved: dict, asked: dict) -> int:
 	return int(found[0][0]) if found else 0
 
 
-def _with_links(resolved: dict, rows: list[dict]) -> None:
+def _with_links(resolved: dict, rows: list[dict], every: bool = False) -> None:
 	"""Turn the ids in Link columns into records, in place.
 
 	A link is a record, not a string: a cell showing `HR-EMP-00042` is showing
@@ -474,11 +484,31 @@ def _with_links(resolved: dict, rows: list[dict]) -> None:
 	assumed — three targets on a page is three queries, not forty. A target this
 	user may not read simply comes back empty and the cell falls back to the id,
 	which is the truthful thing to show.
+
+	`every` is the record's answer to the same question. A list draws the
+	columns and nothing else, but a *record* draws the whole form — and a
+	read-only Link the screen never listed had nothing to resolve against, so
+	it printed its id: HRMS writes `project` onto an onboarding, nobody would
+	put it in a list, and the page said `PROJ-0016`. The cost is one small
+	query per Link field rather than per column, for one row, which is what
+	opening a record already costs several times over.
 	"""
-	links = [
-		c for c in resolved.get("columns") or []
-		if c["fieldtype"] in ("Link", "Dynamic Link")
-	]
+	offered = (resolved.get("all_columns") if every else None) \
+		or resolved.get("columns") or []
+	links = [c for c in offered if c["fieldtype"] in ("Link", "Dynamic Link")]
+
+	# And whatever a matrix puts down the side, which is almost never a column:
+	# nobody lists the employee column on an attendance screen they read one
+	# person at a time, and without this every row of the grid is labelled
+	# `HR-EMP-00042` — the database's answer rather than the reader's, which is
+	# the sentence this whole function opens with.
+	row_field = (resolved.get("matrix") or {}).get("row_field") or ""
+	if row_field and not any(c["fieldname"] == row_field for c in links):
+		found = next((c for c in resolved.get("all_columns") or []
+		              if c["fieldname"] == row_field), None)
+		if found:
+			links = links + [found]
+
 	if not links or not rows:
 		return
 
@@ -540,6 +570,50 @@ def _link_groups(resolved: dict, column: dict, rows: list[dict]) -> dict:
 		if target:
 			groups.setdefault(target, set()).add(value)
 	return groups
+
+
+def _with_sequence(resolved: dict, rows: list[dict]) -> None:
+	"""What each of these waits for, where the dependency is a table of rows.
+
+	One query for the page, not one per row: a chart of forty bars asking forty
+	times what each comes after is a chart nobody waits for. Bounded to the
+	page on purpose as well — the chart resolves an arrow by looking the id up
+	among the bars it was handed, so a predecessor on page two is a line into
+	the margin, and this does not fetch one.
+
+	Only for the Gantt, because it is the only surface that draws a sequence.
+	A list asking this would be a query per page for something no cell shows.
+	"""
+	gantt = resolved.get("gantt") or {}
+	child, table = gantt.get("depends_child"), gantt.get("depends_doctype")
+	if not (rows and child and table) or resolved.get("view_type") != "gantt":
+		return
+
+	found = frappe.get_all(
+		table,
+		filters={
+			"parent": ["in", [row["name"] for row in rows]],
+			"parenttype": resolved.get("doctype") or "",
+			**(gantt.get("depends_where") or {}),
+		},
+		fields=["parent", child],
+		# A plan is bars, and a page of bars has a page of edges. The ceiling
+		# is a multiple of the page rather than a number: past it the chart is
+		# drawing more arrows than anybody can read anyway.
+		limit_page_length=len(rows) * SEQUENCE_EACH,
+		ignore_permissions=False,
+	)
+
+	after = {}
+	for row in found:
+		if row.get(child):
+			after.setdefault(row["parent"], []).append(row[child])
+	for row in rows:
+		row["_after"] = after.get(row["name"], [])
+
+
+#: How many predecessors one bar may draw before the rest are left off.
+SEQUENCE_EACH = 8
 
 
 def _with_meta(row: dict) -> dict:
@@ -840,7 +914,30 @@ def dashboard_data(space_code: str, screen: str | None = None,
 
 	return {
 		"widgets": [
-			{**widget, **dashboard.compute(widget, doctype, asked, precision)}
+			{**widget, "measure": _measure(resolved, widget),
+			 **dashboard.compute(widget, doctype, asked, precision)}
 			for widget in widgets
 		]
 	}
+
+
+def _measure(resolved: dict, widget: dict) -> str:
+	"""What the number in the middle of a donut is a number *of*.
+
+	frappe-ui prints the name of the key it read under a donut's total, and the
+	key is called `value` — so every donut on every dashboard said "Value",
+	which is the shape of the answer rather than the answer. The screen knows
+	what it is: a count is a count of its own records, and every other
+	aggregate is over the field the widget named.
+
+	Here rather than in `dashboard.shape`, which is handed a set of fieldnames
+	and has no labels to read; and not in the browser, which would be a second
+	place that decides what a widget measures.
+	"""
+	if (widget.get("aggregate") or "count") == "count":
+		return resolved.get("screen_label") or ""
+	wanted = widget.get("field") or ""
+	for column in resolved.get("all_columns") or resolved.get("columns") or []:
+		if column.get("fieldname") == wanted:
+			return column.get("label") or ""
+	return ""

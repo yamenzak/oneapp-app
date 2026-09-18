@@ -7,11 +7,11 @@
     :status-value="statusValue"
     :doc-state="docState"
     :record="shownRecord"
-    :page="asPage"
     :dirty="dirty"
     :saving="saving"
     :views="views"
     @create="create"
+    @peek="openPip(spec?.screen_label || '')"
   />
 
   <!--
@@ -35,7 +35,24 @@
      panels with the ground between them rather than one panel split down the
      middle by a rule.
    -->
-   <div v-show="!asPage" class="flex min-w-0 flex-1 flex-col rounded-6 bg-surface-base p-5">
+   <!--
+     And the same panel is what the picture-in-picture window draws, by being
+     moved into it rather than copied. `lib/desk/peek.js` has the argument; the
+     short of it is that a second list built from the saved view is not this
+     list — it would lose the half-typed search, the unsaved narrowing and the
+     scroll, which are exactly the state somebody working through a list has.
+     A `<Teleport>` re-parents the DOM and leaves the component alone, so what
+     appears in the window is this, still fetching nothing.
+
+     The frame comes off inside the window: the window *is* the panel, and a
+     rounded white card inside a rounded white card is two frames.
+   -->
+   <Teleport :to="`#${BODY}`" :disabled="!inWindow">
+   <div
+     v-show="!shownRecord || inWindow"
+     class="flex min-w-0 flex-1 flex-col"
+     :class="inWindow ? 'min-h-0 p-3' : 'rounded-6 bg-surface-base p-5'"
+   >
     <div v-if="loading" class="grid place-items-center py-20">
       <LoadingIndicator class="size-5 text-ink-muted" />
     </div>
@@ -53,7 +70,16 @@
       did not write cannot be assumed to fit.
     -->
     <div v-else-if="custom" class="min-h-0 flex-1 overflow-y-auto">
-      <component :is="custom" :space-code="spaceCode" :screen="spec.screen" />
+      <!-- And the resolved screen, which a shared component needs and a
+           space's own may want: `Configuration` reads its tabs off it, and
+           without this every custom screen would fetch a spec the host is
+           already holding. -->
+      <component
+        :is="custom"
+        :space-code="spaceCode"
+        :screen="spec.screen"
+        :spec="spec"
+      />
     </div>
 
     <Alert v-else-if="specError" theme="red" :title="__('This screen did not open')">
@@ -122,6 +148,34 @@
             rows, and this row is the one people type in — a fourth control
             beside the box is the clutter, not the answer.
           -->
+          <!--
+            What a record's tab handed over on the way in — `lib/screen/
+            narrowing.js`. An ordinary filter underneath, so the Filter control
+            beside this holds it too; a control of its own because a screen
+            narrowed to one project should say so where somebody is looking,
+            and "Filter 1" is not a sentence.
+          -->
+          <Button
+            v-if="narrowedBy.length"
+            data-slot="narrowed-to"
+            variant="subtle"
+            theme="gray"
+            icon-right="lucide-x"
+            :label="__('Show everything on this screen')"
+            :tooltip="__('Show everything on this screen')"
+            @click="widen"
+          >
+            <!--
+              The name of what it is narrowed to, where there is room for it.
+              A phone's filter row is the search box, the ID box and three
+              controls at its end, and a fourth carrying a project's name runs
+              off the side — so there this is the cross alone, with the whole
+              sentence still in the label a screen reader reads.
+            -->
+            <span class="hidden max-w-40 truncate md:inline">
+              {{ __('Only {0}', [narrowedBy[0][2]]) }}
+            </span>
+          </Button>
           <FilterPanel
             :filters="panelFilters"
             :columns="[...(spec.all_columns || []), ...(spec.child_columns || [])]"
@@ -134,8 +188,15 @@
             in its list sidebar and this product's sidebar is the space's own
             navigation, so it is a menu here. Clicking a value adds the filter
             the sidebar's link would have applied.
+
+            Not on a dashboard. A tally is a count per value of one field, and
+            a dashboard is already made of those — drawn, and several at once.
+            Offering a menu of the same numbers above them is a control that
+            answers a question the page has answered better, and the narrowing
+            half is what Filter is for.
           -->
           <TallyMenu
+            v-if="spec.view_type !== 'dashboard'"
             :columns="spec.all_columns || []"
             :status-field="spec.status_field || ''"
             :space-code="spaceCode"
@@ -204,14 +265,22 @@
         off again.
       -->
       <!--
-        Every view but the calendar. A month with nothing in it is not an empty
-        screen — it is a month, and the grid is what you move through to reach
-        one that has something in it. Replacing it with "No events yet" takes
-        away the only control that would get you back, which is what it did:
-        one click into last month and the calendar was gone.
+        Every view but the two that are still themselves with nothing in them.
+
+        A month with nothing in it is not an empty screen — it is a month, and
+        the grid is what you move through to reach one that has something in
+        it. Replacing it with "No events yet" takes away the only control that
+        would get you back, which is what it did: one click into last month and
+        the calendar was gone.
+
+        A dashboard is the same argument with a different control. It does not
+        draw rows at all, so "no rows" is answering a question it was not
+        asked — and the period picker that narrowed it to nothing is inside the
+        body, so replacing the body strands the reader in the period they
+        chose. A dashboard of zeros is the honest answer and has the way back.
       -->
       <EmptyState
-        v-else-if="!rows.length && spec.view_type !== 'calendar'"
+        v-else-if="!rows.length && !DRAWS_WHEN_EMPTY.includes(spec.view_type)"
         icon="lucide-inbox"
         :title="favourites ? __('Nothing here yet') : __('No {0} yet', [spec.screen_label.toLowerCase()])"
         :description="emptyBecause"
@@ -273,6 +342,7 @@
             :gantt="spec.gantt || {}"
             :tree="spec.tree || {}"
             :place="spec.place || {}"
+            :matrix="spec.matrix || {}"
             :totals="totals"
             :group-totals="groupTotals"
             :space-code="spaceCode"
@@ -290,6 +360,7 @@
             @quick="quickCreate"
             @new="newWith"
             @range="showDays"
+            @narrow="narrowTo"
           />
 
           <!-- A dashboard measures every row that matches rather than drawing
@@ -390,6 +461,7 @@
       </div>
     </template>
    </div>
+   </Teleport>
 
     <!--
       The open record, beside the list rather than over it. A record is
@@ -422,7 +494,7 @@
       @apply="bulkAssign"
     />
 
-    <ObjectPane v-if="shownRecord && spec?.doctype" :page="asPage">
+    <ObjectPane v-if="shownRecord && spec?.doctype" :page="true">
       <template #body="{ phone }">
         <RecordView
           :record="shownRecord"
@@ -430,7 +502,7 @@
           :space-code="spaceCode"
           :screen="spec.screen"
           :phone="phone"
-          :surface="asPage ? PAGE : PANE"
+          :surface="PAGE"
           :revision="childRevision"
           @saved="recordSaved"
           @reload="reloadRecord"
@@ -438,7 +510,6 @@
           @removed="recordRemoved"
           @renamed="recordRenamed"
           @open="openElsewhere"
-          @surface="setSurface"
           @add="addChild"
         />
       </template>
@@ -450,25 +521,96 @@
       page rather than instead of it, because the thing you came from is the
       reason you are looking at this one.
 
+      A window, and it was a drawer — `docs/DESKTOP.md` stage 4. The same
+      gesture the breadcrumb makes, which is the point: "open the thing this
+      points at" is one behaviour in the product instead of two that look
+      alike. It also loses the scrim, which is a gain rather than a cost: a
+      drawer dimmed the record you were reading this *from*, which is the
+      reason you opened it.
+
       Its own spec and its own record, because it is usually another screen —
       an invoice drawn through the projects screen's columns is not an invoice.
     -->
-    <RecordDrawer v-if="peeked && peekSpec?.doctype" @close="closePeek">
+    <!-- 900 wide because that is what the record inside needs to draw itself
+         the way the page does: a 12rem rail, a 280px column of form beside it
+         and the gutters between — `upright` in `RecordView` measures exactly
+         that. Narrower and the rail folds back into a strip, which still
+         works and is what the 520px minimum gets. 660 tall for the preview's
+         own foot. -->
+    <DeskWindow
+      v-for="one in peeks"
+      :key="one.key"
+      :id="one.key"
+      :memory="RECORD_CORNER"
+      :title="one.record?.name || one.name"
+      :label="one.record?.name || one.name"
+      :width="900"
+      :height="660"
+      :min-width="520"
+      :tint="accent"
+      @close="closePeek(one.key)"
+    >
+      <!--
+        Who this is, the way the trail says it: the face, the title, and the id
+        underneath where the two differ. It was the bare name, which is right
+        for a window holding an app and wrong for one holding a *record* —
+        `ACC-SINV-2026-00005` over a form about zzMeridian Group is the id
+        winning over the thing it identifies. `lib/screen/identity.js` is the
+        same arithmetic the record's own view does.
+      -->
+      <template #title>
+        <RecordChip
+          :record="identityOf(one.record, one.spec)"
+          compact
+          class="min-w-0"
+        />
+      </template>
+
+      <!-- Where the record's own controls land, which in a window is one
+           button: the door out to its own screen. On the bar rather than in a
+           band under it, for the same reason a record that is the page puts
+           them on the trail — the line above already says what this is.
+
+           What it holds is read-only, and that is the decision rather than a
+           gap: a window is something you consult, and everything it will not
+           let you do is one press away through that door.
+           `lib/screen/previewing.js`.
+
+           One target for however many windows are open, because only the front
+           one is drawn — an id is not a thing to have two of. -->
+      <template v-if="one.key === front?.key" #controls>
+        <div :id="WINDOW_TARGET" class="flex shrink-0 items-center gap-2" />
+      </template>
+
+      <!--
+        Only the front one renders what it holds.
+
+        They all remember the same corner — see `memory` — so a window behind
+        another is covered to the pixel, and a mounted record nobody can see is
+        a form, a set of tabs and a presence subscription held for no reason.
+        Its record and spec stay in the composable's stack, which is JSON and
+        costs nothing beside the tree, so raising it from its tile is instant.
+
+        That is the whole of the hibernation a tabbing window was going to
+        need, and it is this cheap because a preview is read-only: there is no
+        unsaved state to suspend and nothing to lose by unmounting.
+      -->
       <RecordView
-        :record="peeked"
-        :spec="peekSpec"
+        v-if="one.key === front?.key"
+        :record="one.record"
+        :spec="one.spec"
         :space-code="spaceCode"
-        :screen="peekSpec.screen"
-        :surface="DRAWER"
-        @saved="peekSaved"
+        :screen="one.spec.screen"
+        :surface="WINDOW"
+        @saved="peekSaved(one.key)"
         @reload="loadPeek"
-        @close="closePeek"
-        @removed="peekRemoved"
-        @renamed="peekRenamed"
+        @close="closePeek(one.key)"
+        @removed="peekRemoved(one.key)"
+        @renamed="peekRenamed(one.key, $event)"
         @open="openElsewhere"
-        @expand="expandPeek"
+        @expand="expandPeek(one.key)"
       />
-    </RecordDrawer>
+    </DeskWindow>
   </div>
 
   <!-- Cancelling unwrites what submitting wrote, and forty of them is forty
@@ -569,7 +711,6 @@ import ScreenHeader from '@/modules/onespace/components/screen/views/ScreenHeade
 import CreateDialog from '@/modules/onespace/components/screen/record/CreateDialog.vue'
 import ObjectPane from '@/shared/components/ObjectPane.vue'
 import RecordView from '@/modules/onespace/components/screen/record/RecordView.vue'
-import RecordDrawer from '@/modules/onespace/components/screen/record/RecordDrawer.vue'
 import FilterPanel from '@/modules/onespace/components/screen/views/FilterPanel.vue'
 import ListSearch from '@/modules/onespace/components/screen/views/ListSearch.vue'
 import TallyMenu from '@/modules/onespace/components/screen/views/TallyMenu.vue'
@@ -585,9 +726,12 @@ import Panel from '@/shared/components/Panel.vue'
 import { useBulkActions } from '@/shared/composables/useBulkActions'
 import { useCreating } from '@/shared/composables/useCreating'
 import { useCrumbs } from '@/shared/composables/useCrumbs'
+import { BODY, closePip, inPip, openPip } from '@/modules/onespace/lib/desk/pip'
 import { useSubject } from '@/shared/composables/useSubject'
 import { useListFollow } from '@/shared/composables/useListFollow'
-import { usePeek } from '@/shared/composables/usePeek'
+import { RECORD as RECORD_CORNER, usePeek } from '@/shared/composables/usePeek'
+import { identityOf } from '@/modules/onespace/lib/screen/identity'
+import RecordChip from '@/modules/onespace/components/screen/record/RecordChip.vue'
 import { useRecordSurface } from '@/shared/composables/useRecordSurface'
 import { useRows } from '@/shared/composables/useRows'
 import { useRowWrites } from '@/shared/composables/useRowWrites'
@@ -599,9 +743,11 @@ import { session } from '@/modules/onespace/lib/shell/session'
 import { workspace } from '@/shared/lib/workspace'
 import { KIND, atOf } from '@/shared/lib/url/at'
 import { notifyError } from '@/shared/lib/runtime/notify'
-import { CARD_VIEW_TYPES, bodyFor } from '@/modules/onespace/lib/screen/viewTypes'
-import { applyTheme, clearTheme } from '@/modules/onespace/lib/shell/theme'
-import { DRAWER, PAGE, PANE } from '@/modules/onespace/lib/screen/surfaces'
+import { CARD_VIEW_TYPES, DRAWS_WHEN_EMPTY, bodyFor } from '@/modules/onespace/lib/screen/viewTypes'
+import { NARROW, narrowingIn } from '@/modules/onespace/lib/screen/narrowing'
+import { accent, applyTheme, clearTheme } from '@/modules/onespace/lib/shell/theme'
+import DeskWindow from '@/modules/onespace/components/desk/DeskWindow.vue'
+import { PAGE, WINDOW, WINDOW_TARGET } from '@/modules/onespace/lib/screen/surfaces'
 import { screenComponent } from '@/modules/onespace/screens'
 import { __ } from '@/shared/lib/runtime/translate'
 import { errorText } from '@/shared/lib/runtime/errors'
@@ -670,7 +816,7 @@ const {
 // `composables/useRecordSurface.js`. Above `usePeek` and `useCrumbs` because
 // both read `shownRecord`.
 const {
-  shownRecord, asPage, setSurface,
+  shownRecord,
   open, openElsewhere, openRecord, closeRecord, recordRemoved,
   reloadRecord, recordSaved, recordRenamed,
 } = useRecordSurface({
@@ -681,9 +827,12 @@ const {
   reloadList: () => loadRows(),
 })
 
-// A record opened from inside another one — `composables/usePeek.js`.
+// Records opened from inside another one — `composables/usePeek.js`. Windows
+// over the page now rather than a drawer, and as many as you open; the
+// composable still owns the address, the fetch and the screen each is drawn
+// through, and which of them is the one actually on screen.
 const {
-  peeked, peekSpec,
+  peeks, front,
   loadPeek, closePeek, peekSaved, expandPeek, peekRenamed, peekRemoved,
 } = usePeek({
   spaceCode: props.spaceCode,
@@ -705,6 +854,56 @@ const {
   pageLength: () => pageLength.value,
   reloadRows: () => loadRows(),
   reload: () => load(),
+})
+
+/**
+ * What the URL is narrowing this screen to, and the way back out.
+ *
+ * A record's related tab opens the real screen rather than drawing a smaller
+ * one inside itself — `lib/screen/narrowing.js` — so "this project's work, as
+ * a board" is this screen with one filter on it. Seeded in `load` rather than
+ * applied afterwards, so the first request already carries it and nobody sees
+ * every task in the workspace flash past first.
+ */
+const narrowedBy = computed(() => narrowingIn(route.query))
+
+/**
+ * Take one narrowing off and put another on, without touching anything else
+ * the reader has asked for.
+ *
+ * Not marked unsaved: a narrowing arrived in a link and is nobody's opinion
+ * about this screen, so "Save this screen" must not offer to keep it.
+ */
+const narrowWith = (off, on) => {
+  const gone = new Set([...off.map((one) => one[0]), ...on.map((one) => one[0])])
+  panelFilters.value = [
+    ...panelFilters.value.filter((one) => !gone.has(one[0])),
+    ...on,
+  ]
+}
+
+/** Off the screen and out of the URL, so a reload does not put it back. */
+const widen = () => {
+  const query = { ...route.query }
+  delete query[NARROW]
+  router.replace({ ...route, query })
+}
+
+/**
+ * A narrowing that changes while the screen is open — the control above, or
+ * the back button after following a tab's door.
+ *
+ * A filter and the rows, and deliberately not the screen: re-resolving would
+ * unmount whatever is drawing, and a space's own component screen — the
+ * mobility map, which has carried this same parameter since §C4 — would lose
+ * its map every time somebody chose a line.
+ */
+watch(() => String(route.query[NARROW] || ''), (now, was) => {
+  // Nothing at all on a component screen: there is no list to narrow, and the
+  // parameter there belongs to whatever the space wrote.
+  if (!spec.value || spec.value.component || now === was) return
+  narrowWith(narrowingIn({ [NARROW]: was }), narrowingIn({ [NARROW]: now }))
+  loadRows()
 })
 
 /**
@@ -889,6 +1088,39 @@ const { viewLabel, subject, statusValue, docState } = useSubject({
   viewType,
 })
 
+/**
+ * Whether the list is in the picture-in-picture window rather than on the page.
+ *
+ * A computed and not the call itself, so the template reads it once per render
+ * rather than three times — `v-show`, the classes and the teleport all ask.
+ *
+ * `inWindow` rather than the obvious name, because `peeked` is already taken
+ * three lines up by `usePeek`, which is a *record* opened from this one. Both
+ * are windows now and the two still have to be tellable apart at a glance:
+ * this one holds the list, that one holds a record.
+ */
+const inWindow = computed(() => inPip())
+
+/**
+ * The window holds *this* list, so it closes when this list stops being behind
+ * a record.
+ *
+ * Both halves matter and they fail differently. Closing the record puts the
+ * list back on the page, and a window still holding it would be a window
+ * holding the page — the same rows drawn once, in the wrong place. Leaving the
+ * screen unmounts the list, and a window whose teleport target has gone is a
+ * window that draws nothing at all: an empty frame with a name on it and no
+ * way to tell it is empty on purpose.
+ */
+watch(
+  () => [!!shownRecord.value, spec.value?.screen],
+  ([open], [was] = []) => {
+    if (!open && was !== undefined) closePip()
+  },
+)
+
+onBeforeUnmount(() => closePip())
+
 // The list follows the site — `composables/useListFollow.js`.
 const { follow } = useListFollow({ paused: dirty, reload: () => loadRows() })
 
@@ -946,6 +1178,9 @@ const load = async (openWith, carried = null) => {
       viewType.value || undefined,
     )
     seedFrom(spec.value)
+    // Before the rows: a narrowing that arrived after them is every task in
+    // the workspace flashing past on the way to one project's.
+    narrowWith([], narrowedBy.value)
     pageLength.value = spec.value?.page_length || 100
     drawnAs.value = {
       screen: spec.value?.screen || '',

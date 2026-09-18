@@ -81,11 +81,11 @@ export const settings = {
   // The AI tab is not a field list like the rest: it is the feature registry
   // rendered, so the server sends rows rather than a spec. What it never sends
   // is our own instructions for a feature — only what the workspace added.
-  ai: () => callMethod('oneapp.onespace.ai.settings.get', {}, { silent: true, method: 'GET' }),
+  ai: () => callMethod('oneapp.oneai.settings.get', {}, { silent: true, method: 'GET' }),
 
   saveAi: (values) =>
     callMethod(
-      'oneapp.onespace.ai.settings.update',
+      'oneapp.oneai.settings.update',
       { values },
       {
         successMessage: __('Saved'),
@@ -130,8 +130,11 @@ export const settings = {
   // "Tell the accounts role when an invoice is three days past due." Frappe's
   // own `Notification`, gated to this workspace's doctypes and narrowed to the
   // sentence somebody would say out loud — see `onespace/alerts.py`.
-  alerts: () =>
-    callMethod('oneapp.onespace.workspace.alerts', {}, { silent: true, method: 'GET' }),
+  // `space` narrows what a *new* rule may be about to that space's own
+  // records, which is what a space's Configuration page asks for. The rules
+  // themselves are the workspace's either way.
+  alerts: (space = '') =>
+    callMethod('oneapp.onespace.workspace.alerts', { space }, { silent: true, method: 'GET' }),
 
   saveAlert: (values) =>
     callMethod(
@@ -154,6 +157,36 @@ export const settings = {
       { successMessage: __('Alert removed') },
     ),
 
+  // --- routing --------------------------------------------------------------
+  //
+  // "When a task reaches In review, hand it to the reviewers." Frappe's own
+  // `Assignment Rule`, through the same gate and the same vocabulary as the
+  // alerts above — see `onespace/routing.py`. An assignment stays Frappe's
+  // ToDo; this only decides who gets one.
+  routing: (space = '') =>
+    callMethod('oneapp.onespace.workspace.routing', { space }, { silent: true, method: 'GET' }),
+
+  saveRoutingRule: (values) =>
+    callMethod(
+      'oneapp.onespace.workspace.save_routing_rule',
+      { values: JSON.stringify(values) },
+      { successMessage: __('Rule saved') },
+    ),
+
+  setRoutingEnabled: (name, enabled) =>
+    callMethod(
+      'oneapp.onespace.workspace.set_routing_enabled',
+      { name, enabled: enabled ? 1 : 0 },
+      { silent: true },
+    ),
+
+  removeRoutingRule: (name) =>
+    callMethod(
+      'oneapp.onespace.workspace.remove_routing_rule',
+      { name },
+      { successMessage: __('Rule removed') },
+    ),
+
   // Message templates: written here, used in the composer. The listing is the
   // same endpoint the composer reads — one list, not an admin copy of it.
   saveMailTemplate: (values) =>
@@ -170,8 +203,8 @@ export const settings = {
       { successMessage: __('Template removed') },
     ),
 
-  naming: () =>
-    callMethod('oneapp.onespace.workspace.naming', {}, { silent: true, method: 'GET' }),
+  naming: (space = '') =>
+    callMethod('oneapp.onespace.workspace.naming', { space }, { silent: true, method: 'GET' }),
 
   setNaming: (doctype, series) =>
     callMethod(

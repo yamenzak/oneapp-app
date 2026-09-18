@@ -1,8 +1,27 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { session, sessionReady } from '@/modules/onespace/lib/shell/session'
 
+//: The one space every workspace has — `oneapp/onespace/one.py`. Here as a
+//: constant rather than the string four times, because it is also the only
+//: space code this file may assume exists.
+const ONE = 'one'
+
 const routes = [
-  { path: '/', name: 'Launcher', component: () => import('@/modules/onespace/pages/Launcher.vue') },
+  {
+    // The front door, and it is a space rather than a page about spaces.
+    //
+    // It used to be a grid of cards called Spaces: somewhere you arrived in
+    // order to leave. The corner answers "which spaces does this workspace
+    // have" better than a page can, and One is where the things that belong to
+    // no space live — so `/` lands *in* One, on its Home, and there is no
+    // longer a route that is not inside something.
+    //
+    // A redirect and not an alias: `Screen` reads `spaceCode` off the params,
+    // and a second name for one route is a second thing `useCrumbs`, the rail
+    // and the switcher each have to recognise.
+    path: '/',
+    redirect: { name: 'Screen', params: { spaceCode: ONE } },
+  },
   {
     path: '/space/:spaceCode',
     name: 'Screen',
@@ -60,12 +79,24 @@ const routes = [
     meta: { pane: true },
   },
   {
+    // OneTask's maximised case. The service is a dock window and this is the
+    // same component full width, for the same reason OneCloud keeps `/files`:
+    // a window has no address, and a person who wants it to be the page — or
+    // who pasted a link to it — should not be told it is only a corner.
+    path: '/tasks',
+    name: 'Tasks',
+    component: () => import('@/modules/onetask/pages/Tasks.vue'),
+    // Its own scroller, and a capture box pinned above it: the shell must not
+    // add a second.
+    meta: { pane: true },
+  },
+  {
     // The assistant belongs to the workspace, like Mail and Files: what it can
     // read follows the reader's roles across every space, not one of them.
     // The open thread is `?chat=`, so a conversation can be linked to.
     path: '/chat',
     name: 'Chat',
-    component: () => import('@/modules/onespace/pages/Chat.vue'),
+    component: () => import('@/modules/oneai/pages/Chat.vue'),
     // A rail, a transcript with its own scroller and a composer pinned under
     // it: a page scroll on top would move the composer off screen.
     meta: { pane: true },
@@ -143,9 +174,11 @@ router.beforeEach(async (to) => {
   }
 
   // Entitlement is enforced server-side by role. This only avoids rendering a
-  // shell for something the user will be refused anyway.
+  // shell for something the user will be refused anyway — and it sends them to
+  // One, which is the one space they are certain to have.
   if (to.name === 'Screen' && !session.hasSpace(to.params.spaceCode)) {
-    return { name: 'Launcher' }
+    if (to.params.spaceCode === ONE) return true
+    return { name: 'Screen', params: { spaceCode: ONE } }
   }
 
   return true

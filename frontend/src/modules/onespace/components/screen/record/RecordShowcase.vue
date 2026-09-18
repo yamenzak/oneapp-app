@@ -65,7 +65,7 @@
     -->
     <div
       class="relative flex flex-col gap-6 p-4 md:flex-row md:items-end md:gap-10 md:p-6"
-      :class="compact ? 'min-h-48' : 'min-h-64 md:min-h-96'"
+      :class="short ? 'min-h-48' : 'min-h-64 md:min-h-96'"
     >
       <div class="flex min-w-0 flex-1 flex-col justify-end gap-3">
         <span
@@ -73,7 +73,10 @@
           data-slot="showcase-eyebrow"
           class="truncate text-xs uppercase tracking-widest text-white/70"
         >
-          {{ eyebrow }}
+          <!-- What kind of thing they are, before their name — a Lead, a
+               Customer, a Prospect. One sentence, because "who this is with"
+               and "what sort of party that is" are one thought. -->
+          <span v-if="eyebrowKind" data-slot="showcase-eyebrow-kind">{{ eyebrowKind }} · </span>{{ eyebrow }}
         </span>
 
         <!--
@@ -90,7 +93,7 @@
           data-slot="showcase-title"
           dir="auto"
           class="text-balance font-display uppercase leading-none tracking-wide text-white"
-          :class="compact ? 'text-3xl' : 'text-3xl sm:text-5xl'"
+          :class="short ? 'text-3xl' : 'text-3xl sm:text-5xl'"
         >
           {{ title }}
         </h1>
@@ -255,6 +258,7 @@ import { Button, Icon } from '@/ui'
 import Row from '@/shared/components/Row.vue'
 import StateBadge from '@/modules/onespace/components/screen/fields/StateBadge.vue'
 import { cellText } from '@/modules/onespace/lib/screen/cells'
+import * as related from '@/modules/onespace/lib/screen/related'
 import { session } from '@/modules/onespace/lib/shell/session'
 import { workspace } from '@/shared/lib/workspace'
 
@@ -282,6 +286,19 @@ const props = defineProps({
 
 const emit = defineEmits(['open', 'add'])
 
+/**
+ * How tall the band is, which is a question about whether there is a
+ * photograph in it.
+ *
+ * Most of a screenful is right for a hero — a building, a face — and wrong for
+ * three numbers over a gradient, which is what a screen that declares facts
+ * and no images gets. A project is the first of those and will not be the
+ * last, so the height follows the declaration rather than the manifest naming
+ * a size: `images` is already the word for "this record is looked at", and a
+ * screen that does not say it is asking for a header rather than a cover.
+ */
+const short = computed(() => props.compact || !props.showcase?.images)
+
 // How long one photograph holds: long enough to look at a building, short
 // enough that somebody waiting sees it change.
 const HOLD = 6000
@@ -289,10 +306,6 @@ const HOLD = 6000
 // Enough to know there is more than one, and few enough that the dots stay a
 // row rather than a ruler.
 const MOST = 8
-
-// How many of the things hanging off this record the strip carries. A row of
-// cards is a glance at what is there; the tabs are where the list lives.
-const KEPT = 24
 
 const images = ref([])
 const children = ref([])
@@ -307,9 +320,43 @@ const formats = computed(() => session.data?.formats || {})
 
 const column = (fieldname) => columns.value.find((one) => one.fieldname === fieldname)
 
+/**
+ * What a Link on this record is called, rather than what it is keyed by.
+ *
+ * The record arrives with a `_links` map — `records._with_links` builds it, the
+ * same one every list cell reads — and the hero was not using it: a fact over
+ * `reports_to` said HR-EMP-00002 where the list beside it said the person's
+ * name, and the eyebrow over a Link said the id for the same reason.
+ */
+const linked = (field) => props.record?._links?.[field] || null
+
 const eyebrow = computed(() => {
   const field = props.showcase?.eyebrow_field
-  return field ? String(props.record?.[field] || '') : ''
+  if (!field) return ''
+  const value = props.record?.[field]
+  // Nothing rather than `cellText`'s em dash: a fact with no value is a fact
+  // that says so, and a *line above the title* with no value is one fewer line.
+  if (value === null || value === undefined || value === '') return ''
+  const found = column(field)
+  return found ? cellText(found, value, formats.value, linked(field)) : String(value)
+})
+
+/**
+ * What kind of thing the eyebrow names — `docs/ONECRM.md` stage 7.
+ *
+ * ERPNext's party is a pair: `party_name` is a Dynamic Link and
+ * `opportunity_from` says which doctype it points at, so a deal is with a
+ * Lead, a Customer or a Prospect. Nothing in this product may assume there is
+ * a company, and a header that said only the name would be a header that made
+ * the reader guess which of the three they were looking at.
+ */
+const eyebrowKind = computed(() => {
+  const field = props.showcase?.eyebrow_kind_field
+  if (!field) return ''
+  const value = props.record?.[field]
+  if (value === null || value === undefined || value === '') return ''
+  const found = column(field)
+  return found ? cellText(found, value, formats.value, linked(field)) : String(value)
 })
 
 const badge = computed(() => {
@@ -328,7 +375,10 @@ const facts = computed(() =>
     return {
       field: fact.field,
       label: fact.label || found?.label || fact.field,
-      text: found ? cellText(found, props.record?.[fact.field], formats.value) : '',
+      text: found
+        ? cellText(found, props.record?.[fact.field], formats.value,
+                   linked(fact.field))
+        : '',
     }
   }),
 )
@@ -373,42 +423,20 @@ const loadChildren = async () => {
   children.value = []
   childSpec.value = null
   const asked = props.showcase?.children
-  if (!props.record?.name || !asked?.screen || !asked?.field) return
+  if (!asked) return
 
-  // The ordinary list endpoint with a narrowing filter, which is the whole
-  // point of declaring this as a screen and a field rather than as a query: the
-  // space, the permissions and the filter are checked where every other list
-  // checks them.
-  //
-  // The other screen's spec beside it, because a card here says what a row of
-  // *that* screen says. Reading them off this screen's spec is right only while
-  // a record's children are its own doctype.
-  const [spec, found] = await Promise.all([
-    workspace.screenSpec(props.spaceCode, asked.screen),
-    workspace.screenRows(
-      props.spaceCode,
-      asked.screen,
-      { filters: [[asked.field, '=', props.record.name]] },
-      '',
-      { start: 0, limit: KEPT },
-    ),
-  ])
-
-  childSpec.value = spec || null
-  const rows = found?.rows || []
-  const titleField = spec?.title_field || 'name'
-  const imageField = spec?.image_field || ''
-  // The first column that is not the name: on a variation that is its stage or
-  // its value.
-  const first = (found?.columns || []).find(
-    (one) => one.fieldname !== titleField && one.fieldname !== '__activity',
-  )
-  children.value = rows.map((row) => ({
-    name: row.name,
-    label: String(row[titleField] || row.name),
-    image: imageField ? row[imageField] || '' : '',
-    detail: first ? cellText(first, row[first.fieldname], formats.value, row._links?.[first.fieldname]) : '',
-  }))
+  // `lib/screen/related.js`, shared with the person surface: the fetch, the
+  // filter and the shape of a row are the same question for both, and only the
+  // drawing differs.
+  const found = await related.loadChildren({
+    spaceCode: props.spaceCode,
+    screen: asked.screen,
+    field: asked.field,
+    name: props.record?.name,
+    formats: formats.value,
+  })
+  childSpec.value = found.spec
+  children.value = found.children
 }
 
 const pick = (at) => {

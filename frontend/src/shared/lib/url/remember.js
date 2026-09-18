@@ -34,11 +34,10 @@ export const KEYS = Object.freeze({
   'rail.shut': 'Whether I keep the space rail collapsed.',
   'drive.grid': 'Whether I look at files as thumbnails or as a list.',
   'drive.order': "The order I last put a Drive place in. A fallback: the URL wins, and a link that names one arrives in it.",
-  'record.surface': 'Whether I open records in a pane or full width, per screen.',
   'child.columns': 'Which columns I keep on a child table.',
   'field.last': 'The last thing I picked in a field that asks to remember.',
   'pane.width': 'How wide I dragged a pane.',
-  'assistant.at': 'Where I dragged the assistant, and how big I made it.',
+  'desk.at': 'Where I dragged a window, how big I made it, and whether I left it filling the desk. One key per window — the assistant was the first and is no longer the only one.',
   'sound': 'Whether I want the notification sound.',
 })
 

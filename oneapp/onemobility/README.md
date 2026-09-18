@@ -289,7 +289,7 @@ The obvious build of a scrubber queries the fact table per frame, and it is
 unusable: scrubbing is a hundred queries a second over the largest table.
 
 Instead, a nightly job rolls each vehicle's day into **one compressed track
-object per vehicle per day**, in R2 next to everything else OneStorage holds —
+object per vehicle per day**, in R2 next to everything else OneCloud holds —
 a delta-encoded array of time, position, occupancy and delay. Playback fetches
 the day and scrubs entirely in the browser. 43 million rows become a few
 thousand objects, a scrub costs no query at all, and the raw rows behind them
@@ -1367,7 +1367,7 @@ and a technical buyer will catch the overclaim.
   vehicles.
 * Not a passenger app. The audience is the operator's own staff.
 * Not a general BI tool. Charts are over transit's nouns, and a customer who
-  wants arbitrary pivots over arbitrary data wants OneSheet.
+  wants arbitrary pivots over arbitrary data wants OneWorkbook.
 
 ---
 
@@ -1460,19 +1460,15 @@ one more reason stage 1 is GTFS.
 
 ## 13. The mark
 
-The brand mark is a sky-to-deep-blue diamond with a white hub. It used to carry
-the family's twin `||` cuts, which were removed from every app mark for good
-reasons (`scripts/gen_brand.py`, `uncut`), and the removal was right here too:
-rendered side by side, the cuts slice straight through the hub and read as a
-cracked tile rather than as route lines, and below 48px they are noise.
+The mark is a metro cab: a teal chassis with a dark windscreen and the family's
+amber beacon drawn twice, as its headlights. Switch the beacon off and the cab
+goes dark, which is the test the whole set is drawn to — the accent is doing a
+job in the drawing rather than sitting on top of it.
 
-But what is left is generic — a diamond with a dot is a map pin, and there are a
-thousand of those. The fix is not to restore the mask: it is to draw the routes
-as **positive shapes**, a line through the diamond with two stop dots, so the
-mark says transit at 20px instead of saying location. `CUT_IS_THE_MARK` in the
-generator is the precedent for a mark whose lines are the drawing.
-
-Small, and worth doing before this space is ever shown to anybody.
+It replaces a sky-to-deep-blue diamond with a white hub, and the reason it was
+replaced is the one this section used to argue for redrawing it: a diamond with
+a dot is a map pin, and there are a thousand of those. A cab is one thing, it is
+the same thing at 20px, and nothing else in the suite is shaped like it.
 
 ---
 

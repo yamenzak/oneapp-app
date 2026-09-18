@@ -75,8 +75,11 @@
     where you are and what you can do here are the same row as where you are in
     the product, rather than a second band of chrome under the first.
 
-    Everything else — the surfaces that are not inside a space, you, the bell,
-    the settings dialog — is in the foot of the column, which is `ShellFoot`.
+    Everything else — the apps that are not inside a space, you, the bell, the
+    settings dialog — is in the dock along the bottom, which is the slot at the
+    end of this file. The column's foot kept all of that until there were
+    windows to open: a row of shortcuts inside a column of navigation, folding
+    to 3rem with it and changing with whichever sidebar the route drew.
 
     Composed here rather than by `DesktopShell`, which renders its header
     target *inside* the content column: the whole point is that the header is
@@ -91,7 +94,7 @@
   <div
     v-else
     class="flex h-full min-h-0 flex-col"
-    :class="chrome ? 'bg-surface-gray-3' : 'bg-surface-base'"
+    :class="chrome ? 'bg-surface-sidebar' : 'bg-surface-base'"
   >
     <header
       v-if="chrome"
@@ -138,6 +141,18 @@
       <slot v-if="chrome && $slots.sidebar" name="sidebar" />
 
       <!--
+        The main area: the page, and the dock under it.
+
+        A column rather than the two of them being rows of the shell, because
+        the dock is the *page's* row and not the workspace's. Full width it sat
+        under the sidebar as well, which put two stacks of chrome in the bottom
+        corner — the column's own foot directly above a row of app marks — and
+        made the dock read as a second thing the navigation did. Under the page
+        it is one row, starting where the page starts.
+      -->
+      <div class="flex min-w-0 flex-1 flex-col" :class="chrome ? 'me-2' : ''">
+
+      <!--
         The inset. `overflow-hidden` so whatever scrolls inside is clipped to
         the curve, and the scroller is inside this rather than around it: the
         frame stays where it is and only the content moves.
@@ -147,30 +162,49 @@
         `surface-base` are two percent apart in light, so the curve read as a
         rule rather than as a page lifted off a ground.
 
-        `surface-gray-3` is the ground and `surface-elevation-2` the page, and
-        the pair separate in both themes for different reasons. In light the
-        page is white on .946 and the shadow lifts it. In dark the page is
-        .26 on .341 — *darker* than its ground, which is the way round every
-        dark editor does it, and the step is what does the work there because
-        a shadow on a dark ground does nothing. Elevation rather than
-        `surface-base` because it is the surface a shadow is allowed to sit
-        on, which is the whole of what that token is for.
+        `surface-sidebar` is the ground and `surface-base` the page, and the
+        pair separate in both themes for different reasons. In light the page
+        is white on .979 and the shadow lifts it. In dark the page is *darker*
+        than its ground, which is the way round every dark editor does it, and
+        the step is what does the work there because a shadow on a dark ground
+        does nothing.
+
+        The ground is `surface-sidebar` and not a palette grey, and that is the
+        part worth saying: it is the one token in the frame that a declared
+        ground moves — `lib/shell/theme.js` sets it to base + .04 — so on a
+        themed workspace the bar and the column stay one piece. Painted
+        `surface-gray-3` they did not: the navigation moved with the ground and
+        the bar behind it did not, which is a seam down the side of every
+        screen and three greys where the design has two.
 
         An editor asked for the window, so it gets no frame — and its own
         header target, because there is no bar above it to hold one.
       -->
-      <div
-        data-slot="shell-inset"
-        class="flex min-w-0 flex-1 flex-col overflow-hidden"
-        :class="[chrome ? 'mb-2 me-2' : '', chrome && framed ? 'rounded-6 bg-surface-base' : '']"
-      >
-        <PageHeaderTarget v-if="!chrome" />
-        <ScrollArea v-if="scroll" class="min-h-0 flex-1">
-          <slot />
-        </ScrollArea>
-        <div v-else class="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <slot />
+        <div
+          data-slot="shell-inset"
+          class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+          :class="[chrome ? 'mb-2' : '', chrome && framed ? 'rounded-6 bg-surface-base' : '']"
+        >
+          <PageHeaderTarget v-if="!chrome" />
+          <ScrollArea v-if="scroll" class="min-h-0 flex-1">
+            <slot />
+          </ScrollArea>
+          <div v-else class="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <slot />
+          </div>
         </div>
+
+        <!--
+          The dock: the row under the page, with the same standing as the bar
+          above it. A slot rather than a component, because what is in it is the
+          app's — one SPA has apps to dock and the other is an operator console
+          with none — and this file is generated into both.
+
+          A window filling the desk stops one margin short of it, which is what
+          keeps the tile that folds the window reachable while the window is
+          over everything else.
+        -->
+        <slot v-if="chrome" name="dock" />
       </div>
     </div>
   </div>

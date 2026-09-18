@@ -28,6 +28,34 @@ website_route_rules = [
 ]
 
 # ---------------------------------------------------------------------------
+# Who the reader is, in another app's terms
+# ---------------------------------------------------------------------------
+# A screen may be narrowed to whoever is reading it — "My leave" beside
+# "Leave" — by declaring a filter value of `@me`, which is the session's user,
+# or `@me:<kind>`, which is somebody that user *is* somewhere else.
+#
+# The engine does not know what those are and must not: `onespace/mine.py` has
+# never heard of HRMS, and the day a second app has a subject of its own it
+# should not have to be edited. So a kind is registered here, and OnePeople has the
+# only one — an Employee, found by `user_id` and by nothing else.
+#
+# A kind nobody registered narrows the screen to nothing rather than opening it
+# up, which is the whole safety property of that module.
+onespace_subjects = {
+	"employee": "oneapp.onehr.own.employee_of",
+}
+
+# ---------------------------------------------------------------------------
+# The space this app provides itself
+# ---------------------------------------------------------------------------
+# Every other space is data on the control plane and arrives over a signed
+# call. One does not: it is not something a workspace has, it is the
+# workspace — the place your profile, the workspace's own settings and
+# everything else that belongs to no space live. `onespace/one.py` argues it,
+# and `sync.local_spaces` is the seam it comes through.
+onespace_space_providers = ["oneapp.onespace.one.local_spaces"]
+
+# ---------------------------------------------------------------------------
 # WebDAV
 # ---------------------------------------------------------------------------
 # A Drive folder served to Finder, Explorer and Nextcloud. Not a route rule,
@@ -60,6 +88,21 @@ home_page = "one"
 # keys still works instead of failing every upload.
 override_doctype_class = {
 	"File": "oneapp.onestorage.file.OneSpaceFile",
+	# ERPNext's Task, named after its project's key and carrying the two fields
+	# a board needs written on save — the status its state means, and the rank
+	# it sits at. Everything else about a task stays ERPNext's, which is the
+	# whole of `docs/WORK.md` §12. Inert on a site without erpnext, where the
+	# doctype does not exist to be overridden.
+	"Task": "oneapp.onetask.task.ProjectTask",
+	# ERPNext's Opportunity, drawn by a column a team named rather than by their
+	# `Sales Stage`, which is a row with a name and nothing else. The status and
+	# the probability are written from the stage's category on save, which is
+	# the whole of `docs/ONECRM.md` stage 1. Inert on a site without erpnext,
+	# where the doctype does not exist to be overridden.
+	"Opportunity": "oneapp.onecrm.deal.Deal",
+	# And its lead, for the one thing their schema does not keep: how long it
+	# has sat where it is — `onecrm/lead.py`.
+	"Lead": "oneapp.onecrm.lead.Lead",
 	# Mail arrives folder by folder and the framework throws the folder away —
 	# `InboundMail` is handed it and nothing on the Communication records where
 	# the message was filed, so somebody's Applicants folder lands in one flat
@@ -67,6 +110,15 @@ override_doctype_class = {
 	# relaxed inside a Sent folder so sent mail is not skipped as "your own mail
 	# in your own inbox". See `onemail/folders.py`.
 	"Email Account": "oneapp.onemail.folders.OneSpaceEmailAccount",
+	# Onboarding and exits are checklists, and HRMS implements a checklist as an
+	# ERPNext Project with a Task per step. Two things follow that neither app
+	# owns, because each is only visible when both are installed: those Projects
+	# land in the delivery projects list, and the preparation cannot be dated
+	# before the person joins. Both are fixed in the one moment they can be —
+	# see `onehr/boarding.py`. Inert on a workspace without HRMS, where these
+	# two doctypes do not exist to be overridden.
+	"Employee Onboarding": "oneapp.onehr.boarding.Onboarding",
+	"Employee Separation": "oneapp.onehr.boarding.Exit",
 }
 
 # ---------------------------------------------------------------------------
@@ -79,6 +131,21 @@ override_doctype_class = {
 ignore_links_on_delete = ["File Link"]
 
 doc_events = {
+	# Who is carrying a task, mirrored onto the task so a board can group by it.
+	#
+	# An assignment is Frappe's ToDo and stays Frappe's ToDo — `docs/WORK.md`
+	# §2 — and a ToDo cannot be a column: a board groups by a field, and
+	# `_assign` is a JSON blob. `onetask/assignment.py` keeps the two in step,
+	# in both directions, and is emphatic about which one is the truth. The
+	# doctype is ERPNext's and the field is ours — `docs/WORK.md` §12.
+	"ToDo": {
+		"after_insert": "oneapp.onetask.assignment.follow_todo",
+		"on_update": "oneapp.onetask.assignment.follow_todo",
+		"on_trash": "oneapp.onetask.assignment.follow_todo",
+	},
+	"Task": {
+		"on_update": "oneapp.onetask.assignment.follow_field",
+	},
 	"File": {
 		# Storage quota is enforced at upload time. Discovering you are 3 GB over
 		# after the fact is a worse experience than a clear rejection now.
@@ -129,13 +196,44 @@ doc_events = {
 	# `onespace/retention.py`, which is also the argument for why a
 	# subcontractor's books are wrong without it.
 	"Sales Invoice": {
-		"validate": "oneapp.onespace.retention.apply",
+		"validate": [
+			"oneapp.onespace.retention.apply",
+			# And which space raised it. `onebook/origin.py` — a cache of a
+			# join, so a bookkeeper's list can answer "whose is this" in a
+			# column instead of in four clicks.
+			"oneapp.onebook.origin.stamp",
+		],
+	},
+	# The other three documents that can arrive from somewhere else. Same
+	# handler, same field, different join each time: an invoice knows its
+	# project, a payroll bank entry references the run, a payment references
+	# the claim it settles.
+	"Purchase Invoice": {
+		"validate": "oneapp.onebook.origin.stamp",
+	},
+	"Payment Entry": {
+		"validate": "oneapp.onebook.origin.stamp",
+	},
+	"Journal Entry": {
+		"validate": "oneapp.onebook.origin.stamp",
 	},
 	# Which source's answer the network is drawn from. Precedence is a setting
 	# a customer changes expecting the map to change, not a number that takes
 	# effect on the next delivery — see `onemobility/conflicts.py`.
 	"Transit Source": {
 		"on_update": "oneapp.onemobility.conflicts.on_source_change",
+	},
+	# A call out stops the clock the same way a sent message does — stage 5's
+	# doctype earning its keep twice. See `onecrm/answering.py`.
+	"One Call": {
+		"after_insert": "oneapp.onecrm.answering.on_call",
+	},
+	# A screen renamed. Both caches go — the map and the space list it overlays
+	# — because a rename somebody cannot see the result of is a rename they
+	# will do again. See `onespace/words.py`.
+	"OneSpace Word": {
+		"on_update": "oneapp.onespace.words.forget",
+		"on_trash": "oneapp.onespace.words.forget",
 	},
 	"Version": {
 		"after_insert": "oneapp.onespace.notifications.on_version",
@@ -180,6 +278,10 @@ doc_events = {
 		# `linking.stamp`, which is the whole reason this is two hooks.
 		"after_insert": [
 			"oneapp.onemail.linking.stamp",
+			# And the clock on everything that message was about, stopped —
+			# `onecrm/answering.py`. After `stamp`, because it reads the very
+			# links that writes.
+			"oneapp.onecrm.answering.on_communication",
 			# A shared mailbox has a shared inbox, and shared sent mail.
 			# Frappe's IMAP sync and our own composer both write a
 			# `Communication` only its owner could read, so an address granted
@@ -199,6 +301,15 @@ doc_events = {
 	# measurement is an information_schema scan and must not run per insert.
 	"*": {
 		"before_insert": "oneapp.onestorage.quota.enforce_database_quota",
+		# How long this record has to be answered in, and where it stands —
+		# `onecrm/answering.py`, `docs/ONECRM.md` stage 6. `*` rather than a
+		# list of two because the whole claim of `One Response Target.applies_to`
+		# being a Link to DocType is that a lead, a job, a ticket and a planning
+		# application are the same measurement; a hook that named Lead and
+		# Opportunity would have made that claim false. It costs a cached
+		# `get_meta` and returns on the first line for every doctype that has
+		# not got the field, which is nearly all of them.
+		"validate": "oneapp.onecrm.answering.apply",
 		# A field a person rewrote is not the model's any more, and the marks
 		# go when the document goes. `*` because the mark is about a value on
 		# any doctype — a workspace's records belong to apps we do not own, so
@@ -208,17 +319,17 @@ doc_events = {
 		# that save constantly and can never carry a mark are skipped before
 		# the query. See `onespace/ai/written.py`.
 		"on_update": [
-			"oneapp.onespace.ai.written.forget_changed",
+			"oneapp.oneai.written.forget_changed",
 			# And what the record now says, as a direction, so mail can be
 			# matched to it. Enqueued and deduplicated per record, and skipped
 			# before any query for the doctypes no space exposes — see
 			# `onespace/ai/index.py`.
-			"oneapp.onespace.ai.index.on_save",
+			"oneapp.oneai.index.on_save",
 		],
-		"after_insert": "oneapp.onespace.ai.index.on_save",
+		"after_insert": "oneapp.oneai.index.on_save",
 		"on_trash": [
-			"oneapp.onespace.ai.written.forget_deleted",
-			"oneapp.onespace.ai.index.on_delete",
+			"oneapp.oneai.written.forget_deleted",
+			"oneapp.oneai.index.on_delete",
 		],
 	},
 }
@@ -238,11 +349,11 @@ doc_events = {
 # it gets its settings row, its model picker, its credit hold and its entry in
 # the operator registry from the decorator, like anything else would.
 ai_features = [
-	"oneapp.onespace.chat.assistant",
+	"oneapp.oneai.chat.assistant",
 	# The verbs, declared once for the whole product — see `docs/AI.md` §2.2.
 	# A module that wants "improve this" imports these rather than declaring
 	# its own, so there is one prompt to tune and one settings row to switch.
-	"oneapp.onespace.ai.text",
+	"oneapp.oneai.text",
 	# And the one a module owns because nothing else could: answering a thread.
 	"oneapp.onemail.intelligence",
 	# Which record a conversation is about, once retrieval has produced a
@@ -257,7 +368,11 @@ ai_features = [
 	"oneapp.onesheet.intelligence",
 	# And the retrieval itself, which is a feature because an embedding is a
 	# metered call like any other: a model picker, a switch, a credit hold.
-	"oneapp.onespace.ai.index",
+	"oneapp.oneai.index",
+	# And the one that is not text at either end: reading what a photograph, a
+	# scan or a screenshot says. `Image Understanding` was a capability with
+	# nothing declaring it, so the settings page had a picker it never drew.
+	"oneapp.oneai.vision",
 ]
 
 # Modules that register what a model may *ask for* — see `onespace/ai/actions.py`.
@@ -267,10 +382,29 @@ ai_features = [
 #
 # The three the spine ships with belong to no module in particular: a record, a
 # date in somebody's diary, a task. An app adds its own here.
+# Modules that add tools to the workspace assistant — see
+# `onespace/chat/toolbox.TOOLS_HOOK`.
+#
+# The engine's own eight are about records: find them, count them, read one.
+# That is right for almost every question and wrong for one whose answer is a
+# derivation — "how much leave have I got left" is an allocation minus what was
+# taken, which no filter can express, so a model given only the record tools
+# answers it by listing applications and guessing.
+onespace_chat_tools = [
+	"oneapp.onehr.assistant.tools",
+	# And the one that writes: a letter, a certificate, a scope of works,
+	# written out and filed on whatever the reader has open. Here rather than
+	# with the four in `ai/proposing.py` because a document is OneWriter's —
+	# see `onedoc/actions.py`.
+	"oneapp.onedoc.actions.tools",
+]
+
 ai_actions = [
-	"oneapp.onespace.ai.kinds",
+	"oneapp.oneai.kinds",
 	# Mail's own: file this message against that record.
 	"oneapp.onemail.filing",
+	# And the document's: write this, and file it on that record.
+	"oneapp.onedoc.actions",
 ]
 
 scheduler_events = {
@@ -346,6 +480,13 @@ scheduler_events = {
 		# wakes every hour and works out which sources this hour is a slot for.
 		# A workspace with no OneMobility reads an empty table.
 		"oneapp.onemobility.sources.poll",
+		# And the records that went past their answer-by while nobody was
+		# looking. The one thing a *written* state cannot do for itself:
+		# nothing saves a lead at the moment its deadline passes, so without
+		# this the list that is supposed to show the problem shows nothing.
+		# Hourly rather than daily because a four-hour target measured once a
+		# night is not a measurement. See `onecrm/answering.py`.
+		"oneapp.onecrm.answering.late_now",
 	],
 	"weekly_long": [
 		# Objects in the bucket that no `File` row claims any more. After a
@@ -361,13 +502,52 @@ scheduler_events = {
 # Fetch a transit source on demand, from the screen it is listed on. Declared
 # in code behind the hook rather than stored on the Space: an action names a
 # method somebody can invoke, and that list is not a row an operator edits.
-onespace_screen_actions = ["oneapp.onemobility.actions.actions"]
+#
+# And the three verbs HRMS puts in the desk's Create menu — schedule an
+# interview, make an offer, hire the person who accepted one. Every one of them
+# was reachable only from `/app` before this, because the desk's own buttons are
+# JavaScript an app ships and running that is the door rail 34 refuses.
+onespace_screen_actions = [
+	"oneapp.onemobility.actions.actions",
+	"oneapp.onehr.hiring.actions",
+	# The payroll cycle, which is seven buttons HRMS draws in JavaScript and
+	# the last thing in OnePeople that needed the desk — `onehr/payroll.py`.
+	"oneapp.onehr.payroll.actions",
+	# And the rest of them. HRMS declares about ninety buttons across
+	# thirty-eight files; these five modules are the ones a seat in this space
+	# would press, read off that JavaScript and calling the same whitelisted
+	# Python behind it. `onehr/verbs.py` is what they all share.
+	"oneapp.onehr.money.actions",
+	"oneapp.onehr.growth.actions",
+	"oneapp.onehr.timekeeping.actions",
+	"oneapp.onehr.boarding.actions",
+	# Start and stop the clock, on the two screens somebody works from.
+	"oneapp.onetask.timing.actions",
+	# Log a call, from whichever record you rang somebody about —
+	# `docs/ONECRM.md` stage 5.
+	"oneapp.onecrm.calls.actions",
+	# And settle a receipt against the invoices it pays, which is the party
+	# side of reconciliation — `docs/ONEBOOK.md` §3 says why that is a verb on
+	# the payment rather than a fourth screen.
+	"oneapp.onebook.reconcile.actions",
+	# The two steps of the selling chain — accept a quotation as an order, and
+	# invoice what is left of one. One provider for both because the verb
+	# belongs to whoever owns the *target*, and both targets are OneBook's.
+	# `docs/ONEBOOK.md` §5.
+	"oneapp.onebook.orders.actions",
+]
 
 # A space with a setting of its own, through the same door an installed app
 # uses. OneMobility's two are how long a workspace keeps its vehicle detail and
 # its frozen copy of it — see `onemobility/settings.py`. The group carries a
 # `when`, so a workspace without the space is not offered it.
-onespace_settings_groups = ["oneapp.onemobility.settings.groups"]
+onespace_settings_groups = [
+	"oneapp.onemobility.settings.groups",
+	# And OnePeople's one: whether a check-in records where it happened. The places
+	# and their networks are records — `onehr/place.py` — and this is the switch
+	# that decides whether the distance on them is read at all.
+	"oneapp.onehr.settings.groups",
+]
 
 after_install = "oneapp.install.after_install"
 

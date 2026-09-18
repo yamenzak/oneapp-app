@@ -12,10 +12,25 @@ import { callMethod } from '@/shared/lib/runtime/resource'
 export const diary = {
   // `since` and `until` are the days on screen. A diary is not a page: it
   // fetches the range it is showing, the way the screen calendar does.
-  agenda: (since, until) =>
-    callMethod('oneapp.onecalendar.diary.agenda', { since, until }, {
+  // `lens` is whose days these are — `mine` or `everyone`, `docs/WORK.md` §6.
+  // The server decides what each one means; this only passes the question on.
+  agenda: (since, until, lens = 'mine') =>
+    callMethod('oneapp.onecalendar.diary.agenda', { since, until, lens }, {
       silent: true, method: 'GET',
     }),
+
+  /**
+   * One record's own month — `docs/WORK.md` §6(c).
+   *
+   * Not the diary with a filter: the diary is somebody's week and has a lens
+   * for whose it is, and this is one record's month, where the narrowing *is*
+   * the record. The server reads it off the tabs the record already declares,
+   * so nothing here says which screens to ask.
+   */
+  recordCalendar: (spaceCode, screen, name, since, until) =>
+    callMethod('oneapp.onecalendar.diary.about', {
+      space_code: spaceCode, screen, name, since, until,
+    }, { silent: true, method: 'GET' }),
 
   // The reader's own events, which are the one thing this surface stores. The
   // gate is ownership rather than the workspace's doctype grants — see

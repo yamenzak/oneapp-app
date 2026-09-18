@@ -5,49 +5,26 @@
 @tailwind utilities;
 
 /*
- * The brand marks' knockout, and the one cavity that is its opposite.
+ * The frame: the bar, the column and the ground behind them, which are one
+ * piece with the page stepping out of it.
  *
- * A mark is drawn in its own colours and does not follow the theme — that is
- * what makes an app recognisable at 20px in a rail. These two are the
- * exception, and they are not colour: they are the *structure* the design
- * knocks out of a mark. A pallet under a crate, a page block inside a ledger,
- * the stem of the numeral. Drawn as pure white they disappear on a light
- * ground, which is exactly what four of the sixteen did.
+ * frappe-ui's `Sidebar` paints `--surface-sidebar`, and this is the token the
+ * whole frame reads now — the shell's own ground included. It was `transparent`
+ * here, on the theory that a column with a fill of its own inside a ground is a
+ * third colour with no edge to explain it. That was right and it was not what
+ * happened, because the shell painted `surface-gray-3` — a *palette* grey, and
+ * the one thing in the frame that a declared ground does not move. On a
+ * workspace with a ground the navigation sat at base + .04 and the bar behind
+ * it at a flat .341, three greys where the design has two, and the seam between
+ * them ran down the side of every screen.
  *
- * So they invert, which is what a knockout in a logo normally does. The values
- * are also written into every standalone file `scripts/gen_brand.py` produces,
- * behind a `prefers-color-scheme` query, so a mark used outside this app —
- * a favicon, an email — adapts on its own.
- *
- * Declared here rather than in the theme's token set because they belong to
- * the artwork rather than to the interface: nothing but a mark reads them, and
- * a workspace's accent must never move them.
+ * So the frame is one token and the token has a value. A workspace with no
+ * ground of its own gets `surface-gray-3`, which is what the shell was painting
+ * all along; a workspace with one gets the step `theme.js` derives, and the bar
+ * and the column move together because they are reading the same thing.
  */
 :root {
-  --brand-knockout: #e6ebf1;
-  --brand-ground: #ffffff;
-}
-
-:root[data-theme='dark'] {
-  --brand-knockout: #ffffff;
-  --brand-ground: #0b0f19;
-}
-
-/*
- * The sidebar is not a surface of its own here.
- *
- * frappe-ui's `Sidebar` paints `--surface-sidebar`, which is right for a shell
- * where the column is a panel beside the page. Ours is the other shape: the
- * bar, the column and the ground behind them are one piece, and the page is
- * what steps out of it. A column with its own fill inside that is a block of
- * a third colour with no edge to explain it.
- *
- * Overridden rather than each column carrying `!bg-transparent`, because five
- * of them fill that slot and the fifth would have been added without it. Dark
- * already resolves to transparent; light is the one that had a value.
- */
-:root {
-  --surface-sidebar: transparent;
+  --surface-sidebar: var(--surface-gray-3);
 }
 
 /*
@@ -207,40 +184,31 @@
 }
 
 /*
- * The settings dialog is full-screen on a phone; Dialog's own chrome is not.
+ * The form dialog is full-screen on a phone; Dialog's own chrome is not.
  *
- * SettingsDialog sizes its TabsRoot `w-screen h-[100dvh]`, but the Dialog it
- * sits in still pads its scroll container `px-4 py-4` and gives the content
- * `my-8` — so the "full-screen" dialog starts 32px down and ends 48px past the
- * bottom of the viewport, which is where the pinned Save footer went.
+ * It pins a footer to the bottom of itself, which only works if the bottom of
+ * itself is the bottom of the screen — and the Dialog it sits in pads its
+ * scroll container `px-4 py-4` and gives the content `my-8`, so the pinned row
+ * lands 48px past the bottom. Measured as `viewport ratio 0` on a Pixel 7,
+ * with Create simply unreachable.
  *
- * Everything else about the mobile layout is fallthrough classes on the
- * library's own components (components/settings/geometry.js). This cannot be:
- * the padding and margin are on elements Dialog renders itself, with no prop
- * and no slot reaching them. It is keyed to `.dialog-scroll-container` and
+ * This cannot be a fallthrough class the way the panels' own geometry is: the
+ * padding and margin are on elements Dialog renders itself, with no prop and no
+ * slot reaching them. It is keyed to `.dialog-scroll-container` and
  * `.dialog-content` — named hooks in Dialog's own markup, which frappe-ui uses
  * itself for the open/close animation, not utility classes — and scoped to our
  * dialog by a marker attribute we put there rather than to any dialog that
- * happens to contain a tablist.
+ * happens to be full-screen.
  *
- * `tests/test_settings_dialog_geometry.py` pins the values this compensates for.
- */
-/*
- * Two dialogs need it, for the same reason and with the same fix: the settings
- * dialog and the form dialog a record is created in. Both are full-screen on a
- * phone and both pin a footer to the bottom of themselves, which only works if
- * the bottom of themselves is the bottom of the screen. Dialog's `py-4` and
- * `my-8` add 48px below that, so the pinned row lands off the bottom — measured
- * as `viewport ratio 0` on a Pixel 7, with Create simply unreachable.
+ * The settings dialog needed the same thing and is gone: its panels are tabs on
+ * a page now, so there is no dialog to make full-screen.
  */
 @media (max-width: 639px) {
-  .dialog-scroll-container:has([data-oneapp='settings-dialog']) > div,
   .dialog-scroll-container:has([data-oneapp='form-dialog']) > div {
     padding: 0;
     min-height: 100dvh;
   }
 
-  .dialog-scroll-container:has([data-oneapp='settings-dialog']) .dialog-content,
   .dialog-scroll-container:has([data-oneapp='form-dialog']) .dialog-content {
     margin: 0;
     border-radius: 0;
@@ -304,7 +272,7 @@
  *
  * Here rather than in `shared/components/AiGlow.vue` for two reasons that
  * both matter. The keyframes and the two hues are a product-wide primitive
- * like `--brand-knockout` above — a mail summary, a paragraph in a document
+ * — a mail summary, a paragraph in a document
  * and a range of cells have to shimmer identically or the signal stops being
  * one. And the overlay mode paints over a slot whose markup belongs to the
  * caller, which a component's scoped stylesheet cannot reach.
@@ -324,17 +292,26 @@
   --oneapp-glow-lit: rgba(255, 255, 255, 0.75);
   --oneapp-glow-bar: rgba(99, 102, 241, 0.14);
   /*
-   * The same idea at full strength, for the things that do not move: the
-   * sparkle on a generated value, the ring around the assistant's face.
+   * The same idea at full strength, for the thing that does not move: the
+   * sparkle on a generated value.
    *
    * There were three AI palettes and this is what collapses them. The mark
    * was amber, which is also what four `Alert`s use for a warning — so "a
    * model wrote this" and "something is wrong here" were the same colour.
-   * The `oneai` brand mark keeps its rose, because a brand mark is allowed
-   * its own colours (§C3); the *interface* language is one.
+   * The `oneai` brand mark keeps its own spectrum, because a brand mark is
+   * allowed its own colours (§C3); the *interface* language is one.
    */
   --oneapp-ai-ink: rgb(79, 70, 229);
-  --oneapp-ai-wash: rgba(99, 102, 241, 0.1);
+  /*
+   * The same two hues at a weight a hairline can carry.
+   *
+   * `--oneapp-glow-*` are what they are because they are laid over things —
+   * a fifth of an indigo across a paragraph is a sheen. One pixel of a fifth
+   * of an indigo is nothing at all, so the window's edge gets its own pair,
+   * opaque, and the halo keeps the translucent ones.
+   */
+  --oneapp-aura-one: rgb(129, 140, 248);
+  --oneapp-aura-two: rgb(244, 114, 182);
 }
 
 :root[data-theme='dark'] {
@@ -343,18 +320,14 @@
   --oneapp-glow-lit: rgba(255, 255, 255, 0.14);
   --oneapp-glow-bar: rgba(129, 140, 248, 0.18);
   --oneapp-ai-ink: rgb(165, 180, 252);
-  --oneapp-ai-wash: rgba(129, 140, 248, 0.16);
+  --oneapp-aura-one: rgb(99, 102, 241);
+  --oneapp-aura-two: rgb(219, 39, 119);
 }
 
 /* The mark on a generated value, and anything else that says "a model did
    this" without moving. */
 .oneapp-ai-ink {
   color: var(--oneapp-ai-ink);
-}
-
-/* The face's own ground, when the workspace has set no picture. */
-.oneapp-ai-ring {
-  background-color: var(--oneapp-ai-wash);
 }
 
 /*
@@ -375,10 +348,82 @@
   animation: oneapp-ai-breathe 1.8s ease-in-out infinite;
 }
 
+/*
+ * The dial in the corner, at rest.
+ *
+ * It is the assistant's mark and nothing else — no disc, no border. The mark
+ * is a spectrum aperture with its own edge and its own shadow, so a container
+ * behind it was a second ring around a drawing that already had one, and the
+ * whole thing read as a generic corner button.
+ *
+ * What it gets instead is a halo of its own colour, breathing very slowly. Not
+ * the 1.8s of `alive` — that one means *an answer is coming* and has to be
+ * read as urgency; this one means *there is something here*, and at four
+ * seconds it is nearer a pulse you notice than an animation you watch. The two
+ * are deliberately far apart: one page showing both at the same tempo would
+ * say the same thing twice.
+ *
+ * `filter: drop-shadow` rather than `box-shadow`, because the mark is not a
+ * rectangle: a box shadow would draw a soft square behind a hexagon.
+ */
+@keyframes oneapp-ai-idle {
+  0%, 100% {
+    filter: drop-shadow(0 2px 6px rgba(15, 23, 42, 0.28))
+            drop-shadow(0 0 6px var(--oneapp-glow-one));
+  }
+  50% {
+    filter: drop-shadow(0 2px 6px rgba(15, 23, 42, 0.28))
+            drop-shadow(0 0 16px var(--oneapp-glow-two));
+  }
+}
+
+.oneapp-ai-dial {
+  animation: oneapp-ai-idle 4s ease-in-out infinite;
+  transition: transform 150ms ease-out;
+}
+
+/*
+ * The same halo without the button.
+ *
+ * `oneapp-ai-dial` is a control — it rises under the pointer and presses in —
+ * and the mark in the assistant's title bar is neither: it is a face beside a
+ * name. What it wants is the half of that which says *there is something here*,
+ * at the same four seconds, so the window's own aura and the mark inside it
+ * breathe together rather than at two tempos.
+ */
+.oneapp-ai-halo {
+  animation: oneapp-ai-idle 4s ease-in-out infinite;
+}
+
+/* Under the pointer it rises and the halo goes hard, which is the whole of
+   "this is a button" on something with no border to light up. */
+.oneapp-ai-dial:hover,
+.oneapp-ai-dial:focus-visible {
+  animation: none;
+  transform: scale(1.08);
+  filter: drop-shadow(0 4px 10px rgba(15, 23, 42, 0.32))
+          drop-shadow(0 0 20px var(--oneapp-glow-two));
+}
+
+.oneapp-ai-dial:active {
+  transform: scale(0.96);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .oneapp-ai-alive {
     animation: none;
     box-shadow: 0 0 0 2px var(--oneapp-glow-one);
+  }
+
+  /* The halo stays — it is what says the thing is there — and stops moving. */
+  .oneapp-ai-halo,
+  .oneapp-ai-dial,
+  .oneapp-ai-dial:hover,
+  .oneapp-ai-dial:focus-visible {
+    animation: none;
+    transform: none;
+    filter: drop-shadow(0 2px 6px rgba(15, 23, 42, 0.28))
+            drop-shadow(0 0 10px var(--oneapp-glow-one));
   }
 }
 
@@ -448,5 +493,159 @@
     animation: none;
     background-image: linear-gradient(100deg, var(--oneapp-glow-one), var(--oneapp-glow-two));
     opacity: 0.35;
+  }
+}
+
+/*
+ * The edge, for anything that is a box while a model is writing into it.
+ *
+ * The window's aura is a ring in these two hues; so is this, inset and at a
+ * fraction of the strength. That is the whole of what makes them one idea
+ * rather than two effects: a mail composer being rewritten, the skeleton the
+ * assistant draws while it thinks, and the panel they both belong to are
+ * ringed in the same colour at three weights.
+ *
+ * `block` and `inline` do not take it by default — they sit inside something
+ * that already has a border, and a second ring one pixel inside the first is
+ * a box that looks doubled. A caller that wants it asks.
+ */
+.oneapp-ai-edge {
+  box-shadow: inset 0 0 0 1px var(--oneapp-glow-one);
+}
+
+.oneapp-glow-overlay.is-writing {
+  box-shadow: inset 0 0 0 1px var(--oneapp-glow-one);
+  border-radius: inherit;
+}
+
+/* --------------------------------------------------------------------------
+   The assistant's own window.
+
+   Every other window on the desk wears a hairline of its app's colour and a
+   wash of it in the bar — `DeskWindow`, and that is the right amount of
+   decoration for a file manager. This one is the exception it is worth making:
+   the thing in it is the only surface in the product that *writes*, and a
+   panel that looks exactly like the Drive beside it is a panel nobody notices
+   arriving.
+
+   Two moving parts and both are slow. The **aura** is the halo the corner dial
+   already has, at window scale: the two glow hues breathing through the
+   floating shadow, eight seconds a cycle, so it reads as a thing that is alive
+   rather than a thing that is loading. The **bar** is the sheen the streaming
+   surfaces use, at a twelfth of the speed and a third of the strength — the
+   same gradient travelling, slowly enough to be a texture.
+
+   The palette is the glow's, not a new one. Three animations at three tempos
+   in three colours would be three features; one language at three speeds is
+   what makes the aura, the sheen and the dial read as the same thing in three
+   places. `--oneapp-glow-*` is that language, and this is its loudest use.
+
+   Animated rather than declared, deliberately: a CSS animation beats a normal
+   author declaration, which is how this overrides the `shadow-floating` every
+   window gets from `Panel` without a specificity fight.
+   -------------------------------------------------------------------------- */
+@keyframes oneapp-ai-window-aura {
+  0%, 100% {
+    border-color: var(--oneapp-aura-one);
+    box-shadow:
+      var(--elevation-lg),
+      0 0 0 1px var(--oneapp-glow-one),
+      0 4px 24px -6px var(--oneapp-glow-one),
+      0 12px 64px -12px var(--oneapp-glow-one);
+  }
+  50% {
+    border-color: var(--oneapp-aura-two);
+    box-shadow:
+      var(--elevation-lg),
+      0 0 0 1px var(--oneapp-glow-two),
+      0 4px 28px -4px var(--oneapp-glow-two),
+      0 16px 80px -10px var(--oneapp-glow-two);
+  }
+}
+
+.oneapp-ai-window {
+  animation: oneapp-ai-window-aura 8s ease-in-out infinite;
+}
+
+.oneapp-ai-bar {
+  /* Over whatever wash the tint already put there — `background-color` stays,
+     the image travels across it. */
+  background-image: linear-gradient(
+    100deg,
+    transparent 18%,
+    var(--oneapp-glow-one) 34%,
+    var(--oneapp-glow-lit) 50%,
+    var(--oneapp-glow-two) 66%,
+    transparent 82%
+  );
+  background-size: 200% 100%;
+  animation: oneapp-glow-travel 19s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Both stay and neither moves. The halo is what says the window is the
+     assistant's; taking it away in the name of calm would take the meaning
+     with it. */
+  .oneapp-ai-window {
+    animation: none;
+    border-color: var(--oneapp-aura-one);
+    box-shadow:
+      var(--elevation-lg),
+      0 0 0 1px var(--oneapp-glow-one),
+      0 8px 40px -10px var(--oneapp-glow-one);
+  }
+
+  .oneapp-ai-bar {
+    animation: none;
+    background-image: linear-gradient(
+      100deg,
+      var(--oneapp-glow-one),
+      var(--oneapp-glow-two)
+    );
+  }
+}
+
+/* --------------------------------------------------------------------------
+   A form's columns, decided by the box they are in rather than by the window.
+
+   The doctype declares two or three and the grid drew them at `md:`, which is
+   a question about the *viewport* — right for as long as a form had the page to
+   itself and wrong the moment anything stood beside it. A record with a rail on
+   its left and a sidebar on its right leaves about five hundred pixels in the
+   middle; three columns in five hundred pixels is a hundred and sixty each,
+   every label truncated, on a 1280-wide window `md:` calls roomy. A window and
+   a phone were wrong the same way and for longer.
+
+   Two widths, and they are about words rather than about devices — and they
+   were guessed twice before they were measured. A Sales Invoice declares
+   "Is Rate Adjustment Entry (Debit Note)", whose label lays out at 268px and
+   does not wrap inside frappe-ui's Checkbox; at 44rem the grid gave three
+   columns of 243 and that label ran sixty pixels past the panel. So the floor
+   is 280 per column, which is the longest real label plus its glyph: two of
+   them and the 2rem gutter want 37rem, three want 57rem.
+
+   Written here rather than as Tailwind classes because a container query has to
+   sit on an *ancestor* of the grid, and `@container` is not in the version of
+   Tailwind this project is on.
+   -------------------------------------------------------------------------- */
+.oneapp-form-box {
+  container-type: inline-size;
+}
+
+.oneapp-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container (min-width: 37rem) {
+  .oneapp-form-grid[data-columns="2"],
+  .oneapp-form-grid[data-columns="3"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 57rem) {
+  .oneapp-form-grid[data-columns="3"] {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

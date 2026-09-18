@@ -760,12 +760,18 @@ def _alerts_gate() -> None:
 
 
 @frappe.whitelist(methods=["GET"])
-def alerts() -> dict:
-	"""Every rule this workspace made, and what a new one may be about."""
+def alerts(space: str = "") -> dict:
+	"""Every rule this workspace made, and what a new one may be about.
+
+	`space` narrows what a *new* rule may be about to that space's own records.
+	The rules themselves are not narrowed: a rule belongs to the workspace, and
+	hiding the ones on another space's doctypes would be a page that says a
+	workspace has fewer alerts than it has.
+	"""
 	from oneapp.onespace import alerts as module
 
 	_alerts_gate()
-	return {"rules": module.listing(), "doctypes": module.doctypes(),
+	return {"rules": module.listing(), "doctypes": module.doctypes(space),
 	        "roles": module.roles()}
 
 
@@ -791,6 +797,56 @@ def set_alert_enabled(name: str, enabled: int | bool) -> dict:
 def remove_alert(name: str) -> dict:
 	"""Delete a rule this workspace made. An app's own rules are refused."""
 	from oneapp.onespace import alerts as module
+
+	_alerts_gate()
+	return module.remove(name)
+
+
+# --------------------------------------------------------------------------- #
+# Routing
+#
+# Frappe's own `Assignment Rule`, through the same door and the same vocabulary
+# as the alerts above it. See `onespace/routing.py`.
+# --------------------------------------------------------------------------- #
+
+@frappe.whitelist(methods=["GET"])
+def routing(space: str = "") -> dict:
+	"""Every routing rule this workspace made, and what a new one may be about.
+
+	Behind the alerts gate rather than a door of its own, and for a stronger
+	reason than symmetry: a rule that hands work to a colleague is deciding
+	what somebody else's list contains, which is exactly the kind of decision
+	that gate exists for.
+	"""
+	from oneapp.onespace import routing as module
+
+	_alerts_gate()
+	return {"rules": module.listing(), "doctypes": module.doctypes(space),
+	        "users": module.users()}
+
+
+@frappe.whitelist(methods=["POST"])
+def save_routing_rule(values: str | dict) -> dict:
+	"""Write one rule, new or edited, and hand back what was stored."""
+	from oneapp.onespace import routing as module
+
+	_alerts_gate()
+	return module.save(values)
+
+
+@frappe.whitelist(methods=["POST"])
+def set_routing_enabled(name: str, enabled: int | bool) -> dict:
+	"""Pause a rule, or start it again, without losing what it says."""
+	from oneapp.onespace import routing as module
+
+	_alerts_gate()
+	return module.set_enabled(name, bool(int(enabled)))
+
+
+@frappe.whitelist(methods=["POST"])
+def remove_routing_rule(name: str) -> dict:
+	"""Delete a rule this workspace made. An app's own rules are refused."""
+	from oneapp.onespace import routing as module
 
 	_alerts_gate()
 	return module.remove(name)
@@ -864,12 +920,15 @@ def remove_mail_template(name: str) -> dict:
 
 
 @frappe.whitelist(methods=["GET"])
-def naming() -> list[dict]:
-	"""Every doctype this workspace may set a series for, with its prefixes."""
+def naming(space: str = "") -> list[dict]:
+	"""Every doctype this workspace may set a series for, with its prefixes.
+
+	Narrowed to one space where the page asking is that space's own.
+	"""
 	from oneapp.onespace import naming as module
 
 	_naming_gate()
-	return module.doctypes()
+	return module.doctypes(space)
 
 
 @frappe.whitelist(methods=["POST"])
@@ -927,8 +986,8 @@ def _printing_gate() -> None:
 		             frappe.PermissionError)
 
 
-def _printable() -> set[str]:
-	"""Every doctype this workspace's own spaces put on a screen.
+def _printable(space: str = "") -> set[str]:
+	"""Every doctype this workspace's own spaces put on a screen, or one space's.
 
 	The same rule as naming, for the same reason: a format is drawn over a
 	doctype, and the ones worth drawing over are the ones somebody here can
@@ -936,7 +995,7 @@ def _printable() -> set[str]:
 	"""
 	from oneapp.onespace import sync
 
-	return sync.granted_doctypes()
+	return sync.granted_doctypes(space)
 
 
 def _printable_gate(doctype: str) -> None:
@@ -946,12 +1005,20 @@ def _printable_gate(doctype: str) -> None:
 
 
 @frappe.whitelist(methods=["GET"])
-def print_formats(doctype: str = "") -> dict:
-	"""The doctypes a format may be drawn over, and one doctype's formats."""
+def print_formats(doctype: str = "", space: str = "") -> dict:
+	"""The doctypes a format may be drawn over, and one doctype's formats.
+
+	Narrowed to one space where the page asking is that space's own. Not the
+	gate, which stays the workspace's: a format on a doctype another space
+	shows is still this workspace's to edit, and the narrowing is about what a
+	page *offers*.
+	"""
 	from oneapp.onespace import printing
 
 	_printing_gate()
-	offered = sorted(one for one in _printable() if frappe.has_permission(one, "read"))
+	offered = sorted(
+		one for one in _printable(space) if frappe.has_permission(one, "read")
+	)
 	doctype = doctype if doctype in offered else (offered[0] if offered else "")
 	return {
 		"doctypes": [{"doctype": one, "label": _(one)} for one in offered],

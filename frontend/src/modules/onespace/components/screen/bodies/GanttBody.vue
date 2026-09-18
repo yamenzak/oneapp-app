@@ -32,6 +32,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Gantt from 'frappe-gantt'
 import 'frappe-gantt/style.css'
+import { identityOf } from '@/modules/onespace/lib/screen/identity'
 import EmptyState from '@/shared/components/EmptyState.vue'
 import { __ } from '@/shared/lib/runtime/translate'
 
@@ -57,12 +58,14 @@ const field = computed(() => props.gantt?.start_field || '')
 const endField = computed(() => props.gantt?.end_field || '')
 const measure = computed(() => props.gantt?.progress_field || '')
 const depends = computed(() => props.gantt?.depends_field || '')
+// Whether that field is a table of edges rather than a single Link.
+const through = computed(() => props.gantt?.depends_child || '')
+// Which records are dates the plan is measured by rather than work in it.
+const mark = computed(() => props.gantt?.milestone_field || '')
 
-/** What a record is called, from the doctype's own title field. */
-const nameOf = (row) => {
-  const title = props.spec?.title_field
-  return String((title && row[title]) || row.name || '')
-}
+/** What a record is called — `lib/screen/identity.js`, the same reading every
+ *  other surface does, including a Link title drawn as its label. */
+const nameOf = (row) => identityOf(row, props.spec).label
 
 /** The day part of a Date or a Datetime. See `CalendarBody`. */
 const day = (value) => String(value || '').trim().split(' ')[0]
@@ -76,22 +79,38 @@ const day = (value) => String(value || '').trim().split(' ')[0]
  */
 const onPage = computed(() => new Set(props.rows.map((row) => row.name)))
 
+/**
+ * What this bar comes after.
+ *
+ * Two shapes, and the screen has already been told which it is. A **Link** is
+ * one predecessor, read off the record. A **table** is the task's own edges,
+ * which the server attached to the page as `_after` — one query for the whole
+ * chart rather than one per bar. `onespace/spaceview/records.py`.
+ */
 const waiting = (row) => {
   if (!depends.value) return []
-  const after = String(row[depends.value] || '')
-  return after && after !== row.name && onPage.value.has(after) ? [after] : []
+  const after = through.value ? row._after || [] : [String(row[depends.value] || '')]
+  return after.filter((one) => one && one !== row.name && onPage.value.has(one))
 }
 
 const bars = computed(() => {
   if (!field.value || !endField.value) return []
   return props.rows
     .map((row) => {
-      const from = day(row[field.value])
-      const to = day(row[endField.value])
+      const marker = mark.value && !!row[mark.value]
+      const ends = day(row[endField.value])
+      // A milestone is a date, not a stretch of work, so it is drawn at one:
+      // the day it is due, with no width. Collapsed here rather than in the
+      // data because the data is ERPNext's — its milestones carry a start and
+      // an end like any other task, and an eighteen-day diamond is a shape
+      // nobody can read.
+      const from = marker ? ends || day(row[field.value]) : day(row[field.value])
+      const to = marker ? from : ends
       // Both ends or no bar. A record with one date is a moment, and drawing it
       // as a bar of arbitrary length would be inventing a plan.
       if (!from || !to) return null
       return {
+        custom_class: marker ? 'oneapp-milestone' : '',
         id: row.name,
         name: nameOf(row),
         start: from,
@@ -116,6 +135,19 @@ const bars = computed(() => {
 const OPTIONS = {
   readonly: true,
   view_mode: 'Week',
+  /*
+   * Framed on the first bar rather than on today, which is the library's
+   * default and the wrong one here.
+   *
+   * A Gantt in this product is a *view of a page of records* — somebody
+   * filtered a list and asked to see it as bars. Opening on today means a
+   * screen of seventeen tasks whose work is behind them shows ten empty rows
+   * and three bars hugging the left edge, and the reader's first action is to
+   * scroll back to the data they just asked for. The library draws a Today
+   * button in its own header, so the other direction costs one click and this
+   * one costs none.
+   */
+  scroll_to: 'start',
   // Frappe's own default set, minus the ones that make no sense at this scale:
   // Hour is a chart of one afternoon and Year is a chart of nothing.
   view_mode_select: true,
@@ -172,10 +204,24 @@ onBeforeUnmount(() => {
   --g-weekend-label-color: var(--surface-gray-3);
   --g-actions-background: var(--surface-gray-2);
   --g-popup-actions: var(--surface-gray-2);
-  --g-bar-color: var(--surface-gray-2);
-  --g-bar-border: var(--outline-gray-2);
-  --g-progress-color: var(--surface-gray-5);
-  --g-expected-progress: var(--surface-gray-3);
+  /*
+   * The bar, and the part of it that is done.
+   *
+   * Both were greys a step apart from the row they sit on — `gray-2` on
+   * `surface-base` — which on a screen of forty rows is a chart you have to
+   * lean into. A Gantt is *read as a picture*: where the bars are, how long
+   * they are, how full. So the trough is a surface you can see the edge of and
+   * the fill is `gray-10`, which is where a space's declared accent lands
+   * (`onespace/theming.py`) — the same colour as the progress fill everywhere
+   * else in the product, which is what that token is for.
+   *
+   * The fill matters on a screen that names no `progress_field` too: there the
+   * bar is all trough, and the trough has to hold its own.
+   */
+  --g-bar-color: var(--surface-gray-3);
+  --g-bar-border: var(--outline-gray-3);
+  --g-progress-color: var(--surface-gray-10);
+  --g-expected-progress: var(--surface-gray-4);
   --g-arrow-color: var(--ink-gray-5);
   --g-handle-color: var(--ink-gray-8);
   --g-today-highlight: var(--ink-gray-8);
@@ -187,5 +233,40 @@ onBeforeUnmount(() => {
 /* The library sets its own stack; the rest of the app is on frappe-ui's. */
 .gantt-container .bar-label {
   font-family: inherit;
+}
+
+/*
+ * Today's line is a decoration and was eating clicks.
+ *
+ * `frappe-gantt` draws it as a full-height `div` over the chart, so any bar
+ * crossing today could not be opened — the click landed on the highlight and
+ * the record never came up. It was always true and it took framing the chart on
+ * its first bar to make it likely enough to notice, which is the kind of bug
+ * that reads as "the Gantt is sometimes broken".
+ */
+.gantt-container .current-highlight,
+.gantt-container .current-date-highlight {
+  pointer-events: none;
+}
+
+/*
+ * A milestone is a date the plan is measured by, and it is the one row on a
+ * Gantt that is not a stretch of work: a launch, a handover, an inspection.
+ *
+ * Turned forty-five degrees and squared off — the diamond every plan in the
+ * world draws — rather than given a colour of its own, because a chart where
+ * the difference between "work" and "a date" is a hue is a chart that has to
+ * be explained. The label is rotated back so it stays readable.
+ */
+.gantt-container .oneapp-milestone .bar,
+.gantt-container .oneapp-milestone .bar-progress {
+  fill: var(--ink-gray-8);
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: rotate(45deg) scale(0.7);
+}
+
+.gantt-container .oneapp-milestone .bar-label {
+  font-weight: 600;
 }
 </style>

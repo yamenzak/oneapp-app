@@ -50,7 +50,15 @@
             have to guess how tall the label and description are.
           -->
           <span v-if="destination" class="flex shrink-0 items-center gap-0.5">
+            <!--
+              Beside this — except where "this" is already a window, which is
+              the one place it is not offered. A peek inside a peek is a second
+              window over the first holding a third record, and by then nothing
+              on the screen is the thing the page is about.
+              `lib/screen/previewing.js`.
+            -->
             <Button
+              v-if="!previewing"
               variant="ghost"
               size="sm"
               icon="lucide-panel-right"
@@ -142,7 +150,7 @@
 </template>
 
 <script setup>
-import { computed, defineAsyncComponent, inject, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, inject, onMounted, reactive, ref, unref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Combobox, Avatar, Icon, Dialog, Button, ErrorMessage } from '@/ui'
 import { workspace } from '@/shared/lib/workspace'
@@ -150,6 +158,7 @@ import { KIND, pushAt, writeAt } from '@/shared/lib/url/at'
 import { recall, remember } from '@/shared/lib/url/remember'
 import { screenFor } from '@/modules/onespace/lib/shell/nav'
 import { LEAVING } from '@/modules/onespace/lib/screen/leaving'
+import { PREVIEWING } from '@/modules/onespace/lib/screen/previewing'
 import { __ } from '@/shared/lib/runtime/translate'
 import { errorText } from '@/shared/lib/runtime/errors'
 
@@ -205,6 +214,15 @@ const router = useRouter()
 // of surface that can lose anything. Null in a list's filter bar and in a
 // saved record, which lose nothing.
 const leaving = inject(LEAVING, null)
+
+// Whether the surface holding this field is itself a preview, in which case
+// this link offers the door and not the second window.
+//
+// Injected here rather than inside the computed: `inject` is a setup-time call,
+// and a computed's body runs at render. `unref` because the provider hands over
+// a computed and the default is a plain `false` — most surfaces provide nothing.
+const preview = inject(PREVIEWING, false)
+const previewing = computed(() => !!unref(preview))
 
 /**
  * The screen this link's target lives on in this space, or nothing.
@@ -360,18 +378,29 @@ const search = async () => {
     found.value = []
     return
   }
+  // What is being asked for, so a slower earlier answer cannot overwrite a
+  // faster later one. Two searches are in flight together all the time — the
+  // first touch fetches, and the first keystroke fetches again — and without
+  // this the list settles on whichever *started* first rather than whichever
+  // was last asked for. It shows as a picker offering the options for the name
+  // that was already in the box, under the name somebody just typed, and it
+  // does not go away until the next keystroke.
+  const asked = query.value
   loading.value = true
   try {
-    found.value =
+    const rows =
       (await workspace.linkOptions(
         props.spaceCode,
         props.screen,
         props.fieldname,
-        query.value,
+        asked,
         props.target,
       )) || []
+    // Guard the assignment rather than the call: the request was worth making
+    // and its answer is worth nothing once the question has moved on.
+    if (asked === query.value) found.value = rows
   } finally {
-    loading.value = false
+    if (asked === query.value) loading.value = false
   }
 }
 

@@ -29,11 +29,26 @@
   `docs/UNIFICATION.md` §E2/E3.
 -->
 <template>
+  <!--
+    Inside a window, nothing of its own: the window has a bar and this would be
+    a second one under it — the title above, then a row nearly empty on the
+    left and the width of the window on the right. So the verbs go *up*, into
+    the target `DeskWindow` provides, and the mark and the title are the
+    window's own. `WINDOW_BAR` in `lib/desk/windows.js`.
+  -->
+  <Teleport v-if="inWindow" :to="`#${inWindow}`">
+    <div class="hidden shrink-0 items-center gap-2 md:flex">
+      <slot name="status" />
+    </div>
+    <slot name="actions" />
+  </Teleport>
+
   <!-- The shell's header when this is a page, and a bar of its own when the
        editor is inside the Drive's pane: `PageHeader` is a teleport, so a
        hosted editor that drew one would put its title in the shell's header,
        above the file list it is sitting beside. -->
   <component
+    v-else
     :is="hosted ? 'header' : PageHeader"
     data-slot="editor-chrome"
     :class="hosted ? HOSTED : ''"
@@ -44,6 +59,14 @@
          trail is the Drive's own, drawn once above the list. Both keep the
          mark, which is the only thing on the bar that is about the product
          rather than the workspace. -->
+    <!-- And no name while something else is holding this, because every holder
+         there is draws one: the Drive's pane puts it in its own header and a
+         window puts it in its title bar. It was the same words twice, six
+         millimetres apart, in both. A shared link has no holder and keeps it.
+
+         What goes with it is renaming in place, which is reachable from the
+         row's own menu and from the editor's page — and neither of those is
+         where somebody holding a file open beside their work is looking. -->
     <nav
       v-if="shared || hosted"
       data-slot="breadcrumb"
@@ -51,7 +74,7 @@
       class="flex min-w-0 flex-1 items-center gap-2"
     >
       <BrandMark :name="brand" class="size-6 shrink-0" />
-      <component :is="TITLE" />
+      <component v-if="shared" :is="TITLE" />
     </nav>
 
     <Trail v-else :items="crumbs">
@@ -93,9 +116,10 @@
 </template>
 
 <script setup>
-import { h, ref, watch } from 'vue'
+import { computed, h, inject, onMounted, ref, unref, watch } from 'vue'
 
 import { PageHeader } from '@/ui'
+import { WINDOW_BAR } from '@/modules/onespace/lib/desk/windows'
 import Trail from '@/shared/components/Trail.vue'
 import BrandMark from '@/shared/components/brand/BrandMark.vue'
 import SpaceName from '@/shared/components/brand/SpaceName.vue'
@@ -106,6 +130,23 @@ import { __ } from '@/shared/lib/runtime/translate'
 //: shell's own is 48px and this matches it, so a file that opens in the pane
 //: and a file that opens on a page do not step up and down as you switch.
 const HOSTED = 'flex h-12 shrink-0 items-center gap-2 border-b border-outline-gray-1 px-3'
+
+/**
+ * The window this editor is inside, where it is inside one.
+ *
+ * Injected at setup and read through `unref`, not called inside a computed's
+ * getter — an `inject` there registers nothing and answers `undefined` on the
+ * second read, which is a bug this file has no wish to repeat.
+ *
+ * Held until mounted, because a `<Teleport>` resolves its target when it
+ * patches: a target that appears in the same tick as the teleport wanting it
+ * is one Vue warns about and then ignores. The window's bar is in its parent's
+ * template, so it is there by the time this mounts.
+ */
+const bar = inject(WINDOW_BAR, null)
+const ready = ref(false)
+onMounted(() => { ready.value = true })
+const inWindow = computed(() => (ready.value ? unref(bar) || '' : ''))
 
 const props = defineProps({
   /** Which product this is — the mark and the name come off it. */

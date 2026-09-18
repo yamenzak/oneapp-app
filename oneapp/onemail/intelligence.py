@@ -42,8 +42,8 @@ import re
 import frappe
 from frappe import _
 
-from oneapp.onespace.ai import conversation, proposing, streaming, text as writing
-from oneapp.onespace.ai.features import ai_feature
+from oneapp.oneai import conversation, proposing, streaming, text as writing
+from oneapp.oneai.features import ai_feature
 
 #: Messages of a thread a summary reads. A conversation longer than this is one
 #: where the last forty are the ones that matter.
@@ -157,7 +157,7 @@ def noticing():
 	mail's: a fourth kind registered by somebody else is one this offers
 	without a line changing here.
 	"""
-	from oneapp.onespace.ai.proposing import PROPOSALS
+	from oneapp.oneai.proposing import PROPOSALS
 
 	# Not the record ones: placing a message against a quotation is linking,
 	# which is `docs/DOCUMENT-MAIL.md` §6 and a retrieval problem rather than
@@ -188,12 +188,19 @@ def _plain(html: str) -> str:
 	return body.strip()[:MAX_BODY]
 
 
-def _conversation(key: str, folder: str = "all") -> tuple[str, str, list]:
+def conversation(key: str, folder: str = "all") -> tuple[str, str, list]:
 	"""One thread as (text, about, rows), through the ordinary permission path.
 
 	`mailbox.thread` is what the reader's own browser calls, so a thread this
 	person may not open comes back empty here exactly as it would there. There
 	is no second query and no `ignore_permissions` anywhere in this module.
+
+	Public, because the assistant reads it too: a conversation somebody has
+	open in front of the panel is what "reply to this" means, and
+	`onespace/chat/context.py` resolves that claim through this rather than
+	querying `Communication` a second way. Throws for a thread with nothing
+	readable in it, which is that module's signal that the claim does not
+	hold.
 	"""
 	from oneapp.onemail import mailbox
 
@@ -268,18 +275,18 @@ def _composing(to: str = "", subject: str = "") -> str:
 @frappe.whitelist(methods=["POST"])
 def summarise_thread(thread: str, folder: str = "all") -> dict:
 	"""The short version of a conversation. Starts a run; watch the socket."""
-	conversation, about, _rows = _conversation(thread, folder)
+	said, about, _rows = conversation(thread, folder)
 	return streaming.begin(
-		writing.summarise, label=_("Summary"), text=conversation, about=about
+		writing.summarise, label=_("Summary"), text=said, about=about
 	)
 
 
 @frappe.whitelist(methods=["POST"])
 def suggest_reply(thread: str, folder: str = "all") -> dict:
 	"""A reply, drafted from the thread, for a person to edit and send."""
-	conversation, about, _rows = _conversation(thread, folder)
+	said, about, _rows = conversation(thread, folder)
 	return streaming.begin(
-		draft_reply, label=_("Suggested reply"), conversation=conversation, about=about
+		draft_reply, label=_("Suggested reply"), conversation=said, about=about
 	)
 
 
@@ -291,7 +298,7 @@ def notice_thread(thread: str, folder: str = "all") -> dict:
 	thread key: a thread key is a normalised subject and two conversations can
 	share one, which would put somebody else's card on this screen.
 	"""
-	conversation_text, about, rows = _conversation(thread, folder)
+	conversation_text, about, rows = conversation(thread, folder)
 	return streaming.begin(
 		notice,
 		label=_("Suggestions"),
@@ -303,17 +310,24 @@ def notice_thread(thread: str, folder: str = "all") -> dict:
 
 @frappe.whitelist(methods=["GET"])
 def thread_suggestions(thread: str, folder: str = "all") -> list[dict]:
-	"""What has already been suggested about this conversation.
+	"""What is still waiting in this conversation.
 
-	Read back through the same `_conversation`, so a thread this person may
+	Read back through the same `conversation`, so a thread this person may
 	not open answers nothing here either.
-	"""
-	from oneapp.onespace.ai import actions
 
-	_text, _about, rows = _conversation(thread, folder)
+	**Waiting, not every card ever offered.** One answered stays on screen
+	while the reader is on the thread — the surface holds it — and a thread
+	worked through for a month should not reopen onto a column of thirty
+	cards somebody already dealt with. `actions.for_about` has the argument
+	and the reason.
+	"""
+	from oneapp.oneai import actions
+
+	_text, _about, rows = conversation(thread, folder)
 	found = []
 	for row in rows:
-		found += actions.for_about("Communication", row.get("name") or "")
+		found += actions.for_about("Communication", row.get("name") or "",
+		                           waiting=True)
 	return found
 
 
@@ -326,6 +340,12 @@ def rewrite(verb: str, text: str = "", instruction: str = "", tone: str = "",
 	module where it does — it is the reader's own unsent draft, which exists
 	nowhere else yet. `to` and `subject` are theirs too, and are used only to
 	say what kind of letter this is.
+
+	Nothing in the browser calls this today. The composer's own verb menu went
+	when OneAI became the one door to writing help — the panel is told what is
+	in the draft and puts its answer back through `shared/lib/ai/insert.js` —
+	and what is kept here is the framing: a letter to somebody, about
+	something, which is the part a general rewrite endpoint does not know.
 	"""
 	writing.check(verb, tone)
 	if verb != "write" and not (text or "").strip():

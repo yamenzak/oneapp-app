@@ -26,16 +26,23 @@ VIEW_ICONS = (
 	# General
 	"lucide-layout-grid", "lucide-database",
 	"lucide-sparkles", "lucide-shield",
+	"lucide-lock",
 	# People
 	"lucide-users", "lucide-user-round",
 	"lucide-graduation-cap", "lucide-stethoscope",
 	# Work
-	"lucide-briefcase", "lucide-calendar",
+	"lucide-briefcase", "lucide-circle-check",
+	"lucide-inbox", "lucide-list-tree",
+	"lucide-columns-3", "lucide-tag",
+	"lucide-calendar",
 	"lucide-clock", "lucide-wrench",
-	"lucide-git-compare",
+	"lucide-git-compare", "lucide-git-branch",
 	# Money
 	"lucide-file-text", "lucide-receipt",
 	"lucide-wallet", "lucide-shopping-cart",
+	"lucide-landmark", "lucide-credit-card",
+	"lucide-hand-coins", "lucide-percent",
+	"lucide-book-open-text",
 	# Goods
 	"lucide-package", "lucide-truck",
 	"lucide-factory", "lucide-store",
@@ -50,7 +57,7 @@ VIEW_ICONS = (
 	"lucide-layers",
 	# Numbers
 	"lucide-chart-line", "lucide-chart-pie",
-	"lucide-book-open",
+	"lucide-table", "lucide-book-open",
 )
 
 

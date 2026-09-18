@@ -70,6 +70,7 @@ OURS = {MARK: 1}
 WHEN = {
 	"created": "New",
 	"changed": "Save",
+	"decided": "Value Change",
 	"submitted": "Submit",
 	"cancelled": "Cancel",
 	"before": "Days Before",
@@ -78,6 +79,15 @@ WHEN = {
 
 # The two that need a date field to count from, and a number of days.
 DATED = ("before", "after")
+
+# The one that needs a field to watch.
+#
+# "When the status changes, tell whoever asked" is the commonest rule anybody
+# writes and `changed` cannot say it: a Save fires on every edit, so a rule on
+# it mails somebody about a typo being fixed. Frappe's own `Value Change` fires
+# only when one named field moves, which is the sentence people mean — and it
+# is one rule where a condition per outcome would be two.
+WATCHED = ("decided",)
 
 # How long a rule may wait. Frappe bounds none; a rule ninety days out is one
 # whose author has forgotten it exists, and the scheduler walks every dated rule
@@ -104,10 +114,16 @@ CHANNELS = {
 }
 
 
-def doctypes() -> list[dict]:
-	"""What a rule may be about, and what each one offers to watch and to say."""
+def doctypes(space: str = "") -> list[dict]:
+	"""What a rule may be about, and what each one offers to watch and to say.
+
+	`space` narrows it to one space's own records, which is what that space's
+	Configuration page asks for. Without it this is the whole workspace, which
+	is what the dialog gave and what made the page a list where OnePeople's leave
+	rules and OneCRM's deal rules were scrolled past each other.
+	"""
 	found = []
-	for doctype in sorted(sync.granted_doctypes()):
+	for doctype in sorted(sync.granted_doctypes(space)):
 		if not frappe.has_permission(doctype, "read"):
 			# Granted by the space and not reachable by this person's role.
 			# Absent rather than refused: a settings page listing what you
@@ -121,10 +137,55 @@ def doctypes() -> list[dict]:
 			"label": _(doctype),
 			"dates": _fields(meta, ("Date", "Datetime")),
 			"watchable": _fields(meta, ("Select", "Link", "Check", "Data")),
-			"addresses": _fields(meta, ("Data",), option="Email"),
+			"addresses": addressable(meta),
 			"submittable": bool(meta.is_submittable),
 		})
 	return found
+
+
+# Whoever filed the record. Not a field — it is on every doctype and Frappe
+# stores a user in it, which on any site is an address.
+OWNER = "owner"
+
+
+def addressable(meta) -> list[dict]:
+	"""The places on a record a rule may send to.
+
+	Three kinds, and the second two are what this list was missing.
+
+	A **Data field holding an email** is the obvious one, and was the only one:
+	a supplier's address on an order.
+
+	A **Link to User** is the one every approval needs. `leave_approver` on a
+	Leave Application is the person who decides it, and Frappe resolves the
+	field's value as an address because a user is named by their email. Without
+	it there was no way at all to write "tell whoever has to approve this",
+	which is the rule HRMS itself sends and OneSpace could not express.
+
+	And **`owner`**, which is not a field. "Tell the person who asked" has no
+	other spelling on these doctypes: `employee` holds `HR-EMP-00003`, which is
+	not an address, so a rule naming it resolves to nobody and says nothing
+	about why. `owner` is who filed it, which is the same person in every case
+	the employee seat covers — it is the axis `if_owner` already narrows by.
+	"""
+	if not meta:
+		return []
+	found = [{"fieldname": OWNER, "label": _("Whoever filed it"), "options": "User"}]
+	found += _fields(meta, ("Data",), option="Email")
+	found += _fields(meta, ("Link",), option="User")
+	return found
+
+
+def _addressed(meta, fieldname: str) -> bool:
+	"""Whether a rule may send to this place on the record.
+
+	Checked against the same list the picker offers rather than against
+	`("Data", "Link")`, which was every Link on the doctype: a rule addressed
+	to `employee` passed validation, resolved to a record id, failed
+	`validate_email_address` inside Frappe and sent to nobody — silently, which
+	is the worst way for a notification to not arrive.
+	"""
+	return any(one["fieldname"] == fieldname for one in addressable(meta))
 
 
 def _meta(doctype: str):
@@ -200,6 +261,7 @@ def _read(doc) -> dict:
 		"doctype": doc.document_type,
 		"when": when,
 		"date_field": doc.date_changed or "",
+		"value_field": doc.value_changed or "",
 		"days": int(doc.days_in_advance or 0),
 		"channel": next((k for k, v in CHANNELS.items() if v == doc.channel), "email"),
 		"subject": doc.subject or "",
@@ -233,6 +295,12 @@ def save(values: dict) -> dict:
 		frappe.throw(_("{0} is not submitted, so it cannot be submitted or cancelled.")
 		             .format(_(doctype)))
 
+	value_field = ""
+	if when in WATCHED:
+		value_field = (values.get("value_field") or "").strip()
+		if not _has(meta, value_field, ("Select", "Link", "Check", "Data")):
+			frappe.throw(_("Pick the field whose change should send this."))
+
 	date_field, days = "", 0
 	if when in DATED:
 		date_field = (values.get("date_field") or "").strip()
@@ -250,8 +318,16 @@ def save(values: dict) -> dict:
 	to_field = (values.get("to_field") or "").strip()
 	if not (to_role or to_field):
 		frappe.throw(_("Say who the alert goes to."))
-	if to_field and not _has(meta, to_field, ("Data", "Link")):
-		frappe.throw(_("That is not a field on {0}.").format(_(doctype)))
+	# The same narrowing `roles()` offers, checked again here rather than
+	# trusted. `receiver_by_role` is a free-text Link to Role, so without this a
+	# posted payload naming `System Manager` writes a rule that mails us — the
+	# exact thing the comment on `roles()` says the picker is for.
+	if to_role and to_role not in {one["value"] for one in roles()}:
+		frappe.throw(_("That is not one of this workspace's roles."),
+		             frappe.PermissionError)
+	if to_field and not _addressed(meta, to_field):
+		frappe.throw(_("That is not somewhere on {0} an alert can be sent.")
+		             .format(_(doctype)))
 
 	condition = values.get("condition") or None
 	built = _condition(meta, condition) if condition else ""
@@ -267,6 +343,7 @@ def save(values: dict) -> dict:
 		"channel": CHANNELS.get(values.get("channel") or "email", "Email"),
 		"event": WHEN[when],
 		"date_changed": date_field or None,
+		"value_changed": value_field or None,
 		"days_in_advance": days or 0,
 		"subject": subject,
 		"message": values.get("message") or subject,
@@ -333,7 +410,18 @@ def _has(meta, fieldname: str, types) -> bool:
 	return bool(field and field.fieldtype in types)
 
 
-def _condition(meta, condition) -> str:
+#: How a condition names a field, and the two answers Frappe has.
+#:
+#: `Notification` evaluates its condition with the document bound to the name
+#: `doc`, so a rule there reads `doc.status == "Overdue"`. `Assignment Rule`
+#: passes the document *as the locals*, so the same test there is `status ==
+#: "Overdue"` and the prefixed form silently evaluates to False — a rule that
+#: never fires and never says why. One compiler, one argument.
+DOC = "doc."
+BARE = ""
+
+
+def _condition(meta, condition, prefix: str = DOC) -> str:
 	"""A field, an operator and a value, as the expression Frappe evaluates.
 
 	Built rather than typed. `Notification.evaluate_alert` runs `condition`
@@ -341,6 +429,9 @@ def _condition(meta, condition) -> str:
 	would be a text box that runs code as whoever the rule fires for — and the
 	rules people write are "when the status is Overdue", which needs three
 	controls rather than a language.
+
+	`prefix` is how the field is named — see `DOC` above — because the two
+	doctypes this compiles for disagree about it.
 	"""
 	condition = frappe.parse_json(condition) if isinstance(condition, str) else condition
 	field = (condition.get("field") or "").strip()
@@ -353,9 +444,9 @@ def _condition(meta, condition) -> str:
 		frappe.throw(_("That is not a test this can make."))
 
 	if operator == "is set":
-		return f"doc.{field}"
+		return f"{prefix}{field}"
 	if operator == "is not set":
-		return f"not doc.{field}"
+		return f"not {prefix}{field}"
 
 	symbol = OPERATORS[operator]
 	if operator in ("over", "under"):
@@ -363,14 +454,14 @@ def _condition(meta, condition) -> str:
 			number = float(value)
 		except (TypeError, ValueError):
 			frappe.throw(_("More than and less than need a number."))
-		return f"doc.{field} {symbol} {number}"
+		return f"{prefix}{field} {symbol} {number}"
 
 	# Quoted with `json.dumps`, so an apostrophe in a status cannot end the
 	# string and start an expression.
-	return f"doc.{field} {symbol} {frappe.as_json(str(value or ''))}"
+	return f"{prefix}{field} {symbol} {frappe.as_json(str(value or ''))}"
 
 
-def _decompile(condition: str) -> dict | None:
+def _decompile(condition: str, prefix: str = DOC) -> dict | None:
 	"""The triple a condition was built from, for the form to reopen on.
 
 	Read back from the string rather than stored beside it, because two places
@@ -378,13 +469,14 @@ def _decompile(condition: str) -> dict | None:
 	Frappe actually evaluates, so it is the one that is true.
 	"""
 	text = (condition or "").strip()
-	if not text.startswith(("doc.", "not doc.")):
+	negated = f"not {prefix}"
+	if prefix and not text.startswith((prefix, negated)):
 		return None
 
-	if text.startswith("not doc."):
-		return {"field": text[len("not doc."):], "operator": "is not set", "value": ""}
+	if text.startswith(negated):
+		return {"field": text[len(negated):], "operator": "is not set", "value": ""}
 
-	body = text[len("doc."):]
+	body = text[len(prefix):]
 	for word, symbol in OPERATORS.items():
 		if not symbol:
 			continue

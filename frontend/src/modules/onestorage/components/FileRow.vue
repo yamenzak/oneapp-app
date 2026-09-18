@@ -27,7 +27,7 @@
   -->
   <div
     data-slot="drive-file"
-    :data-kind="file.custom_kind || 'Other'"
+    :data-kind="kind"
     :data-selected="selected ? 'true' : undefined"
     :draggable="movable"
     :class="[
@@ -109,7 +109,7 @@
       the click and the anchor keeps every other way of using it.
     -->
     <router-link
-      v-if="file.is_folder || link"
+      v-if="(file.is_folder && folderLink) || link"
       data-slot="drive-open"
       class="flex min-w-0 flex-1 rounded-4"
       :class="card ? 'h-full' : grid ? 'ps-1' : 'px-2 py-2'"
@@ -118,7 +118,7 @@
         : link"
       @click.capture="onOpen"
     >
-      <FileFace :file="file" :grid="grid" :columns="columns" :shared="shared" />
+      <FileFace :file="file" :grid="grid" :columns="columns" :shared="shared" :kind-known="kindKnown" />
     </router-link>
 
     <!--
@@ -144,7 +144,7 @@
       :aria-label="file.file_name"
       @click="emit('open', file)"
     >
-      <FileFace :file="file" :grid="grid" :columns="columns" :shared="shared" />
+      <FileFace :file="file" :grid="grid" :columns="columns" :shared="shared" :kind-known="kindKnown" />
     </button>
 
     <Button
@@ -156,7 +156,7 @@
       :class="grid ? '!ps-1 !pe-0 !py-0' : '!px-2 !py-2'"
       @click="emit('open', file)"
     >
-      <FileFace :file="file" :grid="grid" :columns="columns" :shared="shared" />
+      <FileFace :file="file" :grid="grid" :columns="columns" :shared="shared" :kind-known="kindKnown" />
     </Button>
 
     <!--
@@ -245,7 +245,14 @@
         date, a laptop gets the owner back.
       -->
       <template v-if="columns && !grid">
-        <span class="hidden w-36 shrink-0 items-center gap-1.5 lg:flex">
+        <!-- Only where there is more than one of them. A workspace one person
+             uses answers "Administrator" on every row of every folder for
+             ever, which is 144 pixels of the name's width spent on a fact
+             nobody can act on. `ownered` is the list's own answer and is
+             passed in rather than worked out here, because a column that
+             appeared and vanished per row would be a table with ragged
+             cells. -->
+        <span v-if="ownered" class="hidden w-36 shrink-0 items-center gap-1.5 lg:flex">
           <Avatar
             v-if="file.owner_person?.label"
             size="sm"
@@ -312,6 +319,13 @@ import { sizeText } from '@/shared/lib/files/size'
 import { rowState } from '@/shared/lib/rowstate'
 
 const props = defineProps({
+  /**
+   * Whether the Owner column is drawn at all — the list says so, because the
+   * answer is a fact about the whole page and not about this row.
+   */
+  ownered: { type: Boolean, default: true },
+  /** Whether the list is already one kind — `FileFace`. */
+  kindKnown: { type: Boolean, default: false },
   file: { type: Object, required: true },
   grid: { type: Boolean, default: false },
   /**
@@ -332,6 +346,16 @@ const props = defineProps({
    * the tree on the first click.
    */
   place: { type: String, default: 'home' },
+  /**
+   * Whether a folder row is a link into the Drive.
+   *
+   * True in the Drive, where a folder *is* somewhere to go. False where the
+   * caller keeps its own idea of which folder it is showing — a record's Files
+   * tab walks its room without leaving the record, and a row that navigated to
+   * the Drive would take the record away to show you something the tab was
+   * about to show you anyway.
+   */
+  folderLink: { type: Boolean, default: true },
   selectable: { type: Boolean, default: false },
   selected: { type: Boolean, default: false },
   // Off in the picker too: a rename control behind an Attach field is a control
@@ -463,6 +487,20 @@ const menu = computed(() => {
  * `FileFace` decides the same thing from the same two facts — kept in step by
  * being the same sentence, which is the most this is worth.
  */
+/**
+ * What kind of thing this row is, for anything reading the row rather than the
+ * face — `data-kind`, and the specs that narrow a list to the files in it.
+ *
+ * `is_folder` first, which is how `FileFace` draws the line under the name. A
+ * folder made before the kind column existed has no `custom_kind` of its own —
+ * `Home/Attachments` is one on every site — so the stored value alone called it
+ * Other while the face called it Folder. One row saying two things, and the one
+ * a test can read was the wrong one.
+ */
+const kind = computed(() => (
+  props.file.is_folder ? 'Folder' : (props.file.custom_kind || 'Other')
+))
+
 const card = computed(() => props.grid && !props.file.is_folder)
 
 const sized = computed(() => sizeText(props.file.file_size, { blank: '—' }))

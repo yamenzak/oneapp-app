@@ -81,8 +81,11 @@ ORDER = {
     TEMPLATES: "file_name asc",
     TRASH: "custom_trashed_on desc",
     ALL: "modified desc",
-    RECORD: "creation desc",
-    RECORDS: "creation desc",
+    # Folders first, then newest — a room has folders of its own now
+    # (`DRIVE.md` §13), and a file manager that mixes them is one where a
+    # folder is somewhere in the middle of page two.
+    RECORD: "is_folder desc, creation desc",
+    RECORDS: "is_folder desc, creation desc",
     # What you were working on, which is the question a home screen answers.
     **{place: "modified desc" for place in EDITED},
 }
@@ -198,6 +201,12 @@ def _place_filters(place: str, folder: str = "", kind: str = "",
             frappe.throw(_("Which record's files?"))
         filters["attached_to_doctype"] = doctype
         filters["attached_to_name"] = docname
+        # A room is a place now, so it has a top and it has folders — the same
+        # distinction Home makes at the top of the drive, drawn the same way.
+        # An attachment's `folder` is cleared on the way in (`file.py`), so
+        # "not set" is what a loose file looks like; a folder made in the room
+        # is a `File` that is both, and everything under it says so.
+        filters["folder"] = folder or ["is", "not set"]
 
     if kind:
         filters[KIND_FIELD] = kind

@@ -1,16 +1,18 @@
 <template>
   <!--
-    The foot of whichever column is showing: the same three rows under the
-    space's screens, under Mail's folders, under the Drive's places.
+    The foot of whichever column is showing: the quota meter, you, and what is
+    waiting for you.
 
     It is one component and not three copies because it was three copies for a
     while — the quota meter existed under the spaces and nowhere else, so the
     number that decides whether an upload is refused was invisible on the
     screen you upload from.
 
-    Two rows: the surfaces that are not inside any space, then you and what is
-    waiting for you. Folding the column is in the bar and settings is in the
-    account menu, because neither is a destination and this is a row of them.
+    What left is the row of app shortcuts, which is the dock now
+    (`components/desk/Dock.vue`): four glyphs inside a column of navigation,
+    folding to 3rem with it. You and the bell stayed, because they are not
+    places you go — they are who you are and what is waiting, which is what the
+    bottom of a column has said in every version of this product.
   -->
   <div class="mt-auto shrink-0 p-2">
     <!-- A meter is a number and a bar, and neither survives 3rem of width. -->
@@ -18,22 +20,6 @@
 
     <div class="flex flex-col">
       <Divider class="mb-1" />
-
-      <!--
-        Spread rather than packed. Four icons bunched at the start of a 224px
-        row leave a hole where the rest of the column has content, and the eye
-        reads the hole as something missing; across the width they read as a
-        set. Packed again when the column is 3rem wide, where there is no width
-        to spread across.
-      -->
-      <div
-        class="flex flex-wrap items-center px-1 py-0.5"
-        :class="collapsed ? 'justify-center gap-0.5' : 'justify-between'"
-      >
-        <SurfaceLink v-for="one in quick" :key="one.key" :surface="one" />
-      </div>
-
-      <Divider class="my-1" />
 
       <div class="flex items-center gap-1" :class="collapsed ? 'flex-col' : ''">
         <!-- Wrapped rather than given the class: UserMenu's own root is a
@@ -60,44 +46,30 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { Divider } from '@/ui'
 import QuotaMeter from '@/modules/onespace/components/QuotaMeter.vue'
-import SurfaceLink from '@/modules/onespace/components/shell/SurfaceLink.vue'
 import UserMenu from '@/modules/onespace/components/UserMenu.vue'
 import NotificationBell from '@/modules/onespace/components/notifications/NotificationBell.vue'
-import { useNav } from '@/modules/onespace/lib/shell/nav'
 import { useSidebar } from '@/modules/onespace/lib/shell/sidebar'
 import { fullName, email, userImage } from '@/modules/onespace/lib/shell/user'
+import { openSettings } from '@/modules/onespace/lib/shell/settings'
 import { __ } from '@/shared/lib/runtime/translate'
 
 const router = useRouter()
 const { collapsed } = useSidebar()
-const { surfaces } = useNav()
-
-// Two of the surfaces are not quick access and are not dropped: settings is in
-// the account menu below, and the marketplace is inside the switcher — adding a
-// space is something you do to the workspace, so it belongs where the
-// workspace's spaces are listed rather than beside the day's work.
-const ELSEWHERE = ['settings', 'marketplace']
-
-const quick = computed(() => surfaces.value.filter((one) => !ELSEWHERE.includes(one.key)))
-
-const settings = computed(() => surfaces.value.find((one) => one.key === 'settings') || null)
 
 // The two rows UserMenu does not already carry — appearance and signing out are
-// its own. Settings sits here rather than beside the surfaces because it is not
-// a place: it opens a dialog over whatever you were looking at, which is the
-// same thing every other row in this menu does.
+// its own. Settings sits here rather than in the dock because it is not a
+// place: it opens a dialog over whatever you were looking at, which is the same
+// thing every other row in this menu does.
 const accountRows = computed(() => [
   {
     label: __('Account'),
     icon: 'lucide-circle-user',
     onClick: () => router.push({ name: 'Account' }),
   },
-  ...(settings.value
-    ? [{
-      label: settings.value.label,
-      icon: settings.value.icon,
-      onClick: () => settings.value.act?.(),
-    }]
-    : []),
+  {
+    label: __('Settings'),
+    icon: 'lucide-settings',
+    onClick: () => openSettings(),
+  },
 ])
 </script>

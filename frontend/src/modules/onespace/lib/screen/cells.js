@@ -1,5 +1,6 @@
+import { STARS, starsOf } from '@/modules/onespace/lib/screen/rating'
 import { formatNumber, plainText } from '@/modules/onespace/lib/screen/format'
-import { date, moment } from '@/shared/lib/runtime/format'
+import { date, moment, time } from '@/shared/lib/runtime/format'
 
 /**
  * What one cell's value *says*, as text.
@@ -23,10 +24,20 @@ export function cellText(column, value, formats = {}, link = null) {
       return tagList(value).join(', ')
     case 'link':
       return plainText(link?.label) || String(link?.value || value)
+    case 'tag':
+      // A tag is a word. Where the column was a Link, the word is the target's
+      // title rather than its id — the whole point of drawing a Designation as
+      // a tag is that `HR-DES-0003` was never the thing anybody meant.
+      return plainText(link?.label) || String(link?.value || value)
     case 'date':
       return date(value)
     case 'datetime':
       return moment(value)
+    case 'time':
+      // The raw value where the clock cannot be read — a `Time` column holds a
+      // `timedelta`, so `38:00:00` is a legal value and is not a time of day.
+      // Saying it plainly beats anchoring it to a day it does not belong to.
+      return time(value) || String(value)
     case 'percent':
       return `${formatNumber(value, column, formats)}%`
     case 'number':
@@ -34,6 +45,8 @@ export function cellText(column, value, formats = {}, link = null) {
       return formatNumber(value, column, formats)
     case 'duration':
       return humanDuration(Number(value) || 0, column)
+    case 'rating':
+      return `${starsOf(value)}/${STARS}`
     case 'check':
       return value ? 'Yes' : 'No'
     case 'html':

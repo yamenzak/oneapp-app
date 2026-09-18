@@ -11,10 +11,19 @@
     Two shapes, and one of them has two layouts:
 
       * `panel` — a hover card. Labels in a narrow column of their own.
-      * `tile` — a board or grid card. No labels; three bands separated by
-        hairlines, values one per line rather than run into a paragraph.
+      * `tile` — a board or grid card. The same two columns, and the label
+        carries the field's own icon.
       * `tile` **with a cover** — a gallery card. The picture is not a band on
         the card, it *is* the card. See `cover`.
+
+    A tile drew its values bare for a long time and the argument was width: a
+    board column is 18rem and a label column spends a third of it. What that
+    missed is that a value on its own is only readable when you already know
+    which field it is — `2026-10-15` on an onboarding card is the joining date,
+    the day the checklist starts or the day the offer expires, and the card gave
+    you no way to tell. The icon does most of the work and the label settles the
+    rest; both are already on every column (`field_icons.icon_for`), so this
+    costs a layout and nothing else.
   -->
 
   <!--
@@ -107,11 +116,19 @@
                 />
               </template>
             </Badge>
+            <!-- A tag keeps its own colour here too, solid for the reason a
+                 status is: a pastel badge on a photograph is a smudge. -->
+            <Badge
+              v-else-if="field.cell === 'tag' && said(field)"
+              :theme="tagTheme(said(field))"
+              :label="said(field)"
+              variant="solid"
+            />
             <span
               v-else
               class="max-w-full truncate rounded-full bg-white/20 px-2 py-0.5 text-xs text-white backdrop-blur-sm"
             >
-              {{ cellText(field, field.value, formats, links[field.fieldname]) }}
+              {{ said(field) }}
             </span>
           </template>
         </div>
@@ -155,6 +172,10 @@
         class="grid grid-cols-[7rem_1fr] items-baseline gap-x-3 gap-y-2"
       >
         <template v-for="field in fields" :key="field.fieldname">
+          <!-- The icon the tile draws is deliberately not here. A hover card
+               has the room for a full label and nothing else competing with
+               it; a tile is a third as wide and the icon is what makes a
+               shortened label still readable. -->
           <dt class="truncate text-sm text-ink-muted">{{ field.label }}</dt>
           <dd class="flex min-w-0 items-center">
             <FieldCell
@@ -170,25 +191,54 @@
       <span v-else class="text-p-sm text-ink-muted">{{ __('Nothing else to show.') }}</span>
     </div>
 
-    <!-- A tile: one value per line, each truncated in its own row so a long
-         one shortens itself rather than widening the card. -->
+    <!--
+      A tile: what the field is, then what it says. One per line, each side
+      truncated in its own column so a long value shortens itself rather than
+      widening the card — and so a long *label* cannot push the value off it.
+
+      `items-center` rather than `items-baseline`: half these values are badges
+      and tags, which are pills, and a pill sitting on a text baseline reads as
+      a pill that has slipped.
+
+      The label column is `max-content` under a cap rather than a fixed width,
+      which is the only version of this that works on both surfaces. Fixed at
+      6rem, a board card said "Date of Joi…"; fixed at 7rem, a grid card said
+      "Robin V…" and gave the space to labels that did not need it. Sized to
+      what the labels on *this* card actually are, both read — and the cap is
+      what stops one long label from eating the value beside it.
+    -->
     <template v-else-if="fields.length">
-      <Divider />
-      <div class="flex flex-col gap-2">
-        <div
-          v-for="field in fields"
-          :key="field.fieldname"
-          class="flex min-w-0 items-center"
-        >
-          <FieldCell
-            :column="field"
-            :value="field.value"
-            :states="states"
-            :links="links"
-            class="min-w-0"
-          />
-        </div>
-      </div>
+      <!--
+        `flex-item`, on both hairlines here and not on the hover card's.
+        frappe-ui's Divider is `h-full` by default, which in a flex column with
+        room to spare is a flex item asking for the whole card and settling for
+        a share of what is going — so the moment the tile grew to fill its grid
+        cell, the two hairlines quietly ate the leftover space and centred the
+        fields in it. `flex-item` is `h-auto`, which for an `hr` is nothing.
+      -->
+      <Divider flex-item />
+      <dl
+        class="grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] items-center gap-x-2 gap-y-2"
+      >
+        <template v-for="field in fields" :key="field.fieldname">
+          <dt
+            data-slot="card-field"
+            class="flex min-w-0 max-w-[7.5rem] items-center gap-1.5 text-xs text-ink-muted"
+          >
+            <Icon v-if="field.icon" :name="field.icon" class="size-3.5 shrink-0" />
+            <span class="truncate">{{ field.label }}</span>
+          </dt>
+          <dd class="flex min-w-0 items-center">
+            <FieldCell
+              :column="field"
+              :value="field.value"
+              :states="states"
+              :links="links"
+              class="min-w-0"
+            />
+          </dd>
+        </template>
+      </dl>
     </template>
 
     <!--
@@ -215,8 +265,11 @@
       />
     </div>
 
+    <!-- `mt-auto` on the hairline, which is where the footer starts: the space
+         a short card has left over goes above the band rather than under it,
+         so every footer in a row sits on the same line. -->
     <template v-if="!isPanel && meta">
-      <Divider />
+      <Divider flex-item class="mt-auto" />
       <RowMeta spread :meta="meta" :people="people" @like="emit('like')" />
     </template>
   </div>
@@ -231,6 +284,7 @@ import RecordChip from '@/modules/onespace/components/screen/record/RecordChip.v
 import RowMeta from '@/modules/onespace/components/screen/bodies/RowMeta.vue'
 import { plainText } from '@/modules/onespace/lib/screen/format'
 import { cellText } from '@/modules/onespace/lib/screen/cells'
+import { tagTheme } from '@/modules/onespace/lib/screen/tags'
 import { valueIcon, valueTheme } from '@/modules/onespace/lib/screen/fields'
 import { session } from '@/modules/onespace/lib/shell/session'
 
@@ -275,7 +329,16 @@ const tags = computed(() => props.meta?.tags || [])
 
 // `gap-2.5` is the rhythm the hairlines sit in: the same space above and below
 // each one, which is what makes three bands read as three bands.
-const frame = computed(() => (isPanel.value ? '' : 'flex flex-col gap-2.5 p-3'))
+//
+// `h-full` is what makes a *grid* of these read as a grid. The cells of one row
+// are already the height of the tallest card in it — a card with five fields
+// beside one with three — and without this the short card's own box stopped
+// where its content did, so the meta band, the hairline above it and the heart
+// landed at a different height in every card of the row. It changes nothing on
+// a board, where a card's container is exactly as tall as the card.
+const frame = computed(
+  () => (isPanel.value ? '' : 'flex h-full flex-col gap-2.5 p-3'),
+)
 
 // What stands in for a picture: the first letter of what the record is called,
 // which is what Avatar itself falls back to.
@@ -285,6 +348,19 @@ const subtitle = computed(() => props.record.id || '')
 
 // How this site renders a number when the field does not say, for the pills.
 const formats = computed(() => session.data?.formats || {})
+
+/**
+ * What one card field says.
+ *
+ * Through `cellText`, which is the one place that answers it — a gallery card
+ * drawing the same value as a pill must not have a second opinion about what a
+ * Duration looks like. The em dash goes: an empty tag is no badge at all rather
+ * than a coloured pill with a dash in it.
+ */
+const said = (field) => {
+  const text = cellText(field, field.value, formats.value, props.links?.[field.fieldname])
+  return text === '—' ? '' : text
+}
 
 const initial = computed(
   () => (plainText(props.record.label) || String(props.record.value || '')).trim().charAt(0),

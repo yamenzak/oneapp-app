@@ -22,7 +22,7 @@
       :framed="!$route.meta.bare"
       :entries="railSpaces"
       :active-entry="activeSpaceCode"
-      :entries-to="{ name: 'Launcher' }"
+      :entries-to="WORKSPACE"
       :entry-extra="entryExtra"
       :nav-items="nav"
       :menu-items="menuItems"
@@ -52,6 +52,13 @@
         <!-- And the assistant's, which is this person's own conversations. -->
         <ChatSidebar v-else-if="$route.name === 'Chat'" />
         <SpaceSidebar v-else />
+      </template>
+
+      <!-- The apps, and you, along the bottom. A slot of the shell's rather
+           than a fixed row of its own, so the page above it is laid out with
+           the dock's height taken off rather than sliding under it. -->
+      <template #dock>
+        <Dock />
       </template>
 
       <!--
@@ -84,9 +91,33 @@
          claim on the layout. See the component. -->
     <AssistantWidget />
 
-    <!-- Outside the shell so it survives a layout swap, and a dialog rather
-         than a route because settings overlay whatever you were doing. -->
-    <SettingsShell v-if="session.loaded && session.isLoggedIn" />
+    <!-- The list you came from, while you read one of its rows. Always
+         mounted, hidden until it is opened: a `<Teleport>` resolves its target
+         when it patches, and a target that appears in the same tick as the
+         teleport wanting it is one Vue warns about and then ignores. -->
+    <PipWindow v-if="session.isLoggedIn" />
+
+    <!-- OneCloud, on the desk. Here for the same reason the tray is: mounted
+         once for the session, outside the layout, so a folder opened beside a
+         project survives the page changing under it. -->
+    <!-- OneCloud and the three editors, which are the same window over four
+         different `where`s — `onestorage/lib/window.js`. -->
+    <template v-if="session.isLoggedIn">
+      <DriveWindow v-for="one in DRIVE_APPS" :key="one.id" :id="one.id" />
+      <!-- And every document or sheet somebody has open, each in its own —
+           `onestorage/lib/editing.js`. -->
+      <FileWindows />
+      <!-- And the mail, which is the one people keep open beside everything
+           else: a reply is almost always about what is on the page behind it.
+           The diary is the other: the week is a thing you check *against* what
+           you are doing. -->
+      <MailWindow />
+      <DiaryWindow />
+      <!-- And OneTask, which is neither: a place to put a thought down and a
+           list to tick, over the same ERPNext tasks OneProject's board draws.
+           `docs/WORK.md` §12. -->
+      <TaskWindow />
+    </template>
 
     <!--
       What is going up, wherever it was started from — §D3.
@@ -97,9 +128,8 @@
       could not close.
 
       Here rather than inside `AppShell` because the shell is generated into
-      both SPAs and the control plane has no files; and outside it for the
-      same reason `SettingsShell` is, so an upload survives the layout
-      swapping under it.
+      both SPAs and the control plane has no files; and outside it so an upload
+      survives the layout swapping under it.
     -->
     <UploadTray v-if="session.isLoggedIn" />
 
@@ -164,21 +194,29 @@ import AppShell from '@/modules/onespace/components/AppShell.vue'
 import SpaceSidebar from '@/modules/onespace/components/SpaceSidebar.vue'
 import MailSidebar from '@/modules/onemail/components/MailSidebar.vue'
 import DiarySidebar from '@/modules/onecalendar/components/DiarySidebar.vue'
-import ChatSidebar from '@/modules/onespace/components/chat/ChatSidebar.vue'
-import AssistantWidget from '@/modules/onespace/components/chat/AssistantWidget.vue'
+import ChatSidebar from '@/modules/oneai/components/chat/ChatSidebar.vue'
+import AssistantWidget from '@/modules/oneai/components/chat/AssistantWidget.vue'
+import Dock from '@/modules/onespace/components/desk/Dock.vue'
+import PipWindow from '@/modules/onespace/components/desk/PipWindow.vue'
+import DriveWindow from '@/modules/onestorage/components/DriveWindow.vue'
+import MailWindow from '@/modules/onemail/components/MailWindow.vue'
+import DiaryWindow from '@/modules/onecalendar/components/DiaryWindow.vue'
+import TaskWindow from '@/modules/onetask/components/TaskWindow.vue'
+import FileWindows from '@/modules/onestorage/components/FileWindows.vue'
+import { APPS as DRIVE_APPS } from '@/modules/onestorage/lib/window'
 import DriveSidebar from '@/modules/onestorage/components/DriveSidebar.vue'
 import UploadTray from '@/modules/onestorage/components/UploadTray.vue'
 import BrandMark from '@/shared/components/brand/BrandMark.vue'
 import SpaceSwitcher from '@/modules/onespace/components/shell/SpaceSwitcher.vue'
 import NotificationList from '@/modules/onespace/components/notifications/NotificationList.vue'
-import SettingsShell from '@/modules/onespace/components/settings/SettingsShell.vue'
 import LegalGate from '@/modules/onelegal/components/LegalGate.vue'
 import { useNav } from '@/modules/onespace/lib/shell/nav'
+import { WORKSPACE } from '@/shared/composables/useCrumbs'
 import { followNotifications, notifications } from '@/modules/onespace/lib/shell/notifications'
 import { session, sessionResource } from '@/modules/onespace/lib/shell/session'
 import { fullName, email, userImage } from '@/modules/onespace/lib/shell/user'
 import { followMail } from '@/modules/onespace/lib/shell/mail'
-import { loadAssistant } from '@/modules/onespace/lib/shell/assistant'
+import { loadAssistant } from '@/modules/oneai/lib/assistant'
 
 const route = useRoute()
 const router = useRouter()
@@ -204,7 +242,7 @@ const activeSpaceCode = computed(() => route.params.spaceCode || '')
 // One list, rendered twice: the sidebar on a desktop, the bottom bar and its
 // More sheet on a phone. Declared in `lib/shell/nav.js` so the two cannot
 // drift.
-const { nav, surfaces } = useNav()
+const { nav, services } = useNav()
 
 // A phone has no rail, so the account menu's entries have to reach the More
 // sheet instead.
@@ -224,10 +262,10 @@ const menuItems = computed(() => [
   // `act` becomes `onClick` because a surface that opens something over the
   // page has no route to push, and `settings: true` marks the one row the
   // drawer gives its own place to (see AppShell's `settingsItem`).
-  // The marketplace is not among them: it is a row inside the switcher, on a
-  // phone as on a desktop, and a sheet that offers it in both places offers it
-  // twice.
-  ...surfaces.value.filter((one) => one.key !== 'marketplace').map((one) => ({
+  // The marketplace is not among them: it is a tile on the switcher's board,
+  // on a phone as on a desktop, and a sheet that offered it in both places
+  // would offer it twice. The catalogue leaves it out of this list.
+  ...services.value.map((one) => ({
     ...one,
     label: one.count ? `${one.label} (${one.count})` : one.label,
     ...(one.act ? { onClick: one.act } : {}),

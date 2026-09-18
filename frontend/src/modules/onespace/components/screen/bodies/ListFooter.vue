@@ -4,7 +4,21 @@
     silently stops at its first page reads as "that is all of them"; the count
     is real — the server counts what matches, not what it sent.
   -->
-  <div class="flex shrink-0 items-center gap-3 border-t border-outline-gray-2 px-3 py-2">
+  <!--
+    The end of this row used to belong to something else. The assistant's
+    launcher was a 64px mark `fixed` in the bottom-end corner of every page, and
+    the gear is the last control here — so on every list in the product the
+    settings button sat under the orb and could not be clicked. Sixty pixels of
+    footer were reserved for it on every list, in every workspace, including the
+    ones with no assistant at all.
+
+    The dock took the corner back. It is a row in the layout rather than a thing
+    fixed over one, so the page above it is simply shorter and nothing below has
+    to be kept clear.
+  -->
+  <div
+    class="flex shrink-0 items-center gap-3 border-t border-outline-gray-2 px-3 py-2"
+  >
     <div class="ms-auto flex items-center gap-2">
       <Button
         v-if="hasMore"

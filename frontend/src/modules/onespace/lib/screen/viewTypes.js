@@ -59,6 +59,22 @@ export const VIEW_TYPES = {
     body: () => import('@/modules/onespace/components/screen/bodies/MapBody.vue'),
   },
   /**
+   * Rows against days: one field's values down the side, a month across the
+   * top, one cell per record.
+   *
+   * The shape a list cannot be. Attendance is one row per person per day, and
+   * reading it as a list means holding eight people by thirty days in your
+   * head to answer "who was out on the Tuesday" — the same rows drawn as a
+   * grid answer that, and the patterns nobody thought to ask about, at a
+   * glance.
+   */
+  matrix: {
+    get label() { return __('Grid by day') },
+    icon: 'lucide-table-2',
+    built: true,
+    body: () => import('@/modules/onespace/components/screen/bodies/MatrixBody.vue'),
+  },
+  /**
    * The same table, opened as a worksheet rather than as a way in.
    *
    * `ListBody` again and not a body of its own: a report *is* the list, plus
@@ -119,6 +135,19 @@ export const NEEDS_PARENT = ['tree']
  * page; the server drops the type for the same reason.
  */
 export const NEEDS_WIDGETS = ['dashboard']
+
+/**
+ * The types that are still themselves with nothing to show.
+ *
+ * Everything else hands an empty result to `EmptyState` — "no rows, here is
+ * the button that clears the filters" — and that is right for a list. It is
+ * wrong for these two, because the control that got you here lives inside the
+ * body: replacing a month with "no events" takes away the arrows that reach a
+ * month with something in it, and replacing a dashboard with "no rows" takes
+ * away the period picker that narrowed it, as well as answering a question a
+ * dashboard was not asked. A dashboard of zeros is the honest answer.
+ */
+export const DRAWS_WHEN_EMPTY = ['calendar', 'dashboard']
 
 /**
  * The types that draw a record as a card rather than as a line.

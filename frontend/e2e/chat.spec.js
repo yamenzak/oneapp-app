@@ -29,7 +29,7 @@ test.beforeEach(async ({ page, baseURL }) => {
 async function thread(page, turns, { stopped = 'answered', credits = 0.6 } = {}) {
   const res = await page.request.post(
     '/api/method/frappe.client.insert',
-    { data: { doc: JSON.stringify({ doctype: 'OneSpace Chat Session',
+    { data: { doc: JSON.stringify({ doctype: 'OneAI Chat Session',
                                     title: turns[0].content }) } },
   )
   expect(res.ok()).toBe(true)
@@ -41,7 +41,7 @@ async function thread(page, turns, { stopped = 'answered', credits = 0.6 } = {})
     const last = seq === turns.length
     const wrote = await page.request.post('/api/method/frappe.client.insert', {
       data: { doc: JSON.stringify({
-        doctype: 'OneSpace Chat Message',
+        doctype: 'OneAI Chat Message',
         session,
         seq,
         role: turn.role,
@@ -125,22 +125,23 @@ test('a conversation can be deleted and stops being listed', async ({ page }) =>
   // Back to a blank thread, and the server has forgotten it.
   await expect(page).toHaveURL(/\/one\/chat$/)
   const res = await page.request.get(
-    `/api/method/oneapp.onespace.chat.messages?session=${session}`,
+    `/api/method/oneapp.oneai.chat.messages?session=${session}`,
   )
   expect(res.ok()).toBe(false)
 })
 
-test('the assistant appears in the rail only where it is switched on',
+test('the assistant appears in the dock only where it is switched on',
   async ({ page }, info) => {
-    test.skip(info.project.name === 'mobile', 'the phone draws no rail')
+    test.skip(info.project.name === 'mobile', 'the phone draws no dock')
     await page.goto('/one/files')
 
     // The dev site has the gateway configured and AI on, so it is here. The
     // absent case is the server's answer, not the browser's: `sessions()`
-    // reports `available` and the rail draws nothing when it is false.
-    const said = await page.request.get('/api/method/oneapp.onespace.chat.sessions')
+    // reports `available` and the dock draws a dim tile that says why rather
+    // than a live one.
+    const said = await page.request.get('/api/method/oneapp.oneai.chat.sessions')
     const available = (await said.json()).message.available
-    await expect(page.locator('[data-slot="chat-link"]')).toHaveCount(available ? 1 : 0)
+    await expect(page.locator('[data-slot="dock-tile"][data-app="chat"]')).toHaveCount(available ? 1 : 0)
   })
 
 test('the assistant opens over the page without taking width off it',
@@ -160,9 +161,9 @@ test('the assistant opens over the page without taking width off it',
 
     // The whole reason it is not a page: the record is still there. A page
     // would have made you leave the thing you wanted to ask about.
-    const panel = page.locator('[data-slot="assistant-widget"]')
+    const panel = page.locator('[data-window="assistant"]')
     const before = await page.locator('[data-slot="page-body"]').boundingBox()
-    await page.locator('[data-slot="chat-link"]').click()
+    await page.locator('[data-slot="dock-tile"][data-app="chat"]').click()
     await expect(panel).toBeVisible()
     await expect(page).toHaveURL(new RegExp(`at=record:${project}`))
 
@@ -182,6 +183,29 @@ test('the assistant opens over the page without taking width off it',
     expectNoRealErrors(errors)
   })
 
+test('the shortcut folds it away rather than throwing the thread out',
+  async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'the phone has one surface')
+    await page.goto('/one/files')
+
+    const widget = page.locator('[data-window="assistant"]')
+    await page.locator('[data-slot="dock-tile"][data-app="chat"]').click()
+    await expect(widget).toBeVisible({ timeout: 20_000 })
+
+    // What changed when there was somewhere to fold to. Pressing it twice used
+    // to close the window outright, which threw the conversation away and
+    // started a new one on the way back; it is the dock's own press now.
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control'
+    await page.keyboard.press(`${mod}+j`)
+    await expect(widget).toBeHidden()
+    // Folded, not closed: still on the desk, and still lit in the dock.
+    await expect(widget).toHaveCount(1)
+    await expect(page.locator('[data-app="chat"]')).toHaveAttribute('data-open', 'yes')
+
+    await page.keyboard.press(`${mod}+j`)
+    await expect(widget).toBeVisible()
+  })
+
 test('closing the assistant leaves the page where it was', async ({ page }, info) => {
   test.skip(info.project.name === 'mobile', 'the phone has one surface')
   await page.goto('/one/space/rua?screen=projects&type=list')
@@ -193,11 +217,14 @@ test('closing the assistant leaves the page where it was', async ({ page }, info
     timeout: 20_000,
   })
 
-  await page.locator('[data-slot="chat-link"]').click()
-  await expect(page.locator('[data-slot="assistant-widget"]')).toBeVisible()
+  await page.locator('[data-slot="dock-tile"][data-app="chat"]').click()
+  await expect(page.locator('[data-window="assistant"]')).toBeVisible()
 
-  await page.locator('[data-slot="assistant-close"]').click()
-  await expect(page.locator('[data-slot="assistant-widget"]')).toHaveCount(0)
+  // Scoped to the window: the desk holds more than one now — the
+  // picture-in-picture list is mounted from the start so its teleport target
+  // resolves — and `window-close` on its own matches every one of them.
+  await page.locator('[data-window="assistant"] [data-slot="window-close"]').click()
+  await expect(page.locator('[data-window="assistant"]')).toHaveCount(0)
   await expect(page.locator('[data-slot="list-row"]').first()).toBeVisible({
     timeout: 20_000,
   })
@@ -208,17 +235,17 @@ test('the widget hands its conversation to the page', async ({ page }, info) => 
   const session = await thread(page, [ASKED, REPLY])
 
   await page.goto('/one/space/rua?screen=projects&type=list')
-  await page.locator('[data-slot="chat-link"]').click()
+  await page.locator('[data-slot="dock-tile"][data-app="chat"]').click()
 
   // Opened from the rail with a thread already chosen is not a state the rail
   // reaches, so this drives the widget's own menu from the thread it starts on:
   // a fresh one, then Open as a page.
-  await page.locator('[data-slot="assistant-widget"]')
+  await page.locator('[data-window="assistant"]')
     .getByRole('button', { name: 'More' }).click()
   await page.getByRole('menuitem', { name: 'Open as a page' }).click()
 
   await expect(page).toHaveURL(/\/one\/chat/)
-  await expect(page.locator('[data-slot="assistant-widget"]')).toHaveCount(0)
+  await expect(page.locator('[data-window="assistant"]')).toHaveCount(0)
   expect(session).toBeTruthy()
 })
 
@@ -229,7 +256,7 @@ test('a panel opened on a record is scoped to it, server side', async ({ page },
   // browser sends is an answer to be verified, so a space this reader cannot
   // open is refused rather than quietly widened to the whole workspace.
   const refused = await page.request.post(
-    '/api/method/oneapp.onespace.chat.send',
+    '/api/method/oneapp.oneai.chat.send',
     { data: { question: 'anything', on: JSON.stringify({
       space: 'not-a-space', screen: 'projects' }) } },
   )
@@ -291,7 +318,7 @@ async function sweep(page, docname) {
 async function proposed(page, session, docname, values, before) {
   const made = await page.request.post('/api/method/frappe.client.insert', {
     data: { doc: JSON.stringify({
-      doctype: 'OneSpace Suggestion',
+      doctype: 'OneAI Suggestion',
       session,
       after_message: '',
       kind: 'record.save',
@@ -402,26 +429,35 @@ test('a record that moved since is refused rather than overwritten',
 // The widget itself
 //
 // Against the Drive rather than a space, because what these check is the shape
-// and not the conversation: a launcher that is always there, and a widget that
+// and not the conversation: a tile that is always there, and a widget that
 // stays where it was put. Every site has files.
 // --------------------------------------------------------------------------- //
 
-test('the launcher is always there, and the widget remembers where it was put',
+test('the dock is always there, and the widget remembers where it was put',
   async ({ page }, info) => {
     test.skip(info.project.name === 'mobile', 'the phone has one surface')
 
     await page.goto('/one/files')
-    const launcher = page.locator('[data-slot="assistant-launcher"]')
-    await expect(launcher).toBeVisible({ timeout: 20_000 })
-    await launcher.click()
+    // The dock and not a mark in the corner. There was a 64px dial fixed to the
+    // bottom end of every page, which was the right answer while the assistant
+    // was the only thing that floated; it is one app among several now and the
+    // dock is where they all are.
+    // `dock-tile` and not `data-app` alone: the dock draws a tile for OneAI
+    // whether or not this workspace has it, and until `sessions()` comes back
+    // saying it is on the tile is the dim one, which does not press. Waiting
+    // on the live one is waiting for that answer.
+    const tile = page.locator('[data-slot="dock-tile"][data-app="chat"]')
+    await expect(tile).toBeVisible({ timeout: 20_000 })
+    await tile.click()
 
-    const widget = page.locator('[data-slot="assistant-widget"]')
+    const widget = page.locator('[data-window="assistant"]')
     await expect(widget).toBeVisible()
     const opened = await widget.boundingBox()
 
     // Dragged by its header, which is the only handle: dragging anywhere else
     // would move it while somebody was selecting an answer to copy.
-    const handle = await page.locator('[data-slot="assistant-handle"]').boundingBox()
+    const handle = await page
+      .locator('[data-window="assistant"] [data-slot="window-handle"]').boundingBox()
     await page.mouse.move(handle.x + 60, handle.y + 10)
     await page.mouse.down()
     await page.mouse.move(handle.x - 220, handle.y - 60, { steps: 10 })
@@ -434,9 +470,10 @@ test('the launcher is always there, and the widget remembers where it was put',
     // habits live — `lib/url/remember.js`. It was written under an undeclared
     // key for a while, which the `try` swallows, so this is the witness for
     // the declaration as much as for the drag.
-    // No second press on the launcher: opening it wrote `?ask=` (§C4), so the
-    // reload comes back with the widget already open — which is itself the
-    // address working, and is why the launcher is not there to click.
+    // No second press on the tile: opening it wrote `?ask=` (§C4), so the
+    // reload comes back with the widget already open — and a second press on a
+    // window that is already in front folds it away, which is the one thing
+    // this must not do here.
     await page.reload()
     await expect(widget).toBeVisible({ timeout: 20_000 })
     const again = await widget.boundingBox()
@@ -463,13 +500,22 @@ test('an answer can be put into the document behind the widget',
     ])
 
     await page.goto(`/one/docs/${doc}?ask=${session}`)
-    const widget = page.locator('[data-slot="assistant-widget"]')
+    const widget = page.locator('[data-window="assistant"]')
     await expect(widget).toBeVisible({ timeout: 20_000 })
 
     // The button names where it would go, because a widget you can drag
     // anywhere is one where "Insert" alone does not say into what.
     const insert = page.locator('[data-slot="chat-insert"]')
     await expect(insert).toBeVisible({ timeout: 20_000 })
+
+    // The editor first. The widget and the document load independently, and
+    // the widget is the faster of the two — so Insert was pressed while
+    // ProseMirror was still mounting and the text went into an editor that did
+    // not exist yet, silently. Nothing said so: the assertion below simply
+    // found an empty document.
+    const prose = page.locator('.ProseMirror')
+    await expect(prose).toBeVisible({ timeout: 20_000 })
+    await expect(prose).toHaveAttribute('contenteditable', 'true')
 
     await insert.click()
 
@@ -492,7 +538,7 @@ test('there is nowhere to put an answer when nothing is offering',
     ])
 
     await page.goto(`/one/files?ask=${session}`)
-    await expect(page.locator('[data-slot="assistant-widget"]')).toBeVisible({
+    await expect(page.locator('[data-window="assistant"]')).toBeVisible({
       timeout: 20_000,
     })
     await expect(page.locator('[data-slot="chat-turn"]').last()).toBeVisible()
@@ -578,4 +624,133 @@ test('a highlighted range is what "this" means in a workbook',
     // by half" is nonsense on a range.
     await expect(page.locator('[data-slot="chat-openers"]'))
       .toContainText('Which cells feed this?')
+  })
+
+test('everything open gets a chip, and a dim one is left out',
+  async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'the phone has no desk')
+
+    // A document, to open in a window of its own over a screen. Two things on
+    // screen at once is the case one chip could not say anything about: it
+    // picked whichever was in front and was silent about the rest.
+    const made = await page.request.post('/api/method/oneapp.onedoc.make', {
+      data: { title: `zzBoth ${Date.now()}` },
+    })
+    expect(made.ok()).toBe(true)
+    const { name, title } = (await made.json()).message
+
+    await page.goto('/one/space/onehr?screen=people&ask=new')
+    const strip = page.locator('[data-slot="assistant-context"]')
+    await expect(strip).toBeVisible({ timeout: 25_000 })
+
+    // The screen alone, to begin with.
+    await expect(strip.locator('[data-slot="context-chip-on"]')).toHaveCount(1)
+    await expect(page.locator('[data-slot="chat-openers"]'))
+      .toContainText('What is on this screen right now?', { timeout: 20_000 })
+
+    // And now the document as well, in a window over it — the editors' own
+    // dock tile lands on the place that holds what they make.
+    await page.locator('[data-app="onedoc"]').click()
+    const drive = page.locator('[data-window="onedoc"]')
+    await expect(drive).toBeVisible({ timeout: 20_000 })
+    await drive.getByText(title, { exact: true }).first().click()
+    await expect(page.locator('[data-window^="file:"]')).toBeVisible({ timeout: 25_000 })
+
+    // Two chips, both lit, and the document is in front — so it is what "this"
+    // means and the openers are the document's.
+    await expect(strip.locator('[data-slot="context-chip-on"]')).toHaveCount(2)
+    await expect(page.locator('[data-slot="chat-openers"]'))
+      .toContainText('Summarise this in five lines.', { timeout: 20_000 })
+
+    // Forward, because opening a file put its window over this one — which is
+    // what opening a window means and is why the chip cannot be pressed
+    // through it.
+    await page.locator('[data-app="chat"]').click()
+
+    // Switch it off and the panel falls back to what is behind it. The chip
+    // stays, dim: one you cannot see is one you cannot switch back on.
+    await strip.locator('[data-slot="context-chip-on"]').first().click()
+    await expect(strip.locator('[data-slot="context-chip-off"]')).toHaveCount(1)
+    await expect(page.locator('[data-slot="chat-openers"]'))
+      .toContainText('What is on this screen right now?', { timeout: 20_000 })
+
+    // And back.
+    await strip.locator('[data-slot="context-chip-off"]').first().click()
+    await expect(page.locator('[data-slot="chat-openers"]'))
+      .toContainText('Summarise this in five lines.', { timeout: 20_000 })
+  })
+
+test('the panel says who it is and what it is about once each', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'the phone has no window bar and no chips')
+
+  await page.goto('/one/space/onehr?screen=people&ask=new')
+  const bar = page.locator('[data-window="assistant"] [data-slot="window-handle"]')
+  await expect(bar).toBeVisible({ timeout: 25_000 })
+
+  // The name, written the way the family is written: `One` a shade back and
+  // the rest at full strength. This window was the last one saying it flat.
+  await expect(bar.locator('[data-slot="brand-prefix"]')).toHaveText('One')
+  await expect(bar).toContainText('OneAI')
+
+  // And said once. The bar has the name, the chips have what is open, so the
+  // empty state below has neither — it used to read "OneAI / OneAI / Asking
+  // about People" with a chip saying People beside it: four statements, two
+  // facts.
+  const body = page.locator('[data-slot="chat"]')
+  await expect(page.locator('[data-slot="chat-openers"]')).toBeVisible({ timeout: 20_000 })
+  await expect(body).not.toContainText('Asking about')
+  await expect(body).not.toContainText('OneAI')
+
+  // Nor does the composer restate it under the box. The placeholder says what
+  // the question will be about; a line under it saying the same thing was the
+  // third statement of one fact in a column 384px wide.
+  await expect(page.locator('[data-slot="chat-input"]'))
+    .toHaveAttribute('placeholder', 'Ask about People')
+  await expect(body).not.toContainText('About People')
+
+  // The page at `/one/chat` has neither a bar nor chips, so it keeps both.
+  await page.goto('/one/chat')
+  const page_body = page.locator('[data-slot="chat"]')
+  await expect(page_body).toContainText('OneAI', { timeout: 20_000 })
+})
+
+test('a file is attached from the Drive and goes with the question',
+  async ({ page }, info) => {
+    test.skip(info.project.name === 'mobile', 'the picker is its own dialog on a phone')
+
+    // A file of this test's own, because what is in the fixture is not this
+    // test's business.
+    const made = await page.request.post('/api/method/oneapp.onedoc.make', {
+      data: { title: `zzAttach ${Date.now()}` },
+    })
+    expect(made.ok()).toBe(true)
+    const { name, title } = (await made.json()).message
+
+    await page.goto('/one/space/onehr?screen=people&ask=new')
+    await expect(page.locator('[data-slot="chat-attach"]')).toBeVisible({ timeout: 25_000 })
+
+    // `FilePicker`, which is the Drive's own: the library, this device and the
+    // camera. An upload writes into OneCloud and then picks the result, so
+    // what is attached is always a file that exists somewhere a person can
+    // find it again.
+    await page.locator('[data-slot="chat-attach"]').click()
+    await expect(page.locator('[data-slot="picker-library"]')).toBeVisible({ timeout: 20_000 })
+    await page.locator('[data-slot="picker-library"]').getByText(title).first().click()
+
+    const attached = page.locator('[data-slot="chat-attached"]')
+    await expect(attached).toContainText(title, { timeout: 20_000 })
+
+    // Beside the composer rather than up with the open windows, because the
+    // two are different promises: a window is what you have open, a file is
+    // what you chose to bring.
+    await expect(page.locator('[data-slot="assistant-context"]')).not.toContainText(title)
+
+    // And it comes back out, leaving the file where it lives.
+    await attached.locator('[data-slot="chat-detach"]').click()
+    await expect(attached).toHaveCount(0)
+
+    const still = await page.request.get(
+      `/api/method/oneapp.onedoc.get_doc?name=${name}`,
+    )
+    expect(still.ok()).toBe(true)
   })

@@ -30,7 +30,9 @@
 import { computed, ref } from 'vue'
 import { Calendar } from '@/ui'
 import { __ } from '@/shared/lib/runtime/translate'
+import { identityOf } from '@/modules/onespace/lib/screen/identity'
 import { occurrencesOf } from '@/modules/onespace/lib/screen/recurrence'
+import { daysBetween, daysCovered } from '@/modules/onespace/lib/screen/spans'
 import EmptyState from '@/shared/components/EmptyState.vue'
 
 const props = defineProps({
@@ -69,11 +71,9 @@ const untilField = computed(() => props.calendar?.until_field || '')
  */
 const shown = ref({})
 
-/** What a record is called, from the doctype's own title field. */
-const titleOf = (row) => {
-  const title = props.spec?.title_field
-  return String((title && row[title]) || row.name || '')
-}
+/** What a record is called — `lib/screen/identity.js`, which every other
+ *  surface uses and which reads a Link title as its label rather than its id. */
+const titleOf = (row) => identityOf(row, props.spec).label
 
 /**
  * A day, and a time where there is one. Frappe writes a Date as `YYYY-MM-DD`
@@ -85,22 +85,6 @@ const split = (value) => {
   if (!said) return null
   const [date, time = ''] = said.split(' ')
   return { date, time: time.slice(0, 5) }
-}
-
-/** How many days a record covers, so a repeat of it covers the same. */
-const daysBetween = (from, to) => {
-  const one = new Date(`${from}T00:00:00`)
-  const other = new Date(`${to}T00:00:00`)
-  const apart = Math.round((other - one) / 86_400_000)
-  return Number.isFinite(apart) && apart > 0 ? apart : 0
-}
-
-const shift = (date, days) => {
-  if (!days) return date
-  const made = new Date(`${date}T00:00:00`)
-  made.setDate(made.getDate() + days)
-  const pad = (one) => String(one).padStart(2, '0')
-  return `${made.getFullYear()}-${pad(made.getMonth() + 1)}-${pad(made.getDate())}`
 }
 
 const events = computed(() => {
@@ -126,18 +110,33 @@ const events = computed(() => {
       : [from.date]
 
     for (const day of on) {
-      found.push({
-        // The record's id for the first, and the day appended after that: the
-        // grid keys events by id, and four Tuesdays sharing one would draw one
-        // Tuesday.
-        id: day === from.date ? row.name : `${row.name}@${day}`,
-        title: titleOf(row),
-        fromDate: day,
-        toDate: shift(day, covers),
-        fromTime: from.time || undefined,
-        toTime: to?.time || from.time || undefined,
-        isFullDay: !from.time,
-      })
+      // Every day the record covers, and not only the first.
+      //
+      // frappe-ui's Calendar places an event by its start alone: `Calendar.vue`
+      // sets `date = fromDate` and the month grid groups by that, so `toDate`
+      // reaches the modal and nothing else. A leave application from Monday to
+      // Friday therefore drew one chip on Monday and left the week it covers
+      // empty — which on a leave screen is not a cosmetic loss, it is the
+      // screen being wrong about who is in.
+      //
+      // So a span is drawn as a chip a day, which is what the grid can render.
+      // Clipped to the days on screen, because a contract running to next
+      // December is three hundred chips nobody asked for and the month showing
+      // twenty of them is the only month that needs any.
+      for (const date of daysCovered(day, covers, shown.value)) {
+        found.push({
+          // The record's id for its own first day, and the day appended after
+          // that: the grid keys events by id, and two chips sharing one would
+          // draw one chip.
+          id: date === from.date ? row.name : `${row.name}@${date}`,
+          title: titleOf(row),
+          fromDate: date,
+          toDate: date,
+          fromTime: from.time || undefined,
+          toTime: to?.time || from.time || undefined,
+          isFullDay: !from.time,
+        })
+      }
     }
   }
   return found

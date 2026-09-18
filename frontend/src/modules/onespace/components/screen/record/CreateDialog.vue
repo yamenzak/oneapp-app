@@ -125,10 +125,62 @@ provide(LEAVING, {
   },
 })
 
+/**
+ * What this screen says a new record starts with — `view_settings.create`.
+ *
+ * It exists because a screen narrowed by `filters` had a New button that made
+ * a record the screen would then not show: the Words page is filtered to one
+ * space, and a word saved without one belongs to no space at all. The server
+ * has already checked every fieldname against this screen's own columns.
+ */
+const declared = computed(() => props.spec?.view_settings?.create?.values || {})
+
 const blank = () => {
   error.value = ''
   Object.keys(form).forEach((key) => delete form[key])
-  Object.assign(form, props.preset || {})
+  // The screen's own first, then the caller's — a board column's New knows
+  // which column it was pressed in, and that beats anything a manifest
+  // guessed. `fetchFromPreset` walks the preset only, which is right: what
+  // the screen declared is what the screen wanted, not a Link somebody chose.
+  Object.assign(form, declared.value, props.preset || {})
+  fetchFromPreset()
+}
+
+/**
+ * What a preset Link would have filled in, had somebody typed it.
+ *
+ * `fetch_from` runs in `FormSections.wrote`, which is the path a *control*
+ * takes — so a value put straight into the form arrived without it, and a
+ * dialog opened by a screen action showed an Interview with an applicant and
+ * an empty Job Opening under a label saying "From job applicant". Frappe fills
+ * both on save either way; this is about the form not looking wrong while
+ * somebody is deciding whether to press Create.
+ *
+ * Best effort and unordered: a lookup that fails leaves the field as it was,
+ * and `only_if_empty` is honoured so a preset that named both the link and
+ * something it fetches keeps what the caller meant.
+ */
+const fetchFromPreset = async () => {
+  const preset = props.preset || {}
+  // `all_columns` is every field this reader may read, with its fieldtype —
+  // the form's own `form` key is a nested layout and says nothing about types.
+  const links = (props.spec?.all_columns || props.spec?.columns || []).filter(
+    (one) => ['Link', 'Dynamic Link'].includes(one.fieldtype) && preset[one.fieldname],
+  )
+  for (const field of links) {
+    let filled = {}
+    try {
+      filled = await workspace.fetched(
+        props.spaceCode, props.screen, field.fieldname, preset[field.fieldname])
+    } catch {
+      continue
+    }
+    for (const [name, spec] of Object.entries(filled || {})) {
+      if (spec.only_if_empty && form[name]) continue
+      if (preset[name] !== undefined) continue
+      form[name] = spec.value
+    }
+  }
 }
 
 const save = async ({ another = false } = {}) => {
@@ -161,4 +213,5 @@ const save = async ({ another = false } = {}) => {
 watch(open, (showing) => {
   if (showing) blank()
 })
+
 </script>

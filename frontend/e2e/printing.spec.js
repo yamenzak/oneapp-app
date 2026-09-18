@@ -10,10 +10,23 @@ import { collectConsoleErrors, expectNoRealErrors, signIn } from './auth.js'
 import { openSettings } from './shell.js'
 
 const FORMAT = 'zzmock Task Sheet'
+const DOCTYPE = 'Task'
+// Print formats are a space's, so a format over `Task` is drawn from the space
+// that shows tasks. MockSpace's own "Tasks" screen is `ToDo`; OneProject is the
+// one that grants the doctype this format is over.
+const SPACE = 'oneproject'
+
+// Print formats are a space's — a format is drawn over a doctype — while the
+// paper itself is the workspace's, so Printing is on One and Print formats is
+// on the space whose records are being printed.
+const ON_ONE = new Set(['Printing'])
 
 const openTab = async (page, tab) => {
-  await openSettings(page)
-  await page.getByRole('tab', { name: tab }).click()
+  await openSettings(page, {
+    ...(ON_ONE.has(tab) ? {} : { space: SPACE }),
+    tab: tab.toLowerCase().replace(' ', '-'),
+  })
+  await page.getByRole('tab', { name: tab, exact: true }).waitFor({ timeout: 25_000 })
 }
 
 /**
@@ -24,7 +37,7 @@ const openTab = async (page, tab) => {
  * page, which is exactly what it is for.
  */
 const clean = (page) =>
-  page.evaluate(async (format) => {
+  page.evaluate(async ([format, doctype]) => {
     const call = (method, body) =>
       fetch(`/api/method/oneapp.onespace.workspace.${method}`, {
         method: 'POST',
@@ -35,13 +48,18 @@ const clean = (page) =>
         body: JSON.stringify(body),
       }).then((r) => r.json())
 
+    // Named, because the answer is one doctype's formats and the doctype it
+    // picks when not told is whichever sorts first on the site. Once that
+    // stopped being Task, this swept a list the format was never in — and the
+    // second run of this spec saved a name that already existed, which comes
+    // back as a ValidationError the console watcher rightly fails on.
     const found = await fetch(
-      '/api/method/oneapp.onespace.workspace.print_formats',
+      `/api/method/oneapp.onespace.workspace.print_formats?doctype=${doctype}`,
     ).then((r) => r.json())
     if ((found.message?.formats || []).some((one) => one.name === format)) {
       await call('delete_print_format', { name: format })
     }
-  }, FORMAT)
+  }, [FORMAT, DOCTYPE])
 
 test('a format drawn in the builder prints the record', async ({ page, baseURL }, info) => {
   test.skip(info.project.name === 'mobile', 'the builder is a three-column desktop surface')
@@ -58,6 +76,15 @@ test('a format drawn in the builder prints the record', async ({ page, baseURL }
   // never every doctype on the site.
   const records = page.getByRole('combobox', { name: 'Records' })
   await expect(records).toBeVisible()
+
+  // Say which. The list is every doctype this workspace's screens show and it
+  // opens on whichever sorts first, so the format being drawn was a Task's only
+  // while zzmock was the only app here — Activity Type is ahead of it now. The
+  // palette below is the chosen doctype's fields, which is why this reads as
+  // "the Status button is missing" rather than as the wrong doctype.
+  await records.click()
+  await page.getByRole('option', { name: DOCTYPE, exact: true }).click()
+  await expect(records).toContainText(DOCTYPE)
 
   await page.getByRole('button', { name: 'New format' }).click()
   await page.getByRole('textbox', { name: 'Name' }).fill(FORMAT)

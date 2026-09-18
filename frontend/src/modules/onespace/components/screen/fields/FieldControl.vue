@@ -77,12 +77,18 @@
     </template>
   </Switch>
 
+  <!--
+    Whole stars out, a fraction of one back in. Frappe stores a Rating as
+    `0..1` and this control counts stars, so without the pair a four-star
+    rating drew one star and clicking four stars stored four hundred per cent.
+  -->
   <Rating
     v-else-if="component === 'Rating'"
-    :model-value="Number(modelValue) || 0"
+    :model-value="starsOf(modelValue)"
+    :max="STARS"
     :label="field.label"
     :disabled="off"
-    @update:model-value="emit('update:modelValue', $event)"
+    @update:model-value="emit('update:modelValue', ratingOf($event))"
   >
     <template #label v-if="field.label">
       <FieldLabel
@@ -240,7 +246,7 @@
       <OpenIn
         brand="onedoc"
         slot-name="open-in-doc"
-        :tooltip="__('Open {0} in OneDoc', [field.label])"
+        :tooltip="__('Open {0} in {1}', [field.label, nameOf('onedoc')])"
         @open="expanded = true"
       />
     </div>
@@ -264,7 +270,7 @@
         @update:model-value="emit('update:modelValue', $event)"
       >
         <template #default="{ editor }">
-          <EditorFixedMenu v-if="!off" :editor="editor" :items="articleToolbar" class="mb-2" />
+          <EditorFixedMenu v-if="!off" :editor="editor" :items="articleToolbar" class="mb-2 flex-wrap" />
           <!-- The accessible name. EditorContent forwards attributes onto the
                element ProseMirror mounts on, which is what a person types
                into. -->
@@ -308,7 +314,7 @@
     <template v-else>
       <!--
         The way into OneCode, on the same terms the long-text field opens
-        OneDoc: the value stays the field's and nothing becomes a file. A
+        OneWriter: the value stays the field's and nothing becomes a file. A
         400-line print format in a box eight lines tall is the case this is
         for, and it is the common case rather than the rare one.
 
@@ -326,7 +332,7 @@
         <OpenIn
           brand="onecode"
           slot-name="open-in-code"
-          :tooltip="__('Open {0} in OneCode', [field.label])"
+          :tooltip="__('Open {0} in {1}', [field.label, nameOf('onecode')])"
           @open="coding = true"
         />
       </div>
@@ -437,6 +443,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { STATE } from '@/shared/lib/fields/state'
+import { STARS, ratingOf, starsOf } from '@/modules/onespace/lib/screen/rating'
 import ReadValue from '@/modules/onespace/components/screen/fields/ReadValue.vue'
 import {
   Icon,
@@ -458,7 +465,8 @@ import {
   upload,
 } from '@/ui'
 import FieldLabel from '@/modules/onespace/components/screen/fields/FieldLabel.vue'
-import AiMark from '@/modules/onespace/components/AiMark.vue'
+import AiMark from '@/modules/oneai/components/AiMark.vue'
+import { nameOf } from '@/shared/lib/brand/naming'
 import FilePicker from '@/modules/onestorage/components/FilePicker.vue'
 import LinkPicker from '@/modules/onespace/components/screen/fields/LinkPicker.vue'
 import AttachmentGallery from '@/modules/onespace/components/screen/record/AttachmentGallery.vue'

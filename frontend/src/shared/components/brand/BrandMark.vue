@@ -10,9 +10,10 @@
     The mark is drawn in its own colours and does not follow the theme. That is
     deliberate and is what makes an app recognisable at 20px in a rail: an icon
     that took the workspace's accent would be the workspace's icon, not the
-    app's. The white inside each mark is structural — a pallet, a chip, a page
-    — and reads on both grounds because it sits inside a coloured shape rather
-    than against the canvas.
+    app's. The white inside each mark is light rather than paper — a highlight
+    at 12% over obsidian, the hot centre of the beacon, the lit edge of the
+    chassis — and every one of them sits inside a coloured object, so none of
+    them needs the canvas to be any particular colour.
   -->
   <!--
     `v-html`, and the rule that objects to it is switched off for this one
@@ -24,11 +25,12 @@
   -->
   <!-- eslint-disable vue/no-v-html -->
   <svg
-    viewBox="0 0 100 100"
+    :viewBox="box"
     :class="$attrs.class"
     :data-slot="`brand-${name}`"
-    role="img"
-    :aria-label="label"
+    :role="decorative ? undefined : 'img'"
+    :aria-hidden="decorative ? 'true' : undefined"
+    :aria-label="decorative ? undefined : label"
     v-html="drawn"
   />
   <!-- eslint-enable vue/no-v-html -->
@@ -43,11 +45,26 @@ defineOptions({ inheritAttrs: false })
 const props = defineProps({
   /** A key of `MARKS` — `onesheet`, `onecrm`, or `one` for the platform. */
   name: { type: String, required: true },
+  /**
+   * The mark is beside a caption that already says its name.
+   *
+   * A tile on the app board is a mark *and* the word under it, and announcing
+   * both makes every tile read as "One One", "OneMail OneMail". Where the mark
+   * is on its own — the folded corner, a row's lead — it is the only thing
+   * naming what it points at and keeps its label.
+   */
+  decorative: { type: Boolean, default: false },
 })
 
 const mark = computed(() => MARKS[props.name] || null)
 
 const label = computed(() => mark.value?.name || props.name)
+
+// The mark's own, not a constant: the set is drawn on a 192 grid and the one
+// before it was drawn on 100, and a mark rendered in the wrong box is a quarter
+// of a mark in the corner of an empty square. A name this build does not have
+// draws nothing, so the box it gets does not matter — it just has to be valid.
+const box = computed(() => mark.value?.box || '0 0 192 192')
 
 /**
  * A number nothing else on the page will have.

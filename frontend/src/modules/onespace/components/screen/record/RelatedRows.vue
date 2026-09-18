@@ -13,16 +13,45 @@
   <div class="flex flex-col gap-3 pt-4">
     <div class="flex items-center gap-2">
       <span class="text-p-sm text-ink-secondary">{{ counted }}</span>
-      <span v-if="more" class="text-p-xs text-ink-muted">
+      <!--
+        Only where the page it is on is a list. A block on a space's home asked
+        for five on purpose and says so with an Open button beside it; "showing
+        the first 5" under a heading that is already a link reads as an
+        apology.
+      -->
+      <span v-if="more && !limit" class="text-p-xs text-ink-muted">
         {{ __('showing the first {0}', [rows.length]) }}
       </span>
+      <!--
+        The screen itself, narrowed to this record — its board, its calendar,
+        its dashboard, whichever of them it has. A tab is a table and a project
+        is looked at as a board, and the answer to that is not a board built in
+        here: `lib/screen/narrowing.js`.
+
+        Only where the screen has more to offer than the table above. A second
+        way to see a list of leave types is a door onto the same room.
+      -->
+      <RouterLink
+        v-if="linked && worthOpening"
+        class="ms-auto"
+        data-slot="related-door"
+        :to="door"
+      >
+        <Button
+          variant="ghost"
+          icon-left="lucide-layout-dashboard"
+          icon-right="lucide-arrow-up-right"
+          :label="__('Open in {0}', [spec.screen_label || label || __('the screen')])"
+          class="text-ink-secondary"
+        />
+      </RouterLink>
       <!--
         Frappe's "New linked document", on the tab that is already about the
         link. The field this tab filtered on arrives filled in.
       -->
       <Button
         v-if="spec.can_create"
-        class="ms-auto"
+        :class="linked && worthOpening ? '' : 'ms-auto'"
         data-slot="related-new"
         icon-left="lucide-plus"
         :label="__('New {0}', [spec.singular || __('record')])"
@@ -84,12 +113,14 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { RouterLink } from 'vue-router'
 import { Button, LoadingText } from '@/ui'
 import CreateDialog from '@/modules/onespace/components/screen/record/CreateDialog.vue'
 import RecordTable from '@/modules/onespace/components/screen/bodies/RecordTable.vue'
 import FieldCell from '@/modules/onespace/components/screen/bodies/FieldCell.vue'
 import TitleCell from '@/modules/onespace/components/screen/bodies/TitleCell.vue'
 import RowMeta from '@/modules/onespace/components/screen/bodies/RowMeta.vue'
+import { NARROW, narrowingFor } from '@/modules/onespace/lib/screen/narrowing'
 import { workspace } from '@/shared/lib/workspace'
 import { __ } from '@/shared/lib/runtime/translate'
 
@@ -97,21 +128,68 @@ const props = defineProps({
   spaceCode: { type: String, required: true },
   /** The screen whose records these are — not the one being read. */
   screen: { type: String, required: true },
-  /** The field on that screen pointing back at the record being read. */
-  field: { type: String, required: true },
+  /**
+   * The field on that screen pointing back at the record being read.
+   *
+   * Optional, because the second caller narrows nothing: a Configuration tab
+   * is a whole screen's rows — every leave type there is — and the only thing
+   * it wants from this component is everything else it does. Empty here means
+   * no link filter and no preset, and the rest is unchanged.
+   */
+  field: { type: String, default: '' },
   /**
    * What else has to be true, which for a Dynamic Link is the doctype: `about`
    * holds an id and `about_doctype` what kind of thing it is, and filtering on
    * the id alone would put a licence's letters on a project sharing its name.
    */
   where: { type: Array, default: () => [] },
-  /** The record being read, by id. */
-  name: { type: String, required: true },
+  /** The record being read, by id. Empty where nothing is being narrowed to. */
+  name: { type: String, default: '' },
   /** What they are called, for the count and the empty line. */
   label: { type: String, default: '' },
+  /**
+   * How many rows to ask for.
+   *
+   * Fifty for a record's tab and a Configuration table, which are lists you
+   * work in; a handful for a block on a space's home, which is a glance on the
+   * way somewhere. The third caller is what made this a prop rather than a
+   * constant.
+   */
+  limit: { type: Number, default: 0 },
+  /**
+   * At most this many columns.
+   *
+   * A record's tab and a Configuration table are half a page wide and draw
+   * what the screen declares. A block on a space's home is a quarter of one,
+   * and six columns in it is a table you have to scroll sideways to read an
+   * amount — which is not what a glance is. Three is a name and two facts.
+   */
+  columnsAtMost: { type: Number, default: 0 },
 })
 
 const emit = defineEmits(['open'])
+
+/** Whether these rows are about another record, or are simply a screen's. */
+const linked = computed(() => !!(props.field && props.name))
+
+/**
+ * Whether the screen behind this tab is worth opening.
+ *
+ * Every screen draws a list, and this tab is one — so a door is worth its width
+ * only where that screen knows a second way to look at these rows. A project's
+ * tasks are a board; a space's leave types are a list and nothing else.
+ */
+const worthOpening = computed(() => (spec.value?.view_types || []).length > 1)
+
+/** Where that door goes: the screen, its own first view, and the narrowing. */
+const door = computed(() => ({
+  name: 'Screen',
+  params: { spaceCode: props.spaceCode },
+  query: {
+    screen: props.screen,
+    [NARROW]: narrowingFor(props.field, props.name, props.where),
+  },
+}))
 
 // A tab, not a list: past this many the answer is the screen itself.
 const PAGE = 50
@@ -123,10 +201,17 @@ const VIRTUAL_FROM = 200
 // What a new one starts with: the link back, and for a Dynamic Link the doctype
 // beside it — without which the row would not come back to this tab.
 const preset = computed(() =>
-  Object.fromEntries([
-    [props.field, props.name],
-    ...(props.where || []).map(([field, , value]) => [field, value]),
-  ]),
+  Object.fromEntries(
+    [
+      ...(linked.value ? [[props.field, props.name]] : []),
+      ...(props.where || []).map(([field, , value]) => [field, value]),
+    ]
+      // A `table.column` filter is a question, not a field to fill in: a tab
+      // narrowed by one is about rows that point *back* at this record from a
+      // child table, and there is nothing on a new record's form to put the
+      // answer in. The dialog still opens; it opens empty, which is honest.
+      .filter(([field]) => !String(field).includes('.')),
+  ),
 )
 
 const creating = ref(false)
@@ -156,10 +241,12 @@ const singular = (word) => {
  * so a Project column on a project's Invoices tab is one name written six
  * times. Kept where it is the screen's title field, or the rows lose their
  * name.
+ *
+ * And capped where the caller says so — see `columnsAtMost`.
  */
 const visible = computed(() => {
   const titleField = spec.value?.title_field
-  return (columns.value || [])
+  const kept = (columns.value || [])
     .filter((column) => column.fieldname !== props.field || column.fieldname === titleField)
     .map((column) => ({
       key: column.fieldname,
@@ -175,10 +262,24 @@ const visible = computed(() => {
             : column.cell,
       column,
     }))
+  if (!props.columnsAtMost) return kept
+
+  // Off the end rather than off the front, so the title — which the engine
+  // puts first — is always one of them.
+  //
+  // And the survivors *share* the width rather than keeping the pixel widths
+  // the screen declared. A screen's widths are chosen for a page; three of
+  // them in a quarter of one add up past the block and the last column is
+  // clipped against its own panel. `RecordTable` reads a column with no width
+  // as a share and lays the table out `w-full`, which is the same thing a
+  // child table does inside a record.
+  return kept.slice(0, props.columnsAtMost).map((column) => ({
+    ...column, track: 'minmax(0,1fr)', width: 0,
+  }))
 })
 
 const load = async () => {
-  if (!props.name || !props.screen || !props.field) return
+  if (!props.screen || (!!props.field !== !!props.name)) return
   loading.value = true
   try {
     // Both at once: the spec answers what a row of this screen looks like and
@@ -188,9 +289,14 @@ const load = async () => {
       workspace.screenRows(
         props.spaceCode,
         props.screen,
-        { filters: [[props.field, '=', props.name], ...(props.where || [])] },
+        {
+          filters: [
+            ...(linked.value ? [[props.field, '=', props.name]] : []),
+            ...(props.where || []),
+          ],
+        },
         '',
-        { start: 0, limit: PAGE },
+        { start: 0, limit: props.limit || PAGE },
       ),
     ])
     spec.value = found || {}

@@ -71,6 +71,56 @@ test('a card is three bands, and the last one is a control', async ({ page }) =>
   expectNoRealErrors(errors)
 })
 
+test('a card says which field each value is, and draws its icon', async ({ page }) => {
+  const errors = collectConsoleErrors(page)
+  await openGrid(page)
+
+  const card = page.locator(CARD, { hasText: 'Book the van for Thursday' })
+  const labels = card.locator('[data-slot="card-field"]')
+
+  // A value on its own is only readable when you already know which field it
+  // is — two dates on a card and nothing saying which is which.
+  await expect(labels.filter({ hasText: 'Due Date' })).toHaveCount(1)
+  await expect(labels.filter({ hasText: 'Status' })).toHaveCount(1)
+
+  // And each label carries the field's own icon, which is what keeps a
+  // shortened label readable. The same `field_icons.icon_for` the list header
+  // uses, so a Date is the same glyph in both.
+  const due = labels.filter({ hasText: 'Due Date' }).first()
+  await expect(due.locator('[class*="lucide-"]').first()).toBeVisible()
+
+  expectNoRealErrors(errors)
+})
+
+test('every footer in a row of cards sits on the same line',
+  async ({ page }, info) => {
+    // A desktop pass by definition: a phone draws one card per row, so two
+    // cards are in two rows and their footers are *meant* to be at different
+    // heights. There is nothing to line up until there is a row.
+    test.skip(info.project.name === 'mobile', 'one card per row on a phone')
+    const errors = collectConsoleErrors(page)
+    await openGrid(page)
+
+    // Two cards from the same row with different numbers of fields. The first
+    // carries five, the second three, and before the tile filled its cell the
+    // short one's box stopped where its content did — so the hairline, the age,
+    // the comment count and the heart landed at a different height in every card
+    // of the row.
+    const five = page.locator(CARD, { hasText: 'Book the van for Thursday' })
+    const three = page.locator(CARD, { hasText: 'Chase the Halloway invoice' })
+
+    const [a, b] = await Promise.all([
+      five.locator('[data-slot="row-meta"]').boundingBox(),
+      three.locator('[data-slot="row-meta"]').boundingBox(),
+    ])
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
+    // A pixel of rounding, not a band of it.
+    expect(Math.abs(a.y - b.y)).toBeLessThan(2)
+
+    expectNoRealErrors(errors)
+  })
+
 test('the title is the keyboard way into a card', async ({ page }) => {
   await openGrid(page)
 

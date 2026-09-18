@@ -2,7 +2,18 @@
 
 import frappe
 from frappe import _
-from oneapp.onespace import collab, dashboard, docflow, fieldtypes, printing, showcase
+from oneapp.onespace import (
+	collab,
+	configuration,
+	dashboard,
+	docflow,
+	fieldtypes,
+	homepage,
+	mine,
+	printing,
+	seats,
+	showcase,
+)
 from .meta import (
 	META_COLUMN,
 	PAGE,
@@ -63,22 +74,137 @@ def visible(spaces: list) -> list:
 	A space with no role is open to everybody on the site, which is what an
 	empty `role_name` has always meant — the manifest declares one when it
 	wants the space narrowed.
+
+	*Any* of its four seats opens it, not one named seat. `role_name` is a
+	prefix now rather than a role — `HR`, and `HR-User` beside `HR-Audit` —
+	and a reader holding only the audit seat is a reader who may look.
 	"""
 	roles = set(frappe.get_roles())
-	return [s for s in spaces if not s.get("role_name") or s["role_name"] in roles]
+	return [s for s in spaces
+	        if not s.get("role_name")
+	        or roles.intersection(_space_roles(s))]
 
 
-def _granted_doctypes(space: dict) -> set[str]:
-	"""What this space's manifest actually granted, by role.
+def _refuse_ungranted(space: dict, doctype: str) -> None:
+	"""Stop here unless this space grants that doctype to a seat this person has.
+
+	Refused rather than left to fail as an empty list, which reads like there is
+	no data.
+
+	Two refusals, because there are two reasons and only one of them is a
+	mistake. A screen the space does not grant at all is a manifest that does
+	not add up; a screen it grants to a seat this person does not hold is the
+	permission model working, and saying "not part of OnePeople" about a screen
+	sitting in the rail in front of them is the kind of message that costs
+	somebody an afternoon.
+	"""
+	if doctype in _granted_doctypes(space):
+		return
+	if doctype in _granted_doctypes(space, held=False):
+		frappe.throw(
+			_("{0} is part of {1}, and not of your role in it.").format(
+				doctype, space.get("space_label")),
+			frappe.PermissionError,
+		)
+	frappe.throw(
+		_("{0} is not part of {1}.").format(doctype, space.get("space_label")),
+		frappe.PermissionError,
+	)
+
+
+def navigable(space: dict) -> list:
+	"""The screens of one space that belong in this reader's rail.
+
+	The rail has always listed every screen a space declares, whatever seat you
+	hold — so an employee in OnePeople saw Payslips and Job Applicants under their
+	own headings and was refused both on the way in. The refusal is a good
+	sentence now (`_resolve` says "part of OnePeople, and not of your role in it")
+	but a good sentence about a door that should not have been drawn is still a
+	door that should not have been drawn.
+
+	Narrowed here rather than in `visible`, which `_space` also reads: a screen
+	missing from the rail must still *refuse* when its link is followed, and
+	filtering the space itself would silently resolve an old bookmark to
+	whatever screen happened to be first.
+
+	Two things are deliberately kept:
+
+	* A screen with no doctype — a component screen, or one not finished. There
+	  is no grant to consult, so there is nothing to hide it by.
+	* A screen whose doctype no role in the space grants at all. That is the
+	  *other* refusal: a manifest that does not add up, and hiding it would
+	  turn a mistake somebody can see into one nobody can. Same reason the
+	  resolver keeps the two sentences apart.
+	"""
+	screens = space.get("screens") or []
+	if not screens:
+		return screens
+
+	anyone = _granted_doctypes(space, held=False)
+	if not anyone:
+		# Nothing granted to any of the space's roles — a site whose
+		# permissions have never been written. Narrowing against that would
+		# empty the rail of a space that works, so it is left alone.
+		return screens
+
+	granted = _granted_doctypes(space)
+	return [
+		one for one in screens
+		if (one.get("document_type") or "").strip() not in anyone
+		or one["document_type"] in granted
+	]
+
+
+def _space_roles(space: dict) -> list[str]:
+	"""Every Frappe role this space's manifest became.
+
+	Every space has the same four seats and the Frappe role is
+	`<role_name>-<Seat>`, so this is derived rather than looked up: `HR` gives
+	`HR-User`, `HR-Manager`, `HR-Audit`, `HR-Admin`.
+
+	It used to be a `LIKE` over the Role table, which answered what a site
+	*has* rather than what a space *is*. The difference showed up as a space
+	silently losing a seat somebody had deleted, and as any role beginning with
+	the same words being read as one of ours.
+
+	The prefix itself is first in the list, and it is there for the two spaces
+	the **control plane** runs over itself — the operator console and a
+	customer's account area. Neither has seats: they are one job each, gated by
+	one role, and their `role_name` is that role rather than a prefix. On a
+	tenant no Role is named the bare prefix, so it costs a name in a list and
+	nothing else.
+	"""
+	base = (space.get("role_name") or "").strip()
+	if not base:
+		return []
+	return [base] + seats.roles(base)
+
+
+def _granted_doctypes(space: dict, held: bool = True) -> set[str]:
+	"""What this space's manifest actually granted.
 
 	Read back off the permissions we wrote rather than from the manifest we were
 	sent: those are the rows that decide the answer, and a screen pointing at
 	something outside them would fail at the first query anyway.
+
+	`held` narrows it to the roles this person actually has, which is the
+	question a screen is asking. Every role in the space is the other question —
+	"is this screen part of the space at all" — and the two have different
+	answers the moment a space ships more than one job. Until now only the
+	*base* role was consulted, so a doctype granted to a named role was granted
+	to nobody as far as this was concerned: OnePeople's Attendance belongs to the
+	people officer, and every seat, that one included, opened the screen and was
+	told Attendance is not part of OnePeople.
 	"""
-	role = space.get("role_name")
-	if not role:
+	roles = _space_roles(space)
+	if held:
+		theirs = set(frappe.get_roles())
+		roles = [one for one in roles if one in theirs]
+	if not roles:
 		return set()
-	return set(frappe.get_all("Custom DocPerm", filters={"role": role}, pluck="parent"))
+	return set(frappe.get_all(
+		"Custom DocPerm", filters={"role": ["in", roles]}, pluck="parent"
+	))
 
 
 def _resolve(space_code: str, screen: str | None = None,
@@ -132,6 +258,61 @@ def _resolve(space_code: str, screen: str | None = None,
 	}
 
 	if resolved["component"]:
+		# A component screen may name a doctype, and it means one thing: who
+		# this screen is for. There is nothing to resolve — the component
+		# fetches what it draws — but `navigable` keeps a screen out of the
+		# rail by consulting the grant on its doctype, and a component screen
+		# without one is therefore in *everybody's* rail. "Mark the day" is a
+		# page for whoever administers attendance, and naming `Attendance` is
+		# how it says so. Refused here as well as hidden, or the rail is a
+		# suggestion and the URL is the door.
+		named = chosen.get("document_type")
+		if named:
+			_refuse_ungranted(space, named)
+
+		# And what it is about, as a name. Not `doctype`, which would make a
+		# component screen listable through `rows` and `record` — it has no
+		# columns and never wanted them. This is one string, read by
+		# `_link_column` when a picker on a component screen asks for its
+		# options: a screen that draws a form over a Single has Link fields on
+		# it, and without this every one of them answered 403. The columns are
+		# built there and only when something asks, so an ordinary component
+		# screen still costs no `get_meta` at all.
+		resolved["about"] = named or None
+
+		# A component screen is handed its declaration and nothing else — that
+		# is what naming one means. The one exception is a Configuration page,
+		# whose tabs are *other screens of this space*: resolving those names to
+		# the label and glyph each already declares has to happen where the
+		# space's screen list is, and doing it here rather than in the browser
+		# means a tab cannot end up called something the rail does not call it.
+		#
+		# Asked only of that one component, and by name. Every space has a
+		# Configuration page now — `sync.configured` gives one to any space
+		# that did not declare it — and `shape` appends the three panels a
+		# space always has, so asking it about `onehr/home` would put an Alerts
+		# tab on somebody's employee page.
+		# A space's front page, whose blocks are *other screens of this space* —
+		# resolved against `navigable` rather than the whole list, because a
+		# block the reader cannot open has to be absent and not refused. That
+		# is the whole of "role-specific": nothing here knows what a role is.
+		if resolved["component"] == homepage.HOME:
+			found = homepage.shape(
+				(resolved.get("view_settings") or {}).get(homepage.HOME),
+				navigable(space),
+			)
+			if found:
+				resolved[homepage.HOME] = found
+			return resolved
+
+		if resolved["component"] == configuration.CONFIGURATION:
+			found = configuration.shape(
+				(resolved.get("view_settings") or {}).get(configuration.CONFIGURATION),
+				screens,
+				space_code,
+			)
+			if found:
+				resolved[configuration.CONFIGURATION] = found
 		return resolved
 
 	doctype = chosen.get("document_type")
@@ -139,13 +320,7 @@ def _resolve(space_code: str, screen: str | None = None,
 		resolved["error"] = _("This screen has nothing to show yet.")
 		return resolved
 
-	if doctype not in _granted_doctypes(space):
-		# A screen outside the space's own grant. Refused here rather than left to
-		# fail as an empty list, which reads like there is no data.
-		frappe.throw(
-			_("{0} is not part of {1}.").format(doctype, space.get("space_label")),
-			frappe.PermissionError,
-		)
+	_refuse_ungranted(space, doctype)
 
 	if not frappe.db.exists("DocType", doctype):
 		resolved["error"] = _("{0} is not installed on this workspace.").format(doctype)
@@ -200,7 +375,14 @@ def _resolve(space_code: str, screen: str | None = None,
 		# Replaced below, once the board is resolved. Set here so the key exists
 		# in the same place as everything else the screen answers with.
 		"fields": _fetch_fields(columns, _status_field(chosen, offered)),
-		"filters": _json(chosen.get("filters")),
+		# Narrowed here rather than where they are used, so the list, the
+		# board, the calendar, the dashboard widgets and the count all read one
+		# answer about whose rows these are — `onespace/mine.py`. A value the
+		# site cannot resolve becomes one nothing can equal, never nothing at
+		# all: a screen narrowed to a reader nobody can identify has to be
+		# empty, and the silent version of that bug shows one person the
+		# company's pay.
+		"filters": mine.resolve(_json(chosen.get("filters"))),
 		"order_by": chosen.get("order_by") or _default_order(meta),
 		# How many rows a page is, and what the footer may offer instead. The
 		# screen's default until a saved view says otherwise.

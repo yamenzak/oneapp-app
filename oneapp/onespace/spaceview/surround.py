@@ -2,6 +2,24 @@
 
 Comments, the change log, who liked it. All of it is Frappe's own, on every
 doctype, and none of it needs a space to ask for it.
+
+**And the timeline is everything at once.** `docs/ONECRM.md` stage 3: it held a
+comment, a field change and the creation, so "what happened on this deal" meant
+reading the Activity tab, then the Mail tab, then the Files tab and merging
+them by eye — and a call had nowhere to be at all. Frappe CRM merges seven
+kinds into one column and it is the best thing in that app.
+
+So the sources are a **registry**: each one is a function that turns a record
+into typed entries, and `SOURCES` is the list. A kind that does not apply
+answers nothing — mail on a doctype nobody has written about, files on a record
+with no attachments — and a kind that does not exist yet is one line when it
+does. That is the whole reason this is a list rather than four queries in a
+row — and stage 5 proved it: `One Call` joined by naming a function in
+`SOURCES`, and `_entries` below is the same function it was before.
+
+Every source reads on the **reader's** behalf. A record is not a key that
+unlocks the mail about it — `spaceview/mail.py` is emphatic about why — so a
+timeline entry can only be one this person could have found anyway.
 """
 
 import frappe
@@ -10,8 +28,22 @@ from .meta import HIDDEN, _filter_rows
 from .resolve import _resolve
 from .records import record
 
+# The fifth kind, and the one stage 3 was built for: `onecrm/calls.py` turns a
+# record into the calls logged about it, and joining the column is this line
+# and the name in `SOURCES`. Imported at the top because it is this app —
+# `_gather` still catches it, for the doctype a bench has not migrated yet.
+from oneapp.onecrm.calls import entries as _call_entries
+
 
 TIMELINE_PAGE = 50
+
+#: How many entries the merged column carries, across every kind.
+#:
+#: Each source is capped at `TIMELINE_PAGE` of its own, so a record with four
+#: hundred emails does not crowd out its four comments; the merge then takes
+#: the newest of what came back. Both caps matter: the first keeps one loud
+#: kind from filling the page, the second keeps the page a page.
+TIMELINE_ENTRIES = 120
 
 
 @frappe.whitelist(methods=["GET"])
@@ -55,6 +87,11 @@ def timeline(space_code: str, screen: str, name: str) -> dict:
 	liked = frappe.parse_json(doc.get("_liked_by") or "[]")
 
 	return {
+		# One column, newest first — see the module docstring. The two lists
+		# below it are the same rows in their own shapes, kept because the
+		# comment composer and the unsaved-changes banner read them directly
+		# and neither wants to filter a merged list to find its half.
+		"entries": _entries(doctype, name, resolved, comments, changes, doc),
 		"comments": comments,
 		# How many there are, not how many came back. The page is capped at 50,
 		# so on a record with more than that the count derived from the list
@@ -78,6 +115,309 @@ def timeline(space_code: str, screen: str, name: str) -> dict:
 		"can_follow": follow.followable(doctype),
 		"following": follow.is_following(doctype, name),
 	}
+
+
+# --------------------------------------------------------------------------- #
+# One column, out of every kind of thing that happens to a record
+#
+# A source is `(doctype, name, resolved) -> [entry]`, and an entry is a dict
+# with a `kind`, a `key`, an `on` and a `by`. Everything else is the kind's
+# own and the browser draws it — which is what makes adding one a line here
+# and a branch there rather than a change to the merge.
+#
+# Ordered by how loud each is rather than by importance: the two that are
+# already in hand cost nothing, and the two that query come last so a record
+# with neither pays for neither.
+# --------------------------------------------------------------------------- #
+
+def _entries(doctype, name, resolved, comments, changes, doc) -> list[dict]:
+	"""Everything that has happened to this record, newest first."""
+	entries = [
+		*_said_entries(comments),
+		*_change_entries(changes),
+		*_creation_entry(doc, resolved),
+	]
+	entries += _gather(doctype, name, resolved)
+	entries += _inherited_entries(doc, resolved)
+	entries.sort(key=lambda one: str(one.get("on") or ""), reverse=True)
+	return entries[:TIMELINE_ENTRIES]
+
+
+def _gather(doctype: str, name: str, resolved: dict) -> list[dict]:
+	"""Every registered source, run against one record."""
+	found = []
+	for source in SOURCES:
+		try:
+			found += source(doctype, name, resolved) or []
+		except Exception:
+			# A source that cannot answer must not take the column with it: a
+			# timeline missing its mail is worth more than a record that will
+			# not open. `onemail` is the one that can be absent — a bench
+			# without it, a doctype nothing is linked to — and the rest are
+			# reads that a permission can refuse.
+			frappe.clear_last_message()
+	return found
+
+
+def _said_entries(comments) -> list[dict]:
+	"""What people said about it."""
+	return [{
+		"kind": "comment",
+		"key": f"comment:{one['name']}",
+		"on": one.get("creation"),
+		"by": one.get("comment_by") or one.get("comment_email"),
+		"by_id": one.get("comment_email"),
+		"content": one.get("content"),
+	} for one in comments]
+
+
+def _change_entries(changes) -> list[dict]:
+	"""What changed on it, already resolved into the screen's own words."""
+	return [{
+		"kind": "change",
+		"key": f"change:{one['name']}",
+		"on": one.get("on"),
+		"by": one.get("by"),
+		"by_id": one.get("by_id"),
+		"entries": one.get("entries") or [],
+	} for one in changes]
+
+
+def _creation_entry(doc, resolved: dict) -> list[dict]:
+	"""Where it started — the one entry no log holds.
+
+	A Version records a change and there was nothing before the first one, so
+	this is read off the record itself. It was synthesised in the browser and
+	moved here with the rest: one column assembled in one place is the point.
+
+	It says *converted* rather than *created* where the screen names a field
+	this record came from and that field is filled, because those are two
+	different events and a deal that says "created this" above six weeks of
+	somebody else's email is a deal lying about its own history.
+	"""
+	if not doc.get("creation"):
+		return []
+	came_from = _came_from(doc, resolved)
+	return [{
+		"kind": "created",
+		"key": "created",
+		"on": doc.get("creation"),
+		"by": doc.get("owner"),
+		"by_id": doc.get("owner"),
+		"converted": bool(came_from),
+		# What it was called, not what it is keyed by: "converted zzBrightwater
+		# Hotels into this" is a sentence, and `CRM-LEAD-2026-00010` is the
+		# database's answer to a question nobody asked.
+		"from_label": _named(*came_from) if came_from else "",
+	}]
+
+
+def _named(doctype: str, name: str) -> str:
+	"""One record's title, cheaply."""
+	meta = frappe.get_meta(doctype)
+	title = getattr(meta, "title_field", "") or ""
+	if not title or title == "name" or not meta.get_field(title):
+		return name
+	return str(frappe.get_cached_value(doctype, name, title) or name)
+
+
+def _came_from(doc, resolved: dict):
+	"""The record this one was made from, as `(doctype, name)`.
+
+	`view_settings.timeline.inherits` names the field — `views._timeline` — and
+	it is usually a Dynamic Link, because the interesting case is a deal that
+	may have come from a Lead, a Customer or a Prospect. A plain Link works
+	too and its target is the field's own `options`.
+	"""
+	field = ((resolved.get("view_settings") or {}).get("timeline") or {}).get("inherits")
+	if not field:
+		return None
+	name = doc.get(field)
+	if not name:
+		return None
+
+	column = next((one for one in resolved.get("all_columns") or []
+	               if one.get("fieldname") == field), None)
+	if not column:
+		return None
+	if column.get("fieldtype") == "Dynamic Link":
+		doctype = doc.get(column.get("options") or "")
+	else:
+		doctype = column.get("options") or ""
+	if not doctype or not frappe.db.exists("DocType", doctype):
+		return None
+	return (doctype, name)
+
+
+def _inherited_entries(doc, resolved: dict) -> list[dict]:
+	"""The history of the record this one came from.
+
+	`docs/ONECRM.md` stage 4. A deal converted from a lead did not exist before
+	the conversion, so its column began the day somebody pressed a button and
+	the six weeks of email that got it there sat on a record nobody opens
+	again. The lead's entries are prepended, marked, and that is the whole of
+	it.
+
+	**One hop.** A lead that itself came from something does not drag a third
+	history in: two is a history and three is an ancestry, and the cost is a
+	query per hop on every record opening.
+
+	**And the reader's permission on the far end decides.** A person may hold
+	the deal and not the lead — a rep given one customer's pipeline — and the
+	answer there is a shorter column, not a refusal and not a disclosure.
+	"""
+	came_from = _came_from(doc, resolved)
+	if not came_from:
+		return []
+	doctype, name = came_from
+
+	if not frappe.has_permission(doctype, "read", doc=name):
+		return []
+
+	try:
+		other = frappe.get_doc(doctype, name)
+	except frappe.DoesNotExistError:
+		frappe.clear_last_message()
+		return []
+
+	# The far record's own screen, so its mail and its files are read under the
+	# same rules they are read under there. Nothing of *ours* — a screen this
+	# reader cannot reach is one whose entries they should not be shown.
+	far = _screen_for(doctype)
+	if far is None:
+		return []
+
+	comments = frappe.get_all(
+		"Comment",
+		filters={"reference_doctype": doctype, "reference_name": name,
+		         "comment_type": "Comment"},
+		fields=["name", "content", "comment_email", "comment_by", "creation"],
+		order_by="creation desc",
+		limit_page_length=TIMELINE_PAGE,
+	)
+	entries = [
+		*_said_entries(comments),
+		*_creation_entry(other, far),
+		*_gather(doctype, name, far),
+	]
+	# Marked, because "who said this and when" is not enough when the answer is
+	# on a different record: the column has to say that this half is the lead's.
+	label = _title_of(other, doctype)
+	for one in entries:
+		one["key"] = f"was:{one['key']}"
+		one["about"] = label
+		one["about_doctype"] = doctype
+		one["about_name"] = name
+	return entries
+
+
+def _screen_for(doctype: str) -> dict | None:
+	"""A resolved screen over this doctype that the reader may open.
+
+	The entries of the record on the other end are read through its *own*
+	screen's rules rather than through the one the reader happens to be
+	standing on: a Version rendered against the wrong screen's columns is a
+	change log in somebody else's words, and a field the far screen hides is
+	one this reader was not meant to see change.
+
+	The first that resolves wins, and a doctype with no screen this reader may
+	open answers nothing — which is the same sentence the permission check
+	above makes, one level out.
+	"""
+	from oneapp.onespace import sync
+	from .resolve import visible
+
+	for space in visible(sync.state().get("spaces") or []):
+		for screen in space.get("screens") or []:
+			if (screen.get("document_type") or "").strip() != doctype:
+				continue
+			if screen.get("component"):
+				continue
+			try:
+				return _resolve(space["space_code"], screen["screen"])
+			except Exception:
+				frappe.clear_last_message()
+	return None
+
+
+def _title_of(doc, doctype: str) -> str:
+	"""What to call the record on the other end, in one line."""
+	meta = frappe.get_meta(doctype)
+	title = getattr(meta, "title_field", "") or ""
+	said = (doc.get(title) if title and title != "name" else "") or doc.get("name")
+	return str(said or "")
+
+
+def _mail_entries(doctype: str, name: str, resolved: dict) -> list[dict]:
+	"""The mail about it that this reader may see.
+
+	Through `spaceview/mail.py`'s own reader rather than a query of its own,
+	which is the only way this can be true: a link is not a grant, and the
+	scoping that makes that so lives there.
+	"""
+	from oneapp.onespace.spaceview import mail
+
+	names = mail._linked(doctype, name)
+	if not names:
+		return []
+
+	rows = frappe.get_list(
+		"Communication",
+		filters={"name": ["in", names]},
+		fields=["name", "subject", "sender", "sender_full_name",
+		        "communication_date", "sent_or_received", "has_attachment"],
+		order_by="communication_date desc",
+		limit_page_length=TIMELINE_PAGE,
+	)
+	return [{
+		"kind": "mail",
+		"key": f"mail:{one['name']}",
+		"on": one.get("communication_date"),
+		"by": one.get("sender_full_name") or one.get("sender"),
+		"by_id": one.get("sender"),
+		"subject": one.get("subject") or "",
+		"way": one.get("sent_or_received") or "",
+		"attached": bool(one.get("has_attachment")),
+		"message": one["name"],
+	} for one in rows]
+
+
+def _file_entries(doctype: str, name: str, resolved: dict) -> list[dict]:
+	"""What was attached to it, and by whom.
+
+	`get_list`, so a file this reader may not see is a file they are not told
+	about — the same rule the gallery follows, because it is the same rows.
+	"""
+	rows = frappe.get_list(
+		"File",
+		filters={"attached_to_doctype": doctype, "attached_to_name": name},
+		fields=["name", "file_name", "file_url", "owner", "creation",
+		        "is_private"],
+		order_by="creation desc",
+		limit_page_length=TIMELINE_PAGE,
+	)
+	if not rows:
+		return []
+	names = _names([{"owner": one.get("owner")} for one in rows])
+	return [{
+		"kind": "file",
+		"key": f"file:{one['name']}",
+		"on": one.get("creation"),
+		"by": names.get(one.get("owner")) or one.get("owner"),
+		"by_id": one.get("owner"),
+		"title": one.get("file_name") or "",
+		"url": one.get("file_url") or "",
+		"private": bool(one.get("is_private")),
+	} for one in rows]
+
+
+#: The sources, in the order they are asked.
+#:
+#: A list rather than three calls, because the point of stage 3 was that the
+#: fourth would be one line — which is exactly what the call log cost. Registered here rather than by a hook: these are the
+#: framework's own nouns on every doctype, and a hook would be an extension
+#: point for something no app has asked for.
+SOURCES = (_mail_entries, _file_entries, _call_entries)
 
 
 def _names(rows: list[dict]) -> dict:
@@ -183,7 +523,7 @@ def _attachable(space_code: str, screen: str, name: str) -> str:
 @frappe.whitelist(methods=["GET"])
 def attachments(space_code: str, screen: str, name: str,
                 fieldname: str | None = None,
-                start: int = 0, limit: int = 0) -> dict:
+                start: int = 0, limit: int = 0, folder: str = "") -> dict:
 	"""Everything filed against one record.
 
 	Frappe's own File rows, which is what the desk's sidebar lists and what an
@@ -201,6 +541,18 @@ def attachments(space_code: str, screen: str, name: str,
 	doctype = _attachable(space_code, screen, name)
 	filters = {"attached_to_doctype": doctype, "attached_to_name": name}
 	filters.update(_gallery_filters(space_code, screen, fieldname))
+
+	# The record's *room* rather than everything attached to it — `DRIVE.md`
+	# §13. A record may have folders of its own now, and they are attachments
+	# too, so a flat list would show a folder beside the files that are inside
+	# it. `folder is not set` is the top; anything else is one of its folders,
+	# whose id begins with the room's own address.
+	#
+	# A gallery is the one caller that still wants everything: an Attachment
+	# Gallery draws the record's images, and a photograph filed in a subfolder
+	# is still one of them.
+	if not fieldname:
+		filters["folder"] = folder or ["is", "not set"]
 
 	# Not what is in the bin, and through the Drive's own `_visible()` rather
 	# than a second spelling of it — a file predating the status field has no
@@ -246,7 +598,33 @@ def attachments(space_code: str, screen: str, name: str,
 	# page, so the count is asked for rather than inferred — one `count` over
 	# filters the query above just used, and only when a page was asked for.
 	total = frappe.db.count("File", filters) if limit else len(found)
-	return {"files": found, "more": more, "total": total, "doctype": doctype}
+	return {
+		"files": found, "more": more, "total": total, "doctype": doctype,
+		# Where in the room this is, so the tab can draw a way back up. Built
+		# rather than walked, the same way the Drive builds it: a room folder's
+		# id *is* its path — `onestorage/file.py` names the top of one after
+		# the record.
+		"folder": folder,
+		"path": _room_path(doctype, name, folder),
+	}
+
+
+def _room_path(doctype: str, name: str, folder: str) -> list[dict]:
+	"""`Drawings / Revisions`, from the folder's own id.
+
+	The two levels the Drive draws above these — the doctype and the record —
+	are not here on purpose: this tab is already inside one record, and a
+	breadcrumb that began by naming the record you are looking at would be
+	telling you where you are from a standing start.
+	"""
+	room = f"{doctype}/{name}/"
+	if not folder or not folder.startswith(room):
+		return []
+	parts = folder[len(room):].split("/")
+	return [
+		{"name": room + "/".join(parts[:depth + 1]), "label": one}
+		for depth, one in enumerate(parts)
+	]
 
 
 def _gallery_filters(space_code: str, screen: str, fieldname: str | None) -> dict:

@@ -233,9 +233,12 @@
 
       <div class="sn-vr" />
 
-      <!-- Undo / Redo -->
-      <Button variant="ghost" size="sm" icon="lucide-corner-up-left"  tooltip="Undo (Ctrl+Z)" :disabled="!canUndo" @click="undo" />
-      <Button variant="ghost" size="sm" icon="lucide-corner-up-right" tooltip="Redo (Ctrl+Y)" :disabled="!canRedo" @click="redo" />
+      <!-- Undo / Redo. `label` as well as `tooltip`: on an icon-only Button the
+           label is the accessible name, which is the pattern every other icon
+           button in this product follows — these two were the vendored file's
+           and had none, so a screen reader read them as "button". -->
+      <Button variant="ghost" size="sm" icon="lucide-corner-up-left"  :label="__('Undo')" tooltip="Undo (Ctrl+Z)" :disabled="!canUndo" @click="undo" />
+      <Button variant="ghost" size="sm" icon="lucide-corner-up-right" :label="__('Redo')" tooltip="Redo (Ctrl+Y)" :disabled="!canRedo" @click="redo" />
 
       <div class="sn-vr" />
 
@@ -1211,6 +1214,7 @@ import { userInitials } from '@/modules/onesheet/lib/utils/session.js'
 // `lib/services/session.js`. Upstream deleted its half of the vendored
 // helper when the suite grew a session store of its own.
 import { getSessionUser } from '@/modules/onesheet/lib/services/session.js'
+import { useAiContext } from '@/shared/lib/ai/context'
 import { parseNumberFmt, buildNumberFmt, applyNumberFmt } from '@/modules/onesheet/lib/utils/format-number.js'
 import { getTextWrap } from '@/modules/onesheet/lib/utils/text-wrap.js'
 import { autoCloseKey } from '@/modules/onesheet/lib/utils/formula-autoclose.js'
@@ -1666,6 +1670,27 @@ const DIGEST_ROWS = 40
 const DIGEST_COLS = 20
 const selectionDigest = ref('')
 
+/**
+ * What OneAI is about while this workbook is open.
+ *
+ * Here rather than on `Sheet.vue`, which is the *page*. A workbook opens in a
+ * window now — `onestorage/components/FileWindows.vue` — and a window mounts
+ * this component directly, so a claim made one level up was a claim a
+ * windowed workbook never made: OneAI beside one was about the space behind
+ * it. The page still gets it, because the page renders this.
+ *
+ * `shared/lib/ai/context.js` decides which claim wins when several surfaces
+ * have one, and inside a window this claim belongs to that window.
+ */
+useAiContext(() => ({
+  file: props.id,
+  label: currentTitle.value || __('This workbook'),
+  kind: 'Sheet',
+  // Where you are standing in it, which is what "this" means when anything is
+  // selected.
+  selection: selectionDigest.value || '',
+}))
+
 function _selectionDigest() {
 	if (!grid || !sheet) return ''
 	const picked = grid.getSelection?.()
@@ -2069,7 +2094,28 @@ function applyAiPlan(steps) {
     applyFormat: (ids, patch, tab) => formats.applyToRange(ids, patch, tab || sheet.getCurrentSheet()),
     addTab: (name) => { _addSheet(name); return name },
     addNamedRange: (label, tab, range) => namedRanges.add({ name: label, sheet: tab, range }),
+    // Columns and panes, through the same two calls the header's own context
+    // menu goes through. A model has no idea how wide this window is, so the
+    // usual answer is `px` of nothing, which is autofit — the thing a person
+    // does by double-clicking the column edge.
+    setWidth: (from, to, px) => {
+      for (let column = from; column <= to; column += 1) {
+        // The canvas counts from zero and A1 counts from one.
+        if (px) grid?.setColWidth(column - 1, px)
+        else grid?.autoFitCol(column - 1)
+      }
+    },
+    freeze: (rows, cols) => {
+      freezeRows.value = rows
+      freezeCols.value = cols
+      grid?.setFreeze(rows, cols)
+    },
   })
+
+  // Widths, panes and formats change what is drawn without writing a cell, so
+  // a plan that only formatted would otherwise land invisibly until something
+  // else forced a render.
+  grid?.render?.()
 
   if (done.written || done.tabs.length) {
     _repopulateGrid()
@@ -4363,6 +4409,16 @@ function _afterHistoryNavigate() {
   formulaValue.value = sheet.getCell('A1')
   refreshActiveFormat(); _syncNumberFormat('A1'); syncFlags()
   grid?.setMarchingAnts(null); clipboard.clear(); clipboardHas.value = false
+
+  // An undo is a change to the workbook like any other, and this is the one
+  // path that was not saying so: `syncFlags` reads the history's own counters
+  // and `isDirty` is what the debounced save watches, so undo and redo put
+  // the grid back on screen and left the server holding what was undone. One
+  // reload brought it all back.
+  //
+  // Found by the first browser test this editor has ever had of undo, which
+  // was written for an AI plan and is not about AI at all — `sheets.spec.js`.
+  isDirty.value = true
 }
 
 function undo() {

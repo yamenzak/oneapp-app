@@ -137,7 +137,8 @@ export function useDrive({ rows, reread, folder, route, router }) {
     favourite: (file) =>
       act(() => workspace.driveFavourite(file.name, !file.liked)),
     rename: (file, title) => act(() => workspace.driveRename(file.name, title)),
-    move: (what, into) => act(() => workspace.driveMove(names(what), into)),
+    move: (what, into, about = null) =>
+      act(() => workspace.driveMove(names(what), about ? '' : into, about)),
     /**
      * The bin, and the way back out of it.
      *
@@ -159,6 +160,15 @@ export function useDrive({ rows, reread, folder, route, router }) {
     restore: (what) => act(() => workspace.driveRestore(names(what))),
     destroy: (what) => act(() => workspace.driveEmptyTrash(names(what))),
     emptyBin: () => act(() => workspace.driveEmptyTrash([])),
-    newFolder: (title) => act(() => workspace.driveNewFolder(title, unref(folder) || '')),
+    /**
+     * `about` is the record whose room this is, where the caller is in one.
+     *
+     * The room's first level has no parent folder to be made inside — the
+     * levels above it are a query wearing a directory's shape — so the record
+     * is what addresses it. Inside one of its folders `folder` is enough
+     * again, and the server inherits the room from the parent.
+     */
+    newFolder: (title, about = null) =>
+      act(() => workspace.driveNewFolder(title, about ? '' : (unref(folder) || ''), about)),
   }
 }
