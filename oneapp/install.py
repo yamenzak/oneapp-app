@@ -211,11 +211,61 @@ def create_custom_fields():
 			"Notification": [
 				{
 					"fieldname": "custom_onespace",
-					"label": "Made in OneSpace",
+					"label": "Made in One",
 					"fieldtype": "Check",
 					"read_only": 1,
 					"no_copy": 1,
 					"search_index": 1,
+				}
+			],
+			# A form this workspace made. Frappe ships two Web Forms on every
+			# site and an app may install more, and each of those is part of
+			# what that app *is* — a window that let somebody edit them would
+			# be a window that breaks a site. Same field and the same argument
+			# as the three around it. See `oneforms/service.py`.
+			"Web Form": [
+				{
+					"fieldname": "custom_onespace",
+					"label": "Made in One",
+					"fieldtype": "Check",
+					"read_only": 1,
+					"no_copy": 1,
+					"search_index": 1,
+				},
+				# And what the Look panel set, as the six settings rather than
+				# as the CSS they became. Kept because a stylesheet cannot be
+				# read back into a colour picker: `custom_css` is what the
+				# page loads and this is what the panel reopens. See
+				# `oneforms/theming.py`.
+				{
+					"fieldname": "custom_onespace_theme",
+					"label": "One theme",
+					"fieldtype": "Small Text",
+					"read_only": 1,
+					"no_copy": 1,
+				},
+				# Whether somebody who fills this in is written back to. Off
+				# unless a form turns it on: an internal request filed through
+				# a keyed link has already been acknowledged by the page, and a
+				# second letter is noise. See `oneforms/invite.confirm`.
+				{
+					"fieldname": "custom_onespace_reply",
+					"label": "Confirm to whoever filled it in",
+					"fieldtype": "Check",
+					"no_copy": 1,
+				},
+			],
+			# Which of a child doctype's columns a repeating group asks for.
+			# Not `description`, which is the help text a reader sees — that
+			# was the first home and it leaked "item_name, qty, description"
+			# onto the page under the label. See `oneforms/lines.py`.
+			"Web Form Field": [
+				{
+					"fieldname": "custom_onespace_columns",
+					"label": "OneSpace columns",
+					"fieldtype": "Small Text",
+					"read_only": 1,
+					"no_copy": 1,
 				}
 			],
 			# And the same mark on an assignment rule, for the same reason and
@@ -225,7 +275,7 @@ def create_custom_fields():
 			"Assignment Rule": [
 				{
 					"fieldname": "custom_onespace",
-					"label": "Made in OneSpace",
+					"label": "Made in One",
 					"fieldtype": "Check",
 					"read_only": 1,
 					"no_copy": 1,
@@ -240,7 +290,7 @@ def create_custom_fields():
 			"Email Template": [
 				{
 					"fieldname": "custom_onespace",
-					"label": "Made in OneSpace",
+					"label": "Made in One",
 					"fieldtype": "Check",
 					"read_only": 1,
 					"no_copy": 1,

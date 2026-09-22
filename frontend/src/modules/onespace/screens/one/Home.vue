@@ -14,7 +14,7 @@
 
     Three blocks, one call — `oneapp/onespace/home.py`. Three endpoints would be
     three spinners and a page that assembles itself in front of the reader,
-    which is the same thing OnePeople's own home says about eight.
+    which is the same thing OneHR's own home says about eight.
 
     A block with nothing in it is absent rather than empty: a workspace that
     keeps no calendar should not have a Next up card with a dash in it every
@@ -119,6 +119,10 @@ const COLUMNS = {
   1: 'md:grid-cols-1',
   2: 'md:grid-cols-2',
   3: 'md:grid-cols-2 xl:grid-cols-3',
+  // Two by two rather than four across: a fourth column makes every card too
+  // narrow for the line under a row, which is where each of them says what it
+  // is about.
+  4: 'md:grid-cols-2',
 }
 
 /**
@@ -146,6 +150,25 @@ const fromNotice = (one) => ({
   under: one.body || '',
   to: one.route || null,
   href: one.route ? '' : one.link || '',
+})
+
+/**
+ * Something waiting on a yes or a no.
+ *
+ * It goes to the Approvals screen rather than to the record, and that is
+ * deliberate: a card is four lines, the verbs do not fit on one, and a row
+ * that opened the record would put somebody one page further from the thing
+ * they came to do than the screen this card is advertising.
+ */
+const fromApproval = (one) => ({
+  key: `${one.doctype}/${one.name}`,
+  icon: one.icon || 'lucide-inbox',
+  said: one.title,
+  under: [one.placed ? `${one.label} · ${one.space_label}` : '', one.state]
+    .filter(Boolean)
+    .join(' · '),
+  to: { name: 'Screen', params: { spaceCode: 'one' }, query: { screen: 'waiting' } },
+  href: '',
 })
 
 /** A diary entry: what it is, and when. */
@@ -182,6 +205,12 @@ const blocks = computed(() =>
       label: __('What needs you'),
       rows: (found.value.attention || []).map(fromNotice),
       to: null,
+    },
+    {
+      key: 'approvals',
+      label: __('Waiting on you'),
+      rows: (found.value.approvals || []).map(fromApproval),
+      to: { name: 'Screen', params: { spaceCode: 'one' }, query: { screen: 'waiting' } },
     },
     {
       key: 'day',

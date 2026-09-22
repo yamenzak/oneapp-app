@@ -19,7 +19,7 @@ except the id.
   a mark by. Always present and never product-facing; `CLAUDE.md` is emphatic
   about this and four of them disagree with their product name on purpose.
 * **`module`** — the Frappe module name, for the ten that own doctypes. `None`
-  for a space over somebody else's schema (OnePeople is HRMS's, OneProject is
+  for a space over somebody else's schema (OneHR is HRMS's, OneProject is
   ERPNext's) and for a service that lives inside another module's directory.
 * **`mark`** — the drawing, where there is one. `onelegal` has none: it is a
   service nothing puts a tile on.
@@ -57,7 +57,7 @@ def _one(id: str, kind: str, module: str | None = None,
 
 
 CATALOGUE = (
-	# The desk. `one` is the mark; `OneSpace` is the module the engine lives
+	# The desk. `one` is the mark; `One` is the module the engine lives
 	# in. They are the same thing under two names, which is why this is the
 	# one row where the id and the module look unrelated.
 	_one("one", ENGINE, module="OneSpace"),
@@ -77,12 +77,15 @@ CATALOGUE = (
 	# And one with a module and no drawing. Agreements are something every
 	# space writes and nowhere puts a tile — `docs/LEGAL.md`.
 	_one("onelegal", SERVICE, module="OneLegal", mark=None),
+	# A form is a door into a doctype, which is something every department
+	# wants and no department is — `docs/ONEFORMS.md`. Over Frappe's own
+	# `Web Form`, so the module owns no table of its own.
+	_one("oneforms", SERVICE, module="OneForms"),
 
 	# The spaces. Two own doctypes of ours; the rest are spaces over somebody
 	# else's schema, which is the shape `docs/ERP-SPACES.md` argues for.
 	_one("onecrm", SPACE, module="OneCRM"),
 	_one("onemobility", SPACE, module="OneMobility"),
-	_one("onehr", SPACE, module=None),
 	_one("oneproject", SPACE, module=None),
 	_one("onebook", SPACE, module=None),
 	_one("oneinventory", SPACE, module=None),
@@ -98,7 +101,6 @@ CATALOGUE = (
 	# whether it exists: a helpdesk is a department and a signature is
 	# something every department needs.
 	_one("onescratchpad", SERVICE, built=False),
-	_one("oneforms", SERVICE, built=False),
 	_one("oneslide", SERVICE, built=False),
 	_one("onesignature", SERVICE, built=False),
 	_one("onedb", SERVICE, built=False),

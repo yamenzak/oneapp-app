@@ -1,4 +1,4 @@
-# OneSpace — the engine
+# One — the engine
 
 The desk. Everything that turns a **declaration** into a working screen: a
 space manifest arrives from the control plane, and what a person gets is a
@@ -37,15 +37,41 @@ which is what stops it becoming one 4,000-line module again.
 whole relationship with the control plane.
 
 **The features that are not the engine** — `printing`, `notifications` and
-`alerts`, `importer/`, `books`, `collab`, `link_preview`, `basemap`. Each is a
-candidate to leave, and `docs/CLEANUP.md` §3b is where that is tracked.
+`alerts`, `importer/`, `books`, `collab`, `link_preview`, `basemap`, `finding`.
+Each is a candidate to leave, and `docs/CLEANUP.md` §3b is where that is
+tracked. `finding` is the one that could not: it is a search *over the
+manifests*, so it belongs wherever the manifests are read.
 
 **The three screens the engine itself draws** — `homepage`, `configuration` and
-`singles`. Any space may name one, and they are keyed with no space code in
+`singles`. (One has a fourth of its own, `waiting`, which is not the engine's:
+it is a screen of the standard space and is declared only where the site has an
+active workflow.) Any space may name one, and they are keyed with no space code in
 front for that reason: keying them per space would be the same entry once per
 app, which is the shape `docs/UNIFICATION.md` F1 is about.
 
 ## The decisions that cost something
+
+**One box searches the screens, not the site — `finding.py`.** Frappe keeps
+`__global_search` and we do not read it, which needed an argument and got a
+measurement: on the dev site that index is 1,348 rows of which 1,022 are
+`DocType`, 223 are `Report` and 55 are `Module Def`. It is the desk's own
+metadata. Two things would be wrong with it even full — `MATCH … AGAINST`
+matches whole words, so `Meri` does not find `Meridian`, and a hit is a doctype
+and an id with no idea which screen shows it. Here a record is only ever
+reachable *through* a screen, so a hit that does not name one is a row nobody
+can open.
+
+So the screens are the index. One `like` per screen the reader can open, which
+sounds slow and was measured before it was written: 68 ms across all 146
+doctypes the shipped manifests name, because one `get_list` with a `like` is
+about half a millisecond. It inherits the list's three rules rather than
+re-deciding them — the screen's own filters apply with `@me` resolved, only
+fields the screen shows are searched, and every query is `get_list` under the
+reader's own permissions.
+
+And the other half needs no server at all: `api.session` already carries every
+space with its screens, so **where to go** is filtered in the browser on the
+keystroke. That is why the box is useful the instant it opens.
 
 **A Single is a screen — `singles.py`.** A doctype with exactly one document
 has no list, no record id and no New button, so every mechanism above passed
@@ -62,10 +88,10 @@ checked against the document before it is called: a manifest that could name a
 method would be a manifest that can call anything, and a bare method name would
 survive an upgrade that moved the class.
 
-It was OnePeople's first, for six HRMS Singles nobody could open. It moved here
+It was OneHR's first, for six HRMS Singles nobody could open. It moved here
 in `docs/ONEBOOK.md` stage 2, when OneBook wanted the same page over ERPNext's
 Opening Invoice Creation Tool: a doctype with one document, read and written,
-has nothing to do with people. What stayed in OnePeople is the half that does —
+has nothing to do with people. What stayed in OneHR is the half that does —
 find the people these filters describe, then do it to the ones that were
 ticked.
 
@@ -94,15 +120,27 @@ stays visible on purpose — hiding it would turn a manifest mistake somebody ca
 see into one nobody can.
 
 **A twin is `@me`.** `mine.py` resolves it, and the same resolution answers a
-screen's filters, OneCalendar's `about` and OnePeople's assistant tools, so
+screen's filters, OneCalendar's `about` and OneHR's assistant tools, so
 **My leave** as a screen cannot come apart from "my leave" asked any other way.
+
+**An inbox is a reading of somebody else's rows — `waiting.py`.** The engine
+has driven Frappe's workflow since the record shell was built, and the
+framework has been writing a `Workflow Action` per approver on every transition
+the whole time. Nobody read them back, so approval worked one record at a time
+for somebody who already knew which record to open. What makes the inbox cheap
+is that it adds nothing: Frappe's permission query conditions on that doctype
+are the scoping, `docflow._transitions` are the verbs, `finding.placed` says
+where each row opens, and pressing a verb calls the endpoint the record header
+already calls. The only new thing is the question.
 
 ## What is not built
 
 1. **The phone answer.** `docs/DESKTOP.md` stage 7. The dock is desktop-only
-   and a phone gets a different shape.
+   and a phone gets a different shape — which is also why the finder has no way
+   in on a phone: no dock, and no Ctrl.
 2. **A workflow builder.** A workflow is part of what an app *is*, so it ships
-   with whoever owns the doctype. The runtime honours what it finds.
+   with whoever owns the doctype. The runtime honours what it finds, and
+   `waiting.py` is now where somebody finds out it is their turn.
 3. **The engine as a second desk.** `docs/CLEANUP.md` §6 — declarative enough
    that a tenant could build a space, which is the direction the whole arc
    points.

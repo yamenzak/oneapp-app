@@ -4,7 +4,7 @@
 beside it: a project, a task, a timesheet, a general ledger and a customer are
 solved problems, and a second copy of any of them is a schema a workspace has
 to keep in step with the first. Three spaces — OneProject, OneCRM, OneBook —
-own no doctypes at all for that reason, and OnePeople owns none either.
+own no doctypes at all for that reason, and OneHR owns none either.
 
 What follows is the price of that, itemised. It is short, and the shortness is
 the point: four controllers, eight hooks, twelve tables carrying a column of
@@ -31,7 +31,7 @@ SUBCLASSED = {
 }
 
 # Not `Employee`, and it is worth saying why here rather than leaving it to be
-# proposed again. OnePeople is thirty screens over HRMS and reaches Employee
+# proposed again. OneHR is thirty screens over HRMS and reaches Employee
 # through fields and permlevels only — `docs/ERP-SPACES.md` §5. A controller
 # there would be behaviour on the one doctype three spaces read.
 
@@ -85,7 +85,7 @@ EXTENDED = {
 CALLED = {
 	"erpnext.setup.setup_wizard.setup_wizard.setup_complete":
 		"The setup wizard's last step, called programmatically. The desk is "
-		"not part of this product, so on a OneSpace workspace that wizard is "
+		"not part of this product, so on a One workspace that wizard is "
 		"never run — and until it is there is no Company, no Fiscal Year and "
 		"no chart of accounts. Reimplementing it would be a second copy of a "
 		"hundred fixtures to keep in step. `onespace/books.py`.",

@@ -68,6 +68,67 @@ your role in it*.
    names for that doctype, after checking the document really is the class the
    path names, and never saves: a tool's document is used and dropped.
 
+## Finding something — `finding.py`
+
+`look(query, space)`. One box over every space, on Ctrl+K, and it fans a `like`
+out over the screens rather than reading an index.
+
+1. **`targets`** is `visible(sync.state()["spaces"])` and `navigable` over each,
+   deduplicated by doctype **within** a space. So a screen this seat cannot
+   open is not a screen its records can be found through, and a doctype two
+   spaces both list is two targets because they are two screens with two sets
+   of filters.
+2. **`_fields`** is the screen's own columns, filtered through `filters.py`'s
+   `NEVER_SEARCHED` and `MAX_SEARCH_COLUMNS` — imported, not restated. `name`
+   is always first.
+3. **`_narrowing`** is the screen's declared filters through `mine.resolve`, so
+   `@me` means the reader here exactly as it does when the screen is opened.
+4. **`_hits`** is one `get_list` per target, `MOST` rows, permissions Frappe's
+   own. A screen that refuses is absent rather than fatal.
+5. **`_where`** ranks each hit by where the match landed in its own name —
+   `EXACT`, `STARTS`, `WORD`, `ANYWHERE`, and `ELSEWHERE` for a row that
+   matched on some other column and so cannot explain itself.
+6. **`look`** dedupes one record to one line, preferring the space the reader
+   was standing in, and sorts by rank, then by each screen's own order — so
+   every screen's best hit comes before anybody's second.
+
+The browser answers the other half itself. `api.session` already carries every
+space with its screens, so **where to go** is filtered in memory on the
+keystroke with nothing on the wire, and the box is useful before the first
+round trip returns —
+`frontend/src/modules/onespace/lib/shell/finding.js`.
+
+## What is waiting on you — `waiting.py`
+
+`mine()` and `how_many()`. The approvals inbox, across every space, and it
+neither decides nor writes.
+
+1. **`_rows`** is one `get_list` of `Workflow Action`. Frappe's own
+   `get_permission_query_conditions` on that doctype joins the permitted roles
+   and filters to `status='Open'`, so that call *is* the scoping — there is no
+   second reading here of who may approve what.
+2. **`finding.placed`** turns each `reference_doctype` into the space and
+   screen that shows it. A document no screen shows is still listed, marked
+   `placed: false`, and offered no verbs — there would be nowhere to send them.
+3. **`_title`** is the doctype's title field through `db.get_value`, not a
+   `get_doc`: an inbox of fifty would otherwise be fifty document loads before
+   anything drew.
+4. **`_verbs`** is `docflow._transitions`, the same call the record header
+   makes — state, roles held, and each transition's own condition.
+5. **`mine`** deduplicates by document, because the framework writes one row per
+   permitted *role* and somebody holding two is asked twice about one claim.
+   `how_many` deduplicates the same way so the badge and the list agree.
+
+**Acting is not here.** The screen calls
+`spaceview/docstate.workflow_action(space, screen, name, action)` — the endpoint
+the record header already calls — with the space and screen this module placed
+the row in. An inbox with its own write path would be a second door onto one
+transition.
+
+One's home carries the first few of these as its **Waiting on you** block, via
+`home._approvals`, which calls `mine` like every other block on that page calls
+the module that owns its question.
+
 ## Staying in sync — `sync.py`
 
 The tenant's whole relationship with the control plane, on a schedule:

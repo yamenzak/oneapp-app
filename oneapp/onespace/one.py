@@ -2,7 +2,7 @@
 
 Every other space in this product is data on the control plane — a row, an
 entitlement, a manifest that arrives over a signed call. That is right for
-OnePeople and it is wrong for this one, because this one is not something a
+OneHR and it is wrong for this one, because this one is not something a
 workspace *has*. It is the workspace.
 
 What was there before was a page called Spaces: a grid of cards you arrived at
@@ -105,7 +105,7 @@ def screens() -> list[dict]:
 	Ordinary screen declarations, in the shape the control plane sends: a
 	`component` each, because neither of these is a list of records. Everything
 	downstream — the rail, the resolver, the phone's More sheet — reads them the
-	way it reads OnePeople's.
+	way it reads OneHR's.
 
 	Configuration is the same component every other space's is, which is the
 	point: the panels that were a dialog are tabs on the page a space already
@@ -120,6 +120,7 @@ def screens() -> list[dict]:
 			"icon": "lucide-layout-grid",
 			"component": "one/home",
 		},
+		*_waiting(),
 		{
 			"screen": "configuration",
 			"label": frappe._("Configuration"),
@@ -130,6 +131,30 @@ def screens() -> list[dict]:
 			),
 		},
 	]
+
+
+def _waiting() -> list[dict]:
+	"""The approvals inbox, on a site that has something to approve.
+
+	Declared conditionally, which is the one screen here that is. A workflow is
+	part of what an app *is* — it ships with whoever owns the doctype, and most
+	workspaces have none — so an Approvals entry in every rail from the day it
+	is built is a door that opens onto nothing for the majority of them, for
+	ever. `is_active` is the whole of the test, and it is the same fact the
+	record header reads before it offers a transition.
+
+	It stops being declared again if the last workflow is turned off, which is
+	the behaviour worth having: the rail follows the site rather than
+	remembering what it used to be.
+	"""
+	if not frappe.db.exists("Workflow", {"is_active": 1}):
+		return []
+	return [{
+		"screen": "waiting",
+		"label": frappe._("Approvals"),
+		"icon": "lucide-inbox",
+		"component": "one/waiting",
+	}]
 
 
 def local_spaces() -> list[dict]:

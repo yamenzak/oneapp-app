@@ -91,6 +91,13 @@
          claim on the layout. See the component. -->
     <AssistantWidget />
 
+    <!-- One box over every space, on Ctrl+K. Mounted here rather than in the
+         shell because the shell is generated and shared with the control
+         plane, and this knows what a space is. Always mounted, hidden until
+         it is opened: the shortcut is its own listener and has to be bound
+         whatever page is showing. -->
+    <Finder v-if="session.isLoggedIn" />
+
     <!-- The list you came from, while you read one of its rows. Always
          mounted, hidden until it is opened: a `<Teleport>` resolves its target
          when it patches, and a target that appears in the same tick as the
@@ -117,6 +124,9 @@
            list to tick, over the same ERPNext tasks OneProject's board draws.
            `docs/WORK.md` §12. -->
       <TaskWindow />
+      <!-- And OneForms, which is the same shape again: a list of doors you
+           glance at while writing the thing that needs one. -->
+      <FormsWindow />
     </template>
 
     <!--
@@ -197,11 +207,13 @@ import DiarySidebar from '@/modules/onecalendar/components/DiarySidebar.vue'
 import ChatSidebar from '@/modules/oneai/components/chat/ChatSidebar.vue'
 import AssistantWidget from '@/modules/oneai/components/chat/AssistantWidget.vue'
 import Dock from '@/modules/onespace/components/desk/Dock.vue'
+import Finder from '@/modules/onespace/components/shell/Finder.vue'
 import PipWindow from '@/modules/onespace/components/desk/PipWindow.vue'
 import DriveWindow from '@/modules/onestorage/components/DriveWindow.vue'
 import MailWindow from '@/modules/onemail/components/MailWindow.vue'
 import DiaryWindow from '@/modules/onecalendar/components/DiaryWindow.vue'
 import TaskWindow from '@/modules/onetask/components/TaskWindow.vue'
+import FormsWindow from '@/modules/oneforms/components/FormsWindow.vue'
 import FileWindows from '@/modules/onestorage/components/FileWindows.vue'
 import { APPS as DRIVE_APPS } from '@/modules/onestorage/lib/window'
 import DriveSidebar from '@/modules/onestorage/components/DriveSidebar.vue'

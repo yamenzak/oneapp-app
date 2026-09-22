@@ -13,7 +13,7 @@ app_license = "agpl-3.0"
 # is absent — which the workspace's Books panel renders as "No accounting app".
 #
 # So the hard requirement claimed a dependency the code does not have, and the
-# only thing it actually stopped was running OneSpace anywhere erpnext is not
+# only thing it actually stopped was running One anywhere erpnext is not
 # installed — including every development bench, which is why this SPA went so
 # long without being opened in a browser. Tenant benches still carry erpnext.
 
@@ -35,15 +35,14 @@ website_route_rules = [
 # or `@me:<kind>`, which is somebody that user *is* somewhere else.
 #
 # The engine does not know what those are and must not: `onespace/mine.py` has
-# never heard of HRMS, and the day a second app has a subject of its own it
-# should not have to be edited. So a kind is registered here, and OnePeople has the
-# only one — an Employee, found by `user_id` and by nothing else.
+# never heard of any of them, and the day an app has a subject of its own it
+# should not have to be edited. So a kind is registered here. OneHR had the
+# only one — an Employee, found by `user_id` — and it left with the space.
 #
 # A kind nobody registered narrows the screen to nothing rather than opening it
-# up, which is the whole safety property of that module.
-onespace_subjects = {
-	"employee": "oneapp.onehr.own.employee_of",
-}
+# up, which is the whole safety property of that module, and is why an empty
+# map here is a safe state rather than a broken one.
+onespace_subjects: dict[str, str] = {}
 
 # ---------------------------------------------------------------------------
 # The space this app provides itself
@@ -74,7 +73,15 @@ before_request = ["oneapp.onestorage.dav.intercept"]
 # first `before_request` hook — so an oversized PUT is answered by werkzeug
 # with an HTML error page a file manager displays as nothing. `after_request`
 # runs in `application`'s `finally`, which is the one place downstream of it.
-after_request = ["oneapp.onestorage.dav.explain_refusal"]
+after_request = [
+	"oneapp.onestorage.dav.explain_refusal",
+	# And who may put a page in a frame. Only `/one/f/` may be framed at all,
+	# and only by the sites a form named: Frappe enforces
+	# `allowed_embedding_domains` in a page renderer that never runs for our
+	# route, and a `www` page has no headers path of its own — so without this
+	# the setting was a list nobody read. See `oneforms/framing.py`.
+	"oneapp.oneforms.framing.framing",
+]
 
 # Signing in lands on the workspace, not the desk. Frappe's fallback is "me",
 # which it rewrites to "desk" for any System User.
@@ -110,15 +117,6 @@ override_doctype_class = {
 	# relaxed inside a Sent folder so sent mail is not skipped as "your own mail
 	# in your own inbox". See `onemail/folders.py`.
 	"Email Account": "oneapp.onemail.folders.OneSpaceEmailAccount",
-	# Onboarding and exits are checklists, and HRMS implements a checklist as an
-	# ERPNext Project with a Task per step. Two things follow that neither app
-	# owns, because each is only visible when both are installed: those Projects
-	# land in the delivery projects list, and the preparation cannot be dated
-	# before the person joins. Both are fixed in the one moment they can be —
-	# see `onehr/boarding.py`. Inert on a workspace without HRMS, where these
-	# two doctypes do not exist to be overridden.
-	"Employee Onboarding": "oneapp.onehr.boarding.Onboarding",
-	"Employee Separation": "oneapp.onehr.boarding.Exit",
 }
 
 # ---------------------------------------------------------------------------
@@ -344,7 +342,7 @@ doc_events = {
 # walking the package: a feature that only registers when something happens to
 # import its module is a feature missing from the settings page on a cold worker.
 #
-# Apps built on OneSpace add their own here. The workspace assistant is the first
+# Apps built on One add their own here. The workspace assistant is the first
 # one shipped, and it is the mechanism working rather than an exception to it:
 # it gets its settings row, its model picker, its credit hold and its entry in
 # the operator registry from the decorator, like anything else would.
@@ -391,12 +389,15 @@ ai_features = [
 # taken, which no filter can express, so a model given only the record tools
 # answers it by listing applications and guessing.
 onespace_chat_tools = [
-	"oneapp.onehr.assistant.tools",
-	# And the one that writes: a letter, a certificate, a scope of works,
+	# The one that writes: a letter, a certificate, a scope of works,
 	# written out and filed on whatever the reader has open. Here rather than
 	# with the four in `ai/proposing.py` because a document is OneWriter's —
 	# see `onedoc/actions.py`.
 	"oneapp.onedoc.actions.tools",
+	# And the one that builds a surface rather than a record: a form over a
+	# doctype, and the stylesheet on the page strangers open — see
+	# `oneforms/actions.py`.
+	"oneapp.oneforms.actions.tools",
 ]
 
 ai_actions = [
@@ -405,6 +406,8 @@ ai_actions = [
 	"oneapp.onemail.filing",
 	# And the document's: write this, and file it on that record.
 	"oneapp.onedoc.actions",
+	# And the form's: build this form, and style this one.
+	"oneapp.oneforms.actions",
 ]
 
 scheduler_events = {
@@ -509,18 +512,6 @@ scheduler_events = {
 # JavaScript an app ships and running that is the door rail 34 refuses.
 onespace_screen_actions = [
 	"oneapp.onemobility.actions.actions",
-	"oneapp.onehr.hiring.actions",
-	# The payroll cycle, which is seven buttons HRMS draws in JavaScript and
-	# the last thing in OnePeople that needed the desk — `onehr/payroll.py`.
-	"oneapp.onehr.payroll.actions",
-	# And the rest of them. HRMS declares about ninety buttons across
-	# thirty-eight files; these five modules are the ones a seat in this space
-	# would press, read off that JavaScript and calling the same whitelisted
-	# Python behind it. `onehr/verbs.py` is what they all share.
-	"oneapp.onehr.money.actions",
-	"oneapp.onehr.growth.actions",
-	"oneapp.onehr.timekeeping.actions",
-	"oneapp.onehr.boarding.actions",
 	# Start and stop the clock, on the two screens somebody works from.
 	"oneapp.onetask.timing.actions",
 	# Log a call, from whichever record you rang somebody about —
@@ -543,10 +534,6 @@ onespace_screen_actions = [
 # `when`, so a workspace without the space is not offered it.
 onespace_settings_groups = [
 	"oneapp.onemobility.settings.groups",
-	# And OnePeople's one: whether a check-in records where it happened. The places
-	# and their networks are records — `onehr/place.py` — and this is the switch
-	# that decides whether the distance on them is read at all.
-	"oneapp.onehr.settings.groups",
 ]
 
 after_install = "oneapp.install.after_install"

@@ -185,7 +185,7 @@ import SpaceName from '@/shared/components/brand/SpaceName.vue'
 import { TENANT_APP } from '@/shared/lib/runtime/brand'
 import { brand } from '@/shared/lib/runtime/boot'
 import { session } from '@/modules/onespace/lib/shell/session'
-import { useApps } from '@/modules/onespace/lib/shell/apps'
+import { ownRoutes, useApps } from '@/modules/onespace/lib/shell/apps'
 import { useSidebar } from '@/modules/onespace/lib/shell/sidebar'
 import { __ } from '@/shared/lib/runtime/translate'
 import { HOVER } from '@/shared/lib/rowstate'
@@ -259,7 +259,7 @@ const here = computed(() => {
     const found = spaces.value.find((one) => one.space_code === code)
     if (found) {
       // `theirs` and not `true`. A space *is* somebody's, which is what this
-      // used to say — but OnePeople is a space and its name is still ours, so
+      // used to say — but OneHR is a space and its name is still ours, so
       // the corner wrote it flat while the board one row down wrote it the
       // family way. The question is the name, not the kind of thing.
       return {
@@ -272,7 +272,10 @@ const here = computed(() => {
   }
   const app = groups.value
     .flatMap((group) => group.items)
-    .find((one) => one.to?.name && one.to.name === route.name && !one.space)
+    // `ownRoutes`, not `to.name`: an app may have a second page of its own —
+    // OneForms' builder — and matching one name made the corner fall through
+    // to the workspace on it.
+    .find((one) => one.to?.name && ownRoutes(one).includes(route.name) && !one.space)
   if (app) return { label: app.label, brand: app.brand, renamed: !!app.renamed }
   return { ...workspace.value, renamed: true }
 })

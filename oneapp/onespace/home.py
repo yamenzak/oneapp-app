@@ -5,7 +5,7 @@ arrived at in order to leave. Nothing on it was work; it was a directory of
 doors, and the switcher in the corner is a better one. So it is gone, and One's
 Home is what is behind the door instead.
 
-Three blocks, and the rule that chose them is the same one OnePeople's own home
+Three blocks, and the rule that chose them is the same one OneHR's own home
 follows: **a landing page answers the questions somebody would otherwise have
 to know where to go to ask.** Not "which spaces does this workspace have" —
 which the corner answers, which is where it belongs, and which nobody actually
@@ -55,6 +55,7 @@ def mine() -> dict:
 	"""
 	return {
 		"attention": _try(_attention),
+		"approvals": _try(_approvals),
 		"day": _try(_day),
 		"files": _try(_files),
 	}
@@ -69,7 +70,7 @@ def _try(read):
 	try:
 		return read()
 	except Exception:
-		frappe.log_error(title="OneSpace home block failed")
+		frappe.log_error(title="One home block failed")
 		return []
 
 
@@ -87,10 +88,27 @@ def _attention() -> list[dict]:
 	return (unread or rows)[:ROWS]
 
 
+def _approvals() -> list[dict]:
+	"""What is waiting on this reader to say yes or no.
+
+	It belongs on this page by the rule that chose the other three, and its
+	absence was the page's one small lie: **what needs you** said notifications
+	and meant them, while a purchase order sitting on somebody's name was
+	nowhere on the front door of the product.
+
+	`waiting.mine` rather than a query, like every other block here. A
+	workspace with no workflow answers nothing and the card is absent, which is
+	the same thing a workspace with no calendar gets.
+	"""
+	from oneapp.onespace import waiting
+
+	return ((waiting.mine() or {}).get("rows") or [])[:ROWS]
+
+
 def _day() -> list[dict]:
 	"""Today and tomorrow, out of the merged diary.
 
-	Merged, so an interview in OnePeople and a meeting somebody typed into their
+	Merged, so an interview in OneHR and a meeting somebody typed into their
 	own calendar are one list — which is the whole of what OneCalendar is for
 	and the reason this does not query `Event`.
 	"""

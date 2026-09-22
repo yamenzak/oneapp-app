@@ -15,7 +15,7 @@ Three reasons this is a registry and not a `component` escape hatch.
 
 **A record view is reused.** `component` on a screen means "none of the rest of
 the manifest applies", which is right for a map of a transit network and wrong
-here: an employee page is wanted by OnePeople, by whatever HR space a customer gets
+here: an employee page is wanted by OneHR, by whatever HR space a customer gets
 next, and by anything else whose records are people. A named entry is reusable;
 a component named by one screen is that screen's.
 
@@ -47,14 +47,6 @@ for a caller that does not exist yet is the same mistake earlier.
 RECORD_VIEWS = {
 	"record": {"built": True},
 	"showcase": {"built": True},
-	"person": {"built": True},
-	"candidate": {"built": True},
-	"opening": {"built": True},
-	"place": {"built": True},
-	"day": {"built": True},
-	"absence": {"built": True},
-	"payslip": {"built": True},
-	"boarding": {"built": True},
 }
 
 #: What a screen gets when it says nothing: the form and the tabs, which is what

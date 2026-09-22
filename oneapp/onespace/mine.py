@@ -22,7 +22,7 @@ reader**:
     "filters": {"opportunity_owner": "@me"}
 
 `@me` is the session's user. `@me:<kind>` is somebody the user *is* in some
-other app's terms, and the engine does not know what those are: OnePeople's is an
+other app's terms, and the engine does not know what those are: OneHR's is an
 Employee, found through `user_id`, and this module has never heard of HRMS. An
 app that has one registers it:
 
@@ -99,7 +99,7 @@ def subject(value) -> str:
 		# Logged rather than raised. This runs behind every read of a screen,
 		# and an app whose provider is broken should narrow its own twin to
 		# nothing rather than take the workspace down.
-		frappe.log_error(title="OneSpace subject provider failed", message=path)
+		frappe.log_error(title="One subject provider failed", message=path)
 		return NOBODY
 
 
